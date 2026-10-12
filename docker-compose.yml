@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mindspear
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - mindspear
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mindspear"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - mindspear
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      PHP_CLI_SERVER_WORKERS: 1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "php artisan config:clear &&
+             until php -r \"new PDO('pgsql:host=postgres;port=5432;dbname=mindspear', 'myuser', 'mypassword');\" 2>/dev/null; do echo 'Waiting for postgres...'; sleep 2; done &&
+             php artisan key:generate --no-interaction --force &&
+             php artisan migrate --force &&
+             (php artisan tinker --execute='exit(App\\Models\\User::count() === 0 ? 0 : 1);' && php artisan db:seed --force || echo 'Seed skipped (DB already has users)') &&
+             php artisan storage:link --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+
+  reverb:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+
+  frontend:
+    build: ./frontend
+    env_file: ./frontend/.env
+    ports:
+      - "2000:2000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - mindspear
+    depends_on:
+      - backend
+
+networks:
+  mindspear:
+    driver: bridge
+
+volumes:
+  pgdata:
