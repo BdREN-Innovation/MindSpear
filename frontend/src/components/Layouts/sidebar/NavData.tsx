@@ -20,6 +20,13 @@ type NavItem = {
 	items?: NavItem[];
 };
 
+// First path segment of each top-level section, e.g. "fun-games".
+const SECTION_ROOTS = new Set(
+	NAV_DATA.flatMap((section) =>
+		section.items.map((item) => item.url.split("/")[1]),
+	),
+);
+
 function NavData() {
 	const pathname = usePathname();
 	const [expandedItems, setExpandedItems] = useState<string[]>([]);
@@ -38,14 +45,23 @@ function NavData() {
 		const tokens = normalized.split("/").filter(Boolean);
 		const resource = tokens.length ? tokens[tokens.length - 1] : null;
 		const pathSegments = pathname.split("/").filter(Boolean);
+		// A path under another top-level section (e.g. /fun-games/…) never lights up this item.
+		const inOtherSection =
+			SECTION_ROOTS.has(pathSegments[0]) && pathSegments[0] !== tokens[0];
 
 		return (
 			pathname === itemUrl ||
 			pathname === normalized ||
 			pathname.startsWith(normalized + "/") ||
-			(!!resource && pathSegments.includes(resource))
+			(!!resource && !inOtherSection && pathSegments.includes(resource))
 		);
 	};
+
+	// When several siblings match, only the most specific one is active.
+	const activeSubUrl = (items: SubItemNew[]) =>
+		items
+			.filter((subItem) => isPathMatch(subItem.url))
+			.sort((a, b) => b.url.length - a.url.length)[0]?.url;
 
 	// Auto-expand parent when a subitem matches current pathname
 	useEffect(() => {
@@ -153,9 +169,12 @@ function NavData() {
 																	href={
 																		subItem.url
 																	}
-																	isActive={isPathMatch(
-																		subItem.url,
-																	)}
+																	isActive={
+																		subItem.url ===
+																		activeSubUrl(
+																			item.items,
+																		)
+																	}
 																	className="flex items-center gap-3 py-2"
 																>
 																	{subItem.icon ? (

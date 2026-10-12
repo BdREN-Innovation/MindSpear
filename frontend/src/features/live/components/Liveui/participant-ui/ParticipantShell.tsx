@@ -10,6 +10,8 @@ import type { LiveSessionStatus } from "@/features/live/types";
 type ParticipantShellProps = {
 	children: React.ReactNode;
 	variant: "quiz" | "quest";
+	/** Badge text; defaults to the variant name. */
+	label?: string;
 	title?: string | null;
 	participantName?: string | null;
 	sessionStatus?: LiveSessionStatus;
@@ -96,6 +98,7 @@ function ArcadeBackground() {
 export function ParticipantShell({
 	children,
 	variant,
+	label,
 	title,
 	participantName,
 	sessionStatus = "pending",
@@ -130,7 +133,7 @@ export function ParticipantShell({
 					<div className="min-w-0 flex-1 px-1 text-center">
 						<div className="mx-auto inline-flex max-w-full items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-bold uppercase text-primary">
 							<Icon className="h-3.5 w-3.5 text-secondary" />
-							<span className="truncate">{variant}</span>
+							<span className="truncate">{label ?? variant}</span>
 							<span className="h-1 w-1 rounded-full bg-secondary" />
 							<span className="truncate">{status}</span>
 						</div>

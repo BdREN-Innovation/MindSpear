@@ -75,6 +75,45 @@ services:
         condition: service_healthy
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
 
+  # Fun Games: locks questions, opens the next one and ends games on the server clock.
+  # Exits hourly (--max-runtime) and is restarted fresh.
+  fungames-ticker:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - ./backend:/app
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan fun-games:tick --loop --max-runtime=3600
+
+  # Fun Games: scores finished games. Only the "fungames" queue, so it doesn't
+  # pick up other queued work. If it isn't running, the ticker scores a game
+  # itself about 10 s after it ends.
+  fungames-queue:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - ./backend:/app
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan queue:work redis --queue=fungames --tries=3 --max-time=3600
+
   frontend:
     build: ./frontend
     env_file: ./frontend/.env

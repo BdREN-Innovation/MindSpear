@@ -3,12 +3,13 @@ import defaultTheme from "tailwindcss/defaultTheme";
 import { theme as appTheme } from "./src/config/theme";
 
 const config: Config = {
-	content: ["./src/**/*.{js,jsx,tsx}", "./src/css/style.css"],
+	content: ["./src/**/*.{js,ts,jsx,tsx}", "./src/css/style.css"],
 	darkMode: ["class"],
 	theme: {
 		extend: {
 			fontFamily: {
 				sans: ['"Satoshi"', ...defaultTheme.fontFamily.sans],
+				mono: ["var(--font-plex-mono)", ...defaultTheme.fontFamily.mono],
 			},
 			screens: {
 				"2xsm": "375px",
@@ -26,6 +27,13 @@ const config: Config = {
 				danger: appTheme.colors.danger,
 				warning: appTheme.colors.warning,
 				info: appTheme.colors.info,
+				// Quiz module: "running out of time" / live. Kept apart from the
+				// brand orange so urgency never reads as a primary action.
+				urgent: {
+					DEFAULT: "#B4440F",
+					text: "#8F3409",
+					bg: "#FCEEE5",
+				},
 				stroke: "#E6EBF1",
 				"stroke-dark": "#27303E",
 				dark: {
