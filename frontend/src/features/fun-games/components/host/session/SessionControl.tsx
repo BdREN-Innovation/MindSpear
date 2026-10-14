@@ -46,7 +46,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
 					// Clipboard blocked; the value stays visible to copy by hand.
 				}
 			}}
-			className={`${btnSecondary} h-9 px-3`}
+			className={cn(btnSecondary, "h-9 px-3")}
 		>
 			{copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
 			{copied ? "Copied" : label}
@@ -64,7 +64,7 @@ function PresentJoin({ session, onClose }: { session: HostSessionDetail; onClose
 	}, [onClose]);
 	return (
 		<div role="dialog" aria-modal="true" aria-label="Join screen" className="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-6 bg-white p-6 text-dark">
-			<button type="button" onClick={onClose} className={`${btnSecondary} absolute right-4 top-4`} autoFocus>
+			<button type="button" onClick={onClose} className={cn(btnSecondary, "absolute right-4 top-4")} autoFocus>
 				<X className="h-4 w-4" aria-hidden />
 				Close
 			</button>
@@ -85,7 +85,7 @@ function PresentJoin({ session, onClose }: { session: HostSessionDetail; onClose
 function JoinPanel({ session, onPresent }: { session: HostSessionDetail; onPresent: () => void }) {
 	const url = joinUrl(session.joinCode);
 	return (
-		<section aria-labelledby="fg-join" className={`${card} flex flex-col items-center gap-4 text-center`}>
+		<section aria-labelledby="fg-join" className={cn(card, "flex flex-col items-center gap-4 text-center")}>
 			<h2 id="fg-join" className="text-sm font-bold uppercase tracking-wide text-dark-5">
 				Players join here
 			</h2>
@@ -96,7 +96,7 @@ function JoinPanel({ session, onPresent }: { session: HostSessionDetail; onPrese
 			<p className="break-all font-mono text-xs text-dark-5">{url}</p>
 			<div className="flex flex-wrap justify-center gap-2">
 				<CopyButton value={url} label="Copy link" />
-				<button type="button" onClick={onPresent} className={`${btnSecondary} h-9 px-3`}>
+				<button type="button" onClick={onPresent} className={cn(btnSecondary, "h-9 px-3")}>
 					<Maximize2 className="h-4 w-4" aria-hidden />
 					Show full screen
 				</button>

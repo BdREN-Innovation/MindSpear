@@ -90,7 +90,7 @@ function RowEditor({ value, onSave, onCancel }: { value: ImportFileQuestionV1; o
 						value={q.marks ?? ""}
 						placeholder="Game default"
 						onChange={(e) => setQ({ ...q, marks: e.target.value === "" ? undefined : Number(e.target.value) })}
-						className={`${inputClass} font-mono`}
+						className={cn(inputClass, "font-mono")}
 					/>
 				</div>
 				<div>
@@ -103,7 +103,7 @@ function RowEditor({ value, onSave, onCancel }: { value: ImportFileQuestionV1; o
 						value={q.negative ?? ""}
 						placeholder="Game default"
 						onChange={(e) => setQ({ ...q, negative: e.target.value === "" ? undefined : Number(e.target.value) })}
-						className={`${inputClass} font-mono`}
+						className={cn(inputClass, "font-mono")}
 					/>
 				</div>
 			</div>
@@ -183,7 +183,7 @@ function JsonSource({ onParsed }: { onParsed: (file: ParsedImportFile) => void }
 			) : (
 				<div className="space-y-2">
 					<label htmlFor="fg-paste" className={labelClass}>JSON</label>
-					<textarea id="fg-paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className={`${inputClass} font-mono text-xs`} placeholder={EXAMPLE_FILE} />
+					<textarea id="fg-paste" rows={12} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} className={cn(inputClass, "font-mono text-xs")} placeholder={EXAMPLE_FILE} />
 					<button type="button" onClick={() => check(text)} disabled={!text.trim()} className={btnPrimary}>Check JSON</button>
 				</div>
 			)}
@@ -334,7 +334,7 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 		return (
 			<div className="relative mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
 				{back}
-				<div className={`${card} space-y-3`} role="status">
+				<div className={cn(card, "space-y-3")} role="status">
 					<h1 className="flex items-center gap-2 text-xl font-bold text-dark dark:text-white">
 						<CheckCircle2 className="h-6 w-6 text-green-dark" aria-hidden />
 						{s.undoneAt ? "Import undone" : "Import complete"}

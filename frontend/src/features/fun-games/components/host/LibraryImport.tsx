@@ -63,7 +63,7 @@ function QuizPicker({
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
 					placeholder="Search your quizzes"
-					className={`${inputClass} pl-9`}
+					className={cn(inputClass, "pl-9")}
 				/>
 			</label>
 			<div role="radiogroup" aria-label="Your quizzes" className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
@@ -123,7 +123,7 @@ function Preview({ quizId }: { quizId: string }) {
 		return (
 			<div className={card} role="alert">
 				<p className="text-sm text-red-dark">{preview.error?.message}</p>
-				<button type="button" onClick={preview.reload} className={`${btnSecondary} mt-3`}>
+				<button type="button" onClick={preview.reload} className={cn(btnSecondary, "mt-3")}>
 					Try again
 				</button>
 			</div>
@@ -259,15 +259,15 @@ export function LibraryImport() {
 			) : quizzes.error ? (
 				<div className={card} role="alert">
 					<p className="text-sm text-red-dark">{quizzes.error.message}</p>
-					<button type="button" onClick={quizzes.reload} className={`${btnSecondary} mt-3`}>
+					<button type="button" onClick={quizzes.reload} className={cn(btnSecondary, "mt-3")}>
 						Try again
 					</button>
 				</div>
 			) : !quizzes.data?.length ? (
-				<div className={`${card} py-10 text-center`}>
+				<div className={cn(card, "py-10 text-center")}>
 					<p className="font-semibold text-dark dark:text-white">Your library has no quizzes yet.</p>
 					<p className="mt-1 text-sm text-dark-5">Build one in My Library, then come back to import it.</p>
-					<Link href="/my-library/quiz-page" className={`${btnPrimary} mt-4`}>
+					<Link href="/my-library/quiz-page" className={cn(btnPrimary, "mt-4")}>
 						Go to My Library
 					</Link>
 				</div>
@@ -277,7 +277,7 @@ export function LibraryImport() {
 					{selected ? (
 						<Preview key={selected} quizId={selected} />
 					) : (
-						<div className={`${card} flex items-center justify-center py-16 text-sm text-dark-5`}>
+						<div className={cn(card, "flex items-center justify-center py-16 text-sm text-dark-5")}>
 							Select a quiz to see what will be imported.
 						</div>
 					)}

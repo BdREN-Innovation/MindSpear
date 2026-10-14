@@ -139,7 +139,7 @@ export function TimerModeSelector({ value, onChange, savedMode, questionCount, o
 										disabled={disabled}
 										aria-invalid={!!error}
 										aria-describedby={`${id}-help`}
-										className={`${inputClass} w-20 font-mono tabular-nums`}
+										className={cn(inputClass, "w-20 font-mono tabular-nums")}
 									/>
 									{part === "h" ? "hours" : part === "m" ? "minutes" : "seconds"}
 								</label>
@@ -164,7 +164,7 @@ export function TimerModeSelector({ value, onChange, savedMode, questionCount, o
 							disabled={disabled}
 							aria-invalid={!!error}
 							aria-describedby={`${id}-help`}
-							className={`${inputClass} w-24 font-mono tabular-nums`}
+							className={cn(inputClass, "w-24 font-mono tabular-nums")}
 						/>
 						<span className="text-sm text-dark-5">seconds</span>
 						<span className="ml-2 flex flex-wrap gap-1" role="group" aria-label="Quick picks">

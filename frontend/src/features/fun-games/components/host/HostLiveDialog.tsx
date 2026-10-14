@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Radio } from "lucide-react";
@@ -128,7 +129,7 @@ export function HostLiveDialog({ game, onClose }: HostLiveDialogProps) {
 										value={startsAt}
 										onChange={(e) => setStartsAt(e.target.value)}
 										aria-label="Start time"
-										className={`${inputClass} mt-2`}
+										className={cn(inputClass, "mt-2")}
 									/>
 								) : null}
 							</span>

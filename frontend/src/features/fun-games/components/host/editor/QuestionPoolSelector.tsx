@@ -69,7 +69,7 @@ export function QuestionPoolSelector({ poolSize, perPlayer, selection, marksDiff
 						aria-label="Questions per player"
 						aria-invalid={!!error}
 						aria-describedby={`${id}-help`}
-						className={`${inputClass} w-20 font-mono tabular-nums`}
+						className={cn(inputClass, "w-20 font-mono tabular-nums")}
 					/>
 					<span className="text-dark-5">
 						of <span className="font-mono tabular-nums">{poolSize}</span>

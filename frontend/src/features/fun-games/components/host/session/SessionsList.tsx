@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ArrowLeft, Radio } from "lucide-react";
 import { getHostApi } from "../../../api";
@@ -48,7 +49,7 @@ export function SessionsList() {
 							<td className="px-4 py-3 text-right font-mono tabular-nums">{s.participantCount}</td>
 							<td className="px-4 py-3 text-dark-5">{when(s)}</td>
 							<td className="px-4 py-3 text-right">
-								<Link href={`/fun-games/sessions/${s.id}`} className={`${btnSecondary} h-9 px-3`}>
+								<Link href={`/fun-games/sessions/${s.id}`} className={cn(btnSecondary, "h-9 px-3")}>
 									{s.status === "finished" ? "Results" : (
 										<>
 											<Radio className="h-4 w-4" aria-hidden />
@@ -76,10 +77,10 @@ export function SessionsList() {
 			) : sessions.error ? (
 				<div className={card} role="alert">
 					<p className="text-sm text-red-dark">{sessions.error.message}</p>
-					<button type="button" onClick={sessions.reload} className={`${btnSecondary} mt-3`}>Try again</button>
+					<button type="button" onClick={sessions.reload} className={cn(btnSecondary, "mt-3")}>Try again</button>
 				</div>
 			) : list.length === 0 ? (
-				<div className={`${card} text-center text-sm text-dark-5`}>
+				<div className={cn(card, "text-center text-sm text-dark-5")}>
 					No sessions yet. Host a game from <Link href="/fun-games" className="font-semibold underline">Fun Games</Link>.
 				</div>
 			) : (

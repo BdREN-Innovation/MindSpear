@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useId, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { getHostApi, toFunGamesError } from "../../../api";
@@ -168,13 +169,13 @@ export function QuestionEditor({
 					<label htmlFor={`${id}-marks`} className={labelClass}>
 						Marks if correct
 					</label>
-					<input id={`${id}-marks`} type="number" min={0} step={0.5} value={marks} onChange={(e) => setMarks(e.target.value)} className={`${inputClass} font-mono`} />
+					<input id={`${id}-marks`} type="number" min={0} step={0.5} value={marks} onChange={(e) => setMarks(e.target.value)} className={cn(inputClass, "font-mono")} />
 				</div>
 				<div>
 					<label htmlFor={`${id}-neg`} className={labelClass}>
 						Deduct if wrong
 					</label>
-					<input id={`${id}-neg`} type="number" min={0} step={0.25} value={negative} onChange={(e) => setNegative(e.target.value)} className={`${inputClass} font-mono`} />
+					<input id={`${id}-neg`} type="number" min={0} step={0.25} value={negative} onChange={(e) => setNegative(e.target.value)} className={cn(inputClass, "font-mono")} />
 				</div>
 				<div>
 					<label htmlFor={`${id}-time`} className={labelClass}>
@@ -189,7 +190,7 @@ export function QuestionEditor({
 						onChange={(e) => setOwnTime(e.target.value)}
 						placeholder="Default"
 						aria-describedby={`${id}-time-help`}
-						className={`${inputClass} font-mono`}
+						className={cn(inputClass, "font-mono")}
 					/>
 					<p id={`${id}-time-help`} className="mt-1 text-xs text-dark-5">
 						{perQuestionMode ? "Leave empty to use the game's time per question." : "Only used with the per-question timer."}

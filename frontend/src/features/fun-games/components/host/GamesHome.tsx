@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -25,7 +26,7 @@ function OpenSessions({ sessions }: { sessions: AdminSessionSummary[] }) {
 			</h2>
 			<ul className="grid gap-3 md:grid-cols-2">
 				{sessions.map((s) => (
-					<li key={s.id} className={`${card} flex flex-col gap-3`}>
+					<li key={s.id} className={cn(card, "flex flex-col gap-3")}>
 						<div className="flex items-start justify-between gap-2">
 							<div className="min-w-0">
 								<StatusTag status={s.status} />
@@ -158,12 +159,12 @@ export function GamesHome() {
 				) : games.error ? (
 					<div className={card} role="alert">
 						<p className="text-sm text-red-dark">{games.error.message}</p>
-						<button type="button" onClick={games.reload} className={`${btnSecondary} mt-3`}>
+						<button type="button" onClick={games.reload} className={cn(btnSecondary, "mt-3")}>
 							Try again
 						</button>
 					</div>
 				) : !games.data?.length ? (
-					<div className={`${card} flex flex-col items-center gap-3 py-12 text-center`}>
+					<div className={cn(card, "flex flex-col items-center gap-3 py-12 text-center")}>
 						<Download className="h-10 w-10 text-dark-6" aria-hidden />
 						<h3 className="text-lg font-bold text-dark dark:text-white">No games yet</h3>
 						<p className="max-w-md text-sm text-dark-5">
@@ -218,11 +219,11 @@ export function GamesHome() {
 												)}
 											</td>
 											<td className="px-4 py-3 text-dark-5">{formatDate(game.updatedAt)}</td>
-											<td className="px-4 py-3">
-												<div className="flex justify-end gap-1">
+											<td className="whitespace-nowrap px-4 py-3">
+												<div className="flex items-center justify-end gap-1.5">
 													{openSession ? (
-														<Link href={`/fun-games/sessions/${openSession}`} className={`${btnPrimary} h-9 px-3`}>
-															<Radio className="h-4 w-4" aria-hidden />
+														<Link href={`/fun-games/sessions/${openSession}`} className={cn(btnPrimary, "h-9 shrink-0 whitespace-nowrap px-3")}>
+															<Radio className="h-4 w-4 shrink-0" aria-hidden />
 															Live control
 														</Link>
 													) : (
@@ -231,29 +232,29 @@ export function GamesHome() {
 															onClick={() => setHosting(game)}
 															disabled={game.questionCount === 0}
 															title={game.questionCount === 0 ? "Add questions first" : undefined}
-															className={`${btnPrimary} h-9 px-3`}
+															className={cn(btnPrimary, "h-9 shrink-0 whitespace-nowrap px-3")}
 														>
-															<Radio className="h-4 w-4" aria-hidden />
+															<Radio className="h-4 w-4 shrink-0" aria-hidden />
 															Host live
 														</button>
 													)}
 													<Link
 														href={`/fun-games/${game.id}/edit`}
-														className={`${btnSecondary} h-9 w-9 px-0`}
+														className={cn(btnSecondary, "h-9 w-9 shrink-0 px-0")}
 														aria-label={`Edit ${game.title}`}
 														title="Edit"
 													>
-														<Pencil className="h-4 w-4" aria-hidden />
+														<Pencil className="h-4 w-4 shrink-0" aria-hidden />
 													</Link>
 													<button
 														type="button"
 														onClick={() => duplicate(game)}
 														disabled={busyId === game.id}
-														className={`${btnSecondary} h-9 w-9 px-0`}
+														className={cn(btnSecondary, "h-9 w-9 shrink-0 px-0")}
 														aria-label={`Duplicate ${game.title}`}
 														title="Duplicate"
 													>
-														{busyId === game.id ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+														{busyId === game.id ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : <Copy className="h-4 w-4 shrink-0" aria-hidden />}
 													</button>
 													<button
 														type="button"
@@ -261,11 +262,11 @@ export function GamesHome() {
 															setDeleteError(null);
 															setDeleting(game);
 														}}
-														className={`${btnSecondary} h-9 w-9 px-0 text-red-dark`}
+														className={cn(btnSecondary, "h-9 w-9 shrink-0 px-0 text-red-dark hover:bg-red-light-5")}
 														aria-label={`Delete ${game.title}`}
 														title="Delete"
 													>
-														<Trash2 className="h-4 w-4" aria-hidden />
+														<Trash2 className="h-4 w-4 shrink-0" aria-hidden />
 													</button>
 												</div>
 											</td>

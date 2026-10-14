@@ -183,7 +183,7 @@ export function GameEditor({ gameId }: { gameId: string }) {
 						{game.error?.code === "notFound" ? "This game doesn't exist or isn't yours." : "Couldn't load the game."}
 					</p>
 					<p className="mt-1 text-sm text-dark-5">{game.error?.message}</p>
-					<Link href="/fun-games" className={`${btnSecondary} mt-4`}>
+					<Link href="/fun-games" className={cn(btnSecondary, "mt-4")}>
 						Back to Fun Games
 					</Link>
 				</div>
