@@ -14,9 +14,15 @@ COPY composer.json composer.lock ./
 RUN composer install --no-interaction --no-scripts --no-autoloader --prefer-dist
 
 COPY . .
-RUN composer dump-autoload --optimize \
- && mkdir -p storage/framework/{sessions,views,cache/data} bootstrap/cache \
- && chmod -R 775 storage bootstrap/cache
+# Create Laravel runtime directories before Composer scripts run
+RUN mkdir -p storage/framework/sessions \
+    storage/framework/views \
+    storage/framework/cache/data \
+    bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
+# Generate optimized autoload files and discover packages
+RUN composer dump-autoload --optimize
 
 EXPOSE 8000 8080
 
