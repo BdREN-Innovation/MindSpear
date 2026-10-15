@@ -4,7 +4,9 @@
 >
 > **Strategic role.** Quest v2 ships **first** and introduces the **shared slide engine** that Quiz v2 will later inherit. Tables, registry, state machine, presenter layout, editor shell, and PWA participant shell are all built here as product-agnostic primitives. Quiz v2 will add scoring types + reveal semantics + leaderboard on top of this foundation. This flips the earlier sequencing in [QUIZ_REDESIGN_PLAN.md](QUIZ_REDESIGN_PLAN.md); that plan is being updated to consume what Quest v2 ships.
 >
-> **Out of scope (for now).** Scoring, leaderboards, "reveal correct answer" states (those are Quiz concerns). Also skipped: emoji reactions, audience chat, hand-raise, "Who will win" prediction type, templates marketplace, AI question generation, Capacitor-wrapped native app shells. Quest v1 keeps running untouched until cutover.
+> **Out of scope (for now).** Scoring, leaderboards, "reveal correct answer" states (those are Quiz concerns). Also skipped: emoji reactions, audience chat, hand-raise, "Who will win" prediction type, templates marketplace, Capacitor-wrapped native app shells. Quest v1 keeps running untouched until cutover.
+>
+> **In scope because of later work (added 2026-10-15).** The per-user file library ("My Files", `app/Modules/FileLibrary`) and AI "Generate from a document" shipped after this plan was written. Quest v2 builds on both: every image and uploaded video goes through My Files (see §1.9, §2.3, §5.5), and the document-to-AI wizard is ported to the v2 editor (see §5.7).
 >
 > **Scope confirmed with user.**
 > - Shared slide engine owned by Quest v2; Quiz v2 builds on it next.
@@ -16,7 +18,7 @@
 >
 > **Relationship to [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md).** Phases 0–3 of that plan are complete: Reverb is live, Socket.IO is gone, public/private channel split works, participant-token flow is in place. This plan builds on top of that realtime foundation — existing `LiveSessionService`, `LiveAggregateService`, `ParticipantTokenService`, generic `LiveBroadcastEvent`, channel split, and participant-token auth pattern are reused by generalising them from legacy Quiz/Quest models to shared `DeckSession` / `DeckParticipant` models. Add typed payload DTOs/tests around that layer instead of a parallel tree of broadcast classes unless the generic layer becomes a real limitation.
 >
-> **Database decision.** Same as main plan — SQLite acceptable locally, PostgreSQL is production target. Every new migration, JSON filter, aggregate, or raw SQL in this plan must be checked against PostgreSQL before merge. Use `jsonb` (not `json`) for all JSON columns so we can index / query them later.
+> **Database decision.** PostgreSQL everywhere, including local dev and tests (the Docker setup already uses it). SQLite is no longer an option: the file library relies on PostgreSQL-only features (`pg_advisory_xact_lock`, `ILIKE`, `jsonb`). Every new migration, JSON filter, aggregate, or raw SQL in this plan must be checked against PostgreSQL before merge. Use `jsonb` (not `json`) for all JSON columns so we can index / query them later.
 >
 > **Cutover decision.** Quest v2 is a build-alongside replacement, not a table-drop. The new API should use product-scoped v2 routes (`/api/v1/quests/v2/...`) during coexistence, then optionally alias to clean `/api/v1/quests/...` routes after cutover. Legacy Quest v1 keeps its current routes and tables during development. Legacy removal only happens in the final cutover phase, after Quest v2 has been the default for two+ weeks of stability.
 
@@ -64,7 +66,7 @@ Quest types are **unscored** and use the **`live_aggregate`** reveal model (resu
 | `numbered` | Content | none | Read-only | Numbered list |
 | `quote` | Content | none | Read-only | Large quote + optional attribution |
 | `image` | Content | none | Read-only | Image with optional caption |
-| `video` | Content | none | Read-only | YouTube/Vimeo embed or uploaded mp4 |
+| `video` | Content | none | Read-only | YouTube/Vimeo embed, or an mp4 from My Files |
 | `big_text` | Content | none | Read-only | Single big phrase (for "section breaks") |
 | `qr_code` | Content | none | Read-only | Auto-renders join code + QR |
 
@@ -141,9 +143,9 @@ All tables are prefixed `deck_*` — neutrally named because Quiz v2 will use th
 
 | Table | Purpose |
 |---|---|
-| `decks` | `id`, `owner_id`, `product` (enum: `quest` / `quiz`), `title`, `description`, `cover_image_path`, `settings` (JSONB — defaults for time, get_ready, theme), `published_at`, timestamps, soft-delete |
-| `slides` | `id`, `deck_id`, `type`, `position`, `title`, `body` (JSONB — for rich-text content slides), `config` (JSONB — per-type schema), `time_limit_seconds` (nullable), `get_ready_seconds` (nullable), `points_min`/`points_max`/`speed_bonus_enabled` (nullable — Quiz only), timestamps, soft-delete. Unique `(deck_id, position)` |
-| `slide_options` | `id`, `slide_id`, `position`, `label`, `image_path`, `is_correct` (nullable — Quiz only), `payload` (JSONB — pair_key, category_key, correct_order_index, matrix label, etc.), timestamps |
+| `decks` | `id`, `owner_id`, `product` (enum: `quest` / `quiz`), `title`, `description`, `cover_file_id` (nullable FK → `files`, `nullOnDelete`), `settings` (JSONB — defaults for time, get_ready, theme), `published_at`, timestamps, soft-delete |
+| `slides` | `id`, `deck_id`, `type`, `position`, `title`, `body` (JSONB — for rich-text content slides), `config` (JSONB — per-type schema), `media_file_id` (nullable FK → `files`, `nullOnDelete` — image for `image`/`pin_on_image`, mp4 for `video`), `time_limit_seconds` (nullable), `get_ready_seconds` (nullable), `points_min`/`points_max`/`speed_bonus_enabled` (nullable — Quiz only), timestamps, soft-delete. Unique `(deck_id, position)` |
+| `slide_options` | `id`, `slide_id`, `position`, `label`, `image_file_id` (nullable FK → `files`, `nullOnDelete`), `is_correct` (nullable — Quiz only), `payload` (JSONB — pair_key, category_key, correct_order_index, matrix label, etc.), timestamps |
 | `deck_sessions` | `id`, `deck_id`, `host_user_id`, `public_channel_key` (unique), `join_code` (globally unique), `status` (pending/live/ended), `current_slide_run_id`, `timer_state` (JSONB), `started_at`, `ended_at` |
 | `deck_session_slide_runs` | `id`, `deck_session_id`, `slide_id`, `position_snapshot`, `type_snapshot`, `config_snapshot` (JSONB), `options_snapshot` (JSONB), `time_limit_seconds`, `get_ready_seconds`, `state` (enum), `state_version` (int, increments every transition), `state_started_at`, `voting_started_at`, `closed_at`, timestamps |
 | `deck_participants` | `id`, `deck_session_id`, `display_name`, `emoji_avatar`, `participant_token_hash` (unique), `participant_token_expires_at`, `participant_token_revoked_at`, `total_points` (nullable — Quiz only), `joined_at`, `left_at` |
@@ -164,6 +166,8 @@ All tables are prefixed `deck_*` — neutrally named because Quiz v2 will use th
 - All JSONB fields. Test `config_snapshot @> '{"key": "value"}'` queries.
 - `upvote_count` increments use `UPDATE ... SET upvote_count = upvote_count + 1 WHERE ...` — don't do read-modify-write.
 - `position` reorder uses a single transaction-wrapped `UPDATE` with a staging `-position` trick to avoid unique-constraint violations during the swap.
+
+**File references.** Slides, options and deck covers point at a My Files row by id (`*_file_id`), never at a storage path. URLs are resolved when serialising (`File::url`), so renaming or moving storage never breaks a deck. Session snapshots (`options_snapshot`, `config_snapshot`) copy the resolved URL, so a live session keeps working even if the owner deletes the file mid-session. Migrations must be dated after `2026_10_16_000004` (the last FileLibrary migration) so `files` has its final shape.
 
 **Join-code decision:** codes are globally unique, not "unique among active sessions only." Reuse sounds convenient, but global uniqueness avoids partial-index differences between SQLite/PostgreSQL, makes support/debugging easier, and removes ambiguity from old participant links.
 
@@ -260,6 +264,17 @@ Service maintains per-slide-run timestamps in Redis (`agg:debounce:{slide_run_id
 
 ---
 
+### 1.9 File library integration (backend)
+
+Quest v2 adds no storage of its own. All media is a row in `files` owned by the deck owner, stored by `FileStorageService`, counted by `QuotaService`.
+
+- **Image resize on upload (all library images, not just Quest).** In `FileStorageService::store`, images wider or taller than 1024 px are downscaled to fit 1024×1024 (GD, already installed), keeping aspect ratio and format; animated GIFs are left as-is. The resized bytes are what gets stored, hashed (dedupe) and counted toward quota.
+- **Image dimensions.** New nullable `width` / `height` columns on `files`, filled at upload with `getimagesize()`. `pin_on_image` reads them from the file instead of storing `intrinsic_width/height` in `config`.
+- **Video category.** Add `video` to `config/file_library.php` (`allowed.video = ['mp4']`, `max_video_mb = 50`). Videos are public like images (served from `/storage/library/{user}/videos/...`), count toward quota, and are checked by MIME (`video/mp4`). Raise PHP limits in `backend/Dockerfile` to `upload_max_filesize = 60M`, `post_max_size = 64M`. The frontend picker gains `accept: "video"`. Note: one 50 MB video is half of the default 100 MB quota — show that in the upload UI and consider a higher default quota for hosts.
+- **Reference tracking.** `FileReferenceService` gets the new columns (`decks.cover_file_id`, `slides.media_file_id`, `slide_options.image_file_id`) as exact id matches (no filename `LIKE`). Deleting a file from My Files that a deck still uses shows the existing "still in use" warning. Because deletes are soft deletes and files stay on disk, decks keep showing the media.
+- **Duplicate / delete.** Duplicating a deck or slide copies the `*_file_id` values — no new files, no extra quota. Deleting a deck or slide never touches My Files.
+- **Ownership.** Attaching a file to a slide requires `FilePolicy::manage` (the file belongs to the deck owner).
+
 ## Phase 2 — Quest authoring API
 
 **Goal.** REST endpoints the slide editor needs, scoped to `product=quest`.
@@ -286,8 +301,11 @@ Product-scoped under `/api/v1/quests/v2/` during coexistence. Thin wrappers on s
 | `POST` | `/api/v1/quests/v2/{id}/slides/{slideId}/options` | Add option |
 | `PATCH` | `/api/v1/quests/v2/{id}/slides/{slideId}/options/{optionId}` | Edit option |
 | `DELETE` | `/api/v1/quests/v2/{id}/slides/{slideId}/options/{optionId}` | Delete option |
-| `POST` | `/api/v1/quests/v2/{id}/slides/{slideId}/options/{optionId}/image` | Upload/replace option image |
-| `POST` | `/api/v1/quests/v2/{id}/slides/{slideId}/image` | Upload main slide image (for `image`, `pin_on_image`, etc.) |
+| `PUT` | `/api/v1/quests/v2/{id}/slides/{slideId}/options/{optionId}/image` | Attach a My Files image: body `{file_id}`; `{file_id: null}` detaches |
+| `PUT` | `/api/v1/quests/v2/{id}/slides/{slideId}/media` | Attach slide media (`image`, `pin_on_image`, `video`): body `{file_id}` or, for video, `{video_url}` |
+| `PUT` | `/api/v1/quests/v2/{id}/cover` | Attach deck cover: body `{file_id}` |
+
+There are **no upload endpoints** here. The editor uploads through the library (`POST /api/v1/library/files`, which applies quota, type checks, resize and dedupe) and then attaches the returned `file_id`.
 
 ### 2.2 Per-type default configs
 
@@ -303,14 +321,17 @@ Registry's `defaultConfig()` provides. Examples:
 - `points_allocation` → 3 options, `total_points: 100`
 - `rating` → 3 items, `scale: 5` (1–5 stars)
 - `matrix_2x2` → `x_axis: { low, high }`, `y_axis: { low, high }`, empty labels
-- `pin_on_image` → requires image upload; `max_pins_per_participant: 1`
+- `pin_on_image` → requires an attached image (`media_file_id`); `max_pins_per_participant: 1`
 - Content slides → type-specific minimal defaults
 
-### 2.3 Image/video upload
+### 2.3 Images and video
 
-Reuse existing uploader service convention. Store under `storage/app/deck-assets/{deck_id}/{slide_id}/{uuid}.{ext}`. Max sizes: images 2MB (resize to 1024×1024 max), video uploads 50MB (mp4 only; transcode is out of scope — either paste a YouTube/Vimeo URL or upload a pre-encoded mp4). Return URL via existing `getSourceContentUrlAttribute` pattern.
+All media comes from My Files (see §1.9):
 
-For `pin_on_image`: also store `intrinsic_width` + `intrinsic_height` in slide `config` so participant pin coordinates can be stored as percentages (portable across device sizes).
+- **Images:** jpg, png, gif, webp; up to 10 MB per file; resized to fit 1024×1024 on upload; counted toward the owner's quota.
+- **Video:** either a YouTube/Vimeo URL (stored in `config.video_url`, no file) or an mp4 from My Files (up to 50 MB, counted toward quota). Transcoding stays out of scope — uploads must be browser-playable mp4.
+- **`pin_on_image`:** pin coordinates are stored as percentages; the image's `width`/`height` come from the `files` row.
+- Responses include the resolved URL (`File::url`) next to each `*_file_id`, so the editor and presenter never build storage paths.
 
 ### 2.4 Join-code generator
 
@@ -668,7 +689,13 @@ Specific notes:
 
 ### 5.5 Image/media UX
 
-Drag-drop or click to upload. Progress indicator (shimmer). On upload complete, replace placeholder. Delete via hover-x. Crop UI: v1 auto-crops to square for options; free-form crop is v2.
+Reuse the file-library components instead of building a new uploader (`features/file-library/`):
+
+- Every image/video slot opens `FileLibraryPicker` (tabs: **My Files** / **Upload new**, storage bar on top). Dropping a file straight onto a slot uploads it to My Files with progress (same pattern as `lib/StylableInputFile.tsx`), then attaches it.
+- Quota errors, type errors and "file is too large" come from the library API and show inline with a "Manage My Files" link.
+- Hover-× on a slot only **detaches** the media from the slide; the file stays in My Files. Deleting files happens only on the My Files page.
+- Video slot: a URL field (YouTube/Vimeo auto-detect) plus a "Choose from My Files" button (`accept: "video"`).
+- Crop: v1 auto-crops option images to square on display (CSS `object-fit`); stored files are only resized, never cropped. Free-form crop is v2.
 
 ### 5.6 Settings tab
 
@@ -683,7 +710,22 @@ Per deck (header → Settings modal):
 - Show/hide QR sidebar on presenter
 - Default Q&A sort mode
 
-**Phase 5 exit criteria:** author every Quest type end-to-end in browser, reorder, duplicate, delete, upload images, and round-trip through the API cleanly. Canvas preview matches what the host will later see in Present mode.
+### 5.7 Generate from a document (AI)
+
+Port the existing wizard (`features/ai-generate/components/DocumentToQuestionsWizard.tsx`, target `quest`) into the v2 editor:
+
+- **Entry points:** a "Generate from a document" card in `SlidePicker`, and a "Generate from a file" option on the create-quest dashboard tile (`features/quest/components/CreateQuest`), which should create a v2 deck and open `/quests/{id}/edit`.
+- **Flow (unchanged):** pick a document from My Files or upload one → choose pages or chapters (PDF bookmarks / DOCX headings, max 30 pages) → options → generate.
+- **Output:** replace `toQuestTasks` (v1 `quest_tasks`) with `toQuestSlides` in `features/ai-generate/mappers.ts`, appended after the current slide:
+  - poll → `poll_single` / `poll_multi`
+  - Yes/No → `poll_single` with options Yes, No
+  - short/long answer → `open_ended`
+  - `wordcloud` → `word_cloud`
+  - `scales`, `ranking` → same keys
+- **Prompt:** update `QUESTION_TYPES.quest` and `questPrompt` in `features/ai-generate/` to the v2 type keys; optionally add `rating` and `points_allocation`.
+- **Saving:** new `POST /api/v1/quests/v2/{id}/slides/bulk` (body: list of `{type, title, config, options[]}`) in one transaction, so a generated set is added atomically.
+
+**Phase 5 exit criteria:** author every Quest type end-to-end in browser, reorder, duplicate, delete, attach images/videos from My Files (and upload new ones there), generate slides from a document, and round-trip through the API cleanly. Canvas preview matches what the host will later see in Present mode.
 
 ---
 
@@ -912,6 +954,9 @@ Only after Quest v2 has been default for 2+ weeks:
 - Delete `frontend/src/features/quest/services/*` if tied to old API
 - Delete `frontend/src/app/(protected)/quests-session/`, `(protected)/quest/`, `(public)/live/quests/` (old routes)
 - Update `STRUCTURE_AND_DEVELOPMENT_GUIDE.md` to remove Quest v1 references
+- Remove `quest_tasks` / `quest_bank_tasks` from `FileReferenceService::PLACES` (it skips missing tables, but keep the list honest)
+- Remove `toQuestTasks` from `features/ai-generate/mappers.ts` once `toQuestSlides` is live; make sure `CreateQuest` and the slide picker no longer link to `/quest/edit/{id}`
+- If any upload folder is ever added under `backend/storage/app/`, add it to `backend/.dockerignore` (root-owned folders there break `docker compose build`)
 
 ---
 
@@ -919,16 +964,16 @@ Only after Quest v2 has been default for 2+ weeks:
 
 | Phase | Duration | Notes |
 |---|---|---|
-| 1. Shared slide engine foundation | 3–4 days | Blocks everything else |
+| 1. Shared slide engine foundation | 4–5 days | Blocks everything else. +1 day for §1.9 (resize, dimensions, video category, reference tracking) |
 | 2. Quest authoring API | 3 days | Can parallelise with Phase 4 mock |
 | 3. Quest live-session API | 4 days | |
 | 4. Native-feel PWA participant shell | 4–5 days | Can parallelise with Phase 2/3 |
-| 5. Quest editor UI | 5 days | |
+| 5. Quest editor UI | 6–7 days | +1–2 days for §5.7 (AI wizard port, `toQuestSlides`, bulk endpoint) |
 | 6. Quest Presenter | 4–5 days | |
 | 7. Participant views per type | 5–6 days | Parallelisable per type |
 | 8. Polish + cutover + docs | 3–4 days | |
-| **Total (serial)** | **31–40 days** | |
-| **Total (two devs, parallelised)** | **~22–26 days** | |
+| **Total (serial)** | **33–43 days** | |
+| **Total (two devs, parallelised)** | **~24–28 days** | |
 
 With two devs: dev A owns 1 → 3 → 6 → 7-backend-heavy types; dev B owns 4 → 5 → 7-frontend-heavy types. Sync points: end of Phase 1 (engine contract), end of Phase 3 (API freeze), end of Phase 4 (shell contract).
 
@@ -961,3 +1006,8 @@ See the updated [QUIZ_REDESIGN_PLAN.md](QUIZ_REDESIGN_PLAN.md) for the reduced-s
 | Curated ~40 emoji avatar list, server-validated | Stops garbage input; consistent leaderboard/feed aesthetics. |
 | Editor is desktop-only v1 | Mentimeter's own mobile editor is weak; not worth the build cost pre-validation. |
 | Feature flag rollout (internal → beta → default → delete v1) | Risk management. Two weeks of stability on default before table drops is non-negotiable. |
+| All Quest v2 media goes through My Files (file ids, not paths) | One storage system with quota, dedupe and reuse. No second uploader to secure. Decks survive file renames; soft-deleted files keep showing. |
+| Images resized to fit 1024×1024 on upload, library-wide | Smaller files, less quota used, faster slides. Done once at upload, not per request. |
+| Video: YouTube/Vimeo links and mp4 from My Files (max 50 MB) | User-confirmed. Uploads count toward quota; no transcoding. |
+| AI "Generate from a document" ported to Quest v2 | User-confirmed. The feature already exists for Quest v1 and must not disappear at cutover. |
+| PostgreSQL in local dev and tests | The file library depends on PostgreSQL-only features. |
