@@ -2,23 +2,46 @@
 
 namespace App\Models;
 
+use App\Modules\FileLibrary\Models\FileTextContent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * A file in a user's library ("My Files"). Images are public (served from
+ * /storage); documents are private and served through the library API.
+ * Soft-deleted files stay on disk but no longer count toward the quota.
+ */
 class File extends Model
 {
     use SoftDeletes;
+
+    public const CATEGORY_IMAGE = 'image';
+
+    public const CATEGORY_DOCUMENT = 'document';
+
+    public const VISIBILITY_PUBLIC = 'public';
+
+    public const VISIBILITY_PRIVATE = 'private';
 
     protected $fillable = [
         'name',
         'path',
         'type',
+        'category',
         'size',
         'mime_type',
         'extension',
         'original_name',
+        'disk',
+        'disk_path',
+        'visibility',
+        'checksum',
+        'page_count',
+        'extraction_status',
+        'last_used_at',
         'user_id',
         'is_active',
         'is_deleted',
@@ -32,24 +55,45 @@ class File extends Model
 
     protected $dates = ['deleted_at', 'restored_at'];
 
+    protected $hidden = ['disk', 'disk_path', 'checksum'];
+
+    protected $appends = ['url'];
+
     protected $casts = [
         'is_active' => 'boolean',
         'is_deleted' => 'boolean',
         'size' => 'integer',
+        'page_count' => 'integer',
         'user_id' => 'integer',
         'created_by' => 'integer',
         'updated_by' => 'integer',
         'deleted_by' => 'integer',
         'restored_by' => 'integer',
+        'last_used_at' => 'datetime',
     ];
 
     /**
      * Accessor: Returns the full URL if path is a file path.
      */
-    public function getPathAttribute(string $path): string
+    public function getPathAttribute(?string $path): ?string
     {
-        // If the path is a relative path, convert it to a full URL
-        return $path ? url($path) : url('');
+        // Private documents have no public path
+        return $path ? url($path) : null;
+    }
+
+    /** Where the browser can load the file: public URL for images, the authenticated API for documents. */
+    public function getUrlAttribute(): string
+    {
+        if ($this->visibility !== self::VISIBILITY_PRIVATE && $this->getRawOriginal('path')) {
+            return url($this->getRawOriginal('path'));
+        }
+
+        return route('library.files.content', ['file' => $this->id]);
+    }
+
+    public function isImage(): bool
+    {
+        return $this->category === self::CATEGORY_IMAGE;
     }
 
     // Relationships
@@ -59,6 +103,11 @@ class File extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function textContent(): HasOne
+    {
+        return $this->hasOne(FileTextContent::class);
     }
 
     // Scopes
@@ -87,6 +136,11 @@ class File extends Model
         return $query->where('type', $type);
     }
 
+    public function scopeByCategory($query, $category): Builder
+    {
+        return $query->where('category', $category);
+    }
+
     public function scopeByUser($query, $userId): Builder
     {
         return $query->where('user_id', $userId);
@@ -94,9 +148,11 @@ class File extends Model
 
     public function scopeSearch($query, $term): Builder
     {
-        return $query->where(function ($q) use ($term) {
-            $q->where('name', 'LIKE', "%{$term}%")
-                ->orWhere('original_name', 'LIKE', "%{$term}%");
+        $like = '%' . addcslashes((string) $term, '%_\\') . '%';
+
+        return $query->where(function ($q) use ($like) {
+            $q->where('name', 'ILIKE', $like)
+                ->orWhere('original_name', 'ILIKE', $like);
         });
     }
 

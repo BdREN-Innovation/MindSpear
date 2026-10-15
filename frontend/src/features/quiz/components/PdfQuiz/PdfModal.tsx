@@ -1,45 +1,18 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import React, { useState, useEffect } from "react";
-import { Modal } from "@/components/ui";
-import FileUploadModal from "@/features/dashboard/views/quiz/FileUploadModal";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "@/stores/store";
-import { extractPdfThumbnails } from "@/utils/pdfUtils";
-import PageSelector from "@/features/dashboard/views/quiz/PdfSelector";
-import { transformQuestionData } from "@/utils/quizUtils";
-import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice";
 import { useParams, useRouter } from "next/navigation";
 import { AxiosError } from "axios";
 import axiosInstance from "@/utils/axiosInstance";
-import { BarLoader, PropagateLoader } from "react-spinners";
+import moment from "@/lib/dayjs";
+import { transformQuestionData } from "@/utils/quizUtils";
+import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice";
 import { Quiz } from "@/types/types";
-import FileUploadLoader from "@/components/ui/loader/FileUploadLoader";
-import GeneratingLoader from "@/components/ui/loader/GeneratingLoader";
-import { toast } from "react-toastify";
-
-interface Page {
-	id: number;
-	thumbnail: string;
-	text: string;
-}
-
-interface Question {
-	question_text: string;
-	question_type:
-	| "single_choice"
-	| "multiple_choice"
-	| "short_answer"
-	| "true_false"
-	| "fill_in_the_blanks";
-	options: {
-		choices: string[];
-		correct_answer: number | number[];
-	};
-}
-
-interface QuizData {
-	questions: Question[];
-}
+import { DocumentToQuestionsModal } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
+import { toQuizQuestions } from "@/features/ai-generate/mappers";
+import type { GeneratedFor } from "@/features/ai-generate/types";
+import type { GeneratedContext } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
 
 interface QuizState {
 	qseaneType: string;
@@ -51,6 +24,7 @@ interface QuizInformationProps {
 	};
 }
 
+/** "AI Generate (From a File)" for quizzes: pick a document from My Files (or upload one) and generate questions. */
 export default function PdfModal({
 	initialOpen = false,
 	onClose,
@@ -60,34 +34,13 @@ export default function PdfModal({
 }) {
 	const params = useParams();
 	const router = useRouter();
+	const dispatch = useDispatch();
+	const quizId = `${params?.quizId ?? ""}`;
 
 	const quizData = useSelector(
 		(state: QuizInformationProps) => state.quizInformation.quizInformation
 	);
-
-	const selectedItem = useSelector(
-		(state: RootState) => state.quiz.selectedItem
-	);
-	const dispatch = useDispatch();
-	const [loading, setLoading] = useState(false);
-	const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-	const [isPageSelectorOpen, setIsPageSelectorOpen] = useState(false);
-	const [uploading, setUploading] = useState(false);
-	const [pages, setPages] = useState<Page[]>([]);
-	const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-	const [quiz, setQuiz] = useState<QuizData | null>(null);
-
-	// console.log(
-	// 	selectedItem,
-	// 	"selectedItemselectedItemselectedItemselectedItemselectedItem"
-	// );
-	// useEffect(() => {
-	// 	if (
-	// 		quizData?.qseaneType === "pdf" &&
-	// 		quizData?.quiz.questions?.length === 0
-	// 	)
-	// 		setIsUploadModalOpen(true);
-	// }, []);
+	const [open, setOpen] = useState(false);
 
 	useEffect(() => {
 		const shouldOpen =
@@ -95,157 +48,62 @@ export default function PdfModal({
 			(quizData?.qseaneType === "pdf" &&
 				quizData?.quiz.questions?.length === 0);
 
-		if (shouldOpen) setIsUploadModalOpen(true);
+		if (shouldOpen) setOpen(true);
 	}, [initialOpen, quizData]);
 
-	const handleFileUpload = async (file: File) => {
-		setUploadedFile(file);
-		setIsUploadModalOpen(false);
-		setUploading(true);
-
-		const thumbs = await extractPdfThumbnails(file);
-		setPages(thumbs);
-		setUploading(false);
-		setIsPageSelectorOpen(true);
+	const close = () => {
+		setOpen(false);
+		onClose?.();
 	};
 
-	// handleGenerate function to pass audienceLevel and focusArea
-	const handleGenerate = async (
-		selected: number[],
-		topic: string,
-		questionCount: string,
-		questionType: string[],
-		difficulty: string,
-		audienceLevel: string,
-		focusArea: string
+	const saveQuestions = async (
+		result: GeneratedFor<"quiz">,
+		{ options }: GeneratedContext
 	) => {
-		setIsPageSelectorOpen(false);
-		setLoading(true);
-		const selectedPagesData = pages.filter((page) =>
-			selected.includes(page.id)
-		);
-		const selectedText = selectedPagesData
-			.map((page) => page.text)
-			.join("\n");
-
+		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		try {
-			const response = await fetch("/api/generate-quiz", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					selectedPages: selected,
-					topic,
-					questionCount,
-					questionType,
-					difficulty,
-					textData: selectedText,
-					audienceLevel,
-					focusArea,
-				}),
-			});
-			const data = await response.json();
+			const response = await axiosInstance.post(
+				`/quiz/questions/store-multiple`,
+				{ questions: toQuizQuestions(result.questions, quizId) },
+				{ timeout: 60_000 }
+			);
 
-			if (response.ok) {
-				const quizData: QuizData = JSON.parse(data.quiz);
-				console.log(
-					quizData,
-					"quizDataquizDataquizDataquizDataquizData"
-				);
+			// Name the new quiz after the topic and open it for a day, as before.
+			await axiosInstance
+				.post(`/quizes/update/${quizId}`, {
+					title: options.topic,
+					open_datetime: moment(new Date()).format("YYYY-MM-DD HH:mm:ss"),
+					close_datetime: moment(
+						new Date(Date.now() + 24 * 60 * 60 * 1000)
+					).format("YYYY-MM-DD HH:mm:ss"),
+					timezone,
+					is_published: true,
+				})
+				.catch((error) => console.error("Quiz update failed:", error));
 
-				const updatedQuestions = quizData?.questions.map(
-					(question, index) => ({
-						...question,
-						quiz_id: `${params.quizId}`,
-						visibility: "private",
-						serial_number: index + 1,
-					})
-				);
-
-				const obj = {
-					questions: updatedQuestions,
-				};
-
-				try {
-					const response = await axiosInstance.post(
-						`/quiz/questions/store-multiple`,
-						obj
-					);
-
-					console.log(response, "response?.data.data.questions");
-					console.log(
-						response?.data.data.questions,
-						"response?.data.data.questions"
-					);
-					const datalist = transformQuestionData(
-						response?.data.data.questions
-					);
-
-					console.log(datalist, "response?.data.data.questions");
-					dispatch(setMultipleSelectedItems(datalist));
-					router.push(`/quiz-edit/${params?.quizId}`);
-				} catch (error) {
-					const axiosError = error as AxiosError<{
-						message?: string;
-					}>;
-					if (axiosError.response) {
-						console.error(
-							"Error verifying token:",
-							axiosError.response.data
-						);
-						toast.error(
-							`Error: ${axiosError.response.data?.message ||
-							"Verification failed."
-							}`
-						);
-					} else {
-						console.error("Unexpected error:", axiosError.message);
-						toast.error("Unexpected error occurred. Please try again.");
-					}
-				} finally {
-				}
-				setLoading(false);
-			} else {
-				console.error("Failed to generate quiz:", data.error);
-			}
+			dispatch(
+				setMultipleSelectedItems(
+					transformQuestionData(response?.data.data.questions)
+				)
+			);
+			router.push(`/quiz-edit/${quizId}`);
 		} catch (error) {
-			console.error("Error while generating quiz:", error);
+			const axiosError = error as AxiosError<{ message?: string }>;
+			throw new Error(
+				axiosError.response?.data?.message ||
+					"The questions were generated but couldn't be saved. Please try again."
+			);
 		}
 	};
 
 	return (
-		<>
-			<Modal
-				title="Upload Document"
-				open={isUploadModalOpen}
-				onClose={() => {
-					setIsUploadModalOpen(false);
-					onClose?.();
-				}}
-			>
-				<FileUploadModal onFileUpload={handleFileUpload} />
-			</Modal>
-			{uploading && (
-				<div className="fixed inset-0 z_index__1000 bg-black bg-opacity-50 flex items-center justify-center">
-					<div className="bg-white px-8 py-6 rounded-lg shadow-xl">
-						<FileUploadLoader />
-					</div>
-				</div>
-			)}
-
-			<Modal
-				title="Select Pages to Generate Quiz"
-				open={isPageSelectorOpen}
-				onClose={() => setIsPageSelectorOpen(false)}
-			>
-				<PageSelector pages={pages} onGenerate={handleGenerate} />
-			</Modal>
-			{loading && (
-				<div className="fixed w-full h-full inset-0 bg-white z-[1000] flex items-center justify-center rounded">
-					<GeneratingLoader />
-				</div>
-			)}
-		</>
+		<DocumentToQuestionsModal
+			open={open}
+			onClose={close}
+			title="Generate a quiz from a document"
+			target="quiz"
+			generateLabel="Generate quiz"
+			onGenerated={saveQuestions}
+		/>
 	);
 }

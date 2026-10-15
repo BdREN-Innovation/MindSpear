@@ -8,6 +8,12 @@ storage/logs/*
 storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
+storage/framework/testing
+# User uploads (My Files) live in the bind-mounted storage, never in the image
+storage/app/private/*
+!storage/app/private/.gitignore
+storage/app/public/*
+!storage/app/public/.gitignore
 bootstrap/cache/*
 tests
 .phpunit.cache

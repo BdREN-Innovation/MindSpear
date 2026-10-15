@@ -3,7 +3,9 @@
 import { useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, FileJson, Library, Loader2, Pencil, Plus, Trash2, Undo2, Upload, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileJson, Library, Loader2, Pencil, Plus, Sparkles, Trash2, Undo2, Upload, X } from "lucide-react";
+import { DocumentToQuestionsWizard } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
+import { toFunGameImport } from "@/features/ai-generate/mappers";
 import { cn } from "@/lib/utils";
 import { getHostApi, toFunGamesError } from "../../../api";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
@@ -206,7 +208,9 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 	const router = useRouter();
 	const game = useAsyncResource(async (signal) => (await getHostApi()).getGame(gameId, { signal }), [gameId]);
 	const library = useAsyncResource(async (signal) => (await getHostApi()).listLibraryQuizzes({ signal }), []);
-	const [source, setSource] = useState<"json" | "library">("json");
+	const [source, setSource] = useState<"json" | "library" | "document">("json");
+	/** Shown after AI generation: the file it came from, with a way to start over. */
+	const [generatedFrom, setGeneratedFrom] = useState<{ name: string; count: number } | null>(null);
 	const [file, setFile] = useState<ParsedImportFile | null>(null);
 	const [rows, setRows] = useState<Row[]>([]);
 	const [libraryQuizId, setLibraryQuizId] = useState<string>("");
@@ -221,6 +225,8 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 	const [done, setDone] = useState<{ summary: ImportSummary; game: HostGameDetail } | null>(null);
 
 	const g = game.data;
+	// AI-generated questions use the same editable preview and import as a JSON file.
+	const jsonLike = source !== "library";
 	const checks = useMemo(
 		() =>
 			g
@@ -291,7 +297,7 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 			const err = toFunGamesError(reason);
 			setError(err.message);
 			const reported = err.details?.rows;
-			if (Array.isArray(reported) && source === "json") {
+			if (Array.isArray(reported) && jsonLike) {
 				// Server rows are numbered by position in what was sent (the included rows).
 				setServerRows(new Map((reported as HostImportRow[]).map((r) => [included[r.index]?.index ?? -1, r])));
 			}
@@ -383,11 +389,12 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 
 			<section className={card} aria-labelledby="fg-source">
 				<h2 id="fg-source" className="mb-3 font-bold text-dark dark:text-white">1 · Source</h2>
-				<div className="mb-4 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Import from">
+				<div className="mb-4 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Import from">
 					{(
 						[
 							["json", "JSON file", FileJson],
 							["library", "A quiz in My Library", Library],
+							["document", "From a document (AI)", Sparkles],
 						] as const
 					).map(([value, label, Icon]) => (
 						<button
@@ -396,6 +403,12 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 							role="radio"
 							aria-checked={source === value}
 							onClick={() => {
+								// A JSON file and AI questions share the preview; don't carry one into the other.
+								if (value !== source && (value === "document" || source === "document")) {
+									setRows([]);
+									setFile(null);
+									setGeneratedFrom(null);
+								}
 								setSource(value);
 								setError(null);
 							}}
@@ -412,6 +425,36 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 
 				{source === "json" ? (
 					<JsonSource onParsed={loadFile} />
+				) : source === "document" ? (
+					generatedFrom ? (
+						<div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stroke bg-gray-1 px-3 py-2.5 text-sm dark:border-stroke-dark dark:bg-dark-2">
+							<span className="flex items-center gap-2 text-dark dark:text-white">
+								<Sparkles className="h-4 w-4 text-secondary" aria-hidden />
+								{generatedFrom.count} question{generatedFrom.count === 1 ? "" : "s"} generated from “{generatedFrom.name}”. Review them below.
+							</span>
+							<button
+								type="button"
+								onClick={() => {
+									setGeneratedFrom(null);
+									setRows([]);
+									setFile(null);
+								}}
+								className={btnSecondary}
+							>
+								Generate again
+							</button>
+						</div>
+					) : (
+						<DocumentToQuestionsWizard
+							target="fungame"
+							layout="inline"
+							generateLabel="Generate questions"
+							onGenerated={(result, { file: sourceFile }) => {
+								loadFile({ title: null, timer: null, timerNote: null, questions: toFunGameImport(result.questions) });
+								setGeneratedFrom({ name: sourceFile.name, count: result.questions.length });
+							}}
+						/>
+					)
 				) : (
 					<div className="space-y-2">
 						<label htmlFor="fg-lib" className={labelClass}>Quiz</label>
@@ -428,11 +471,11 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 				)}
 			</section>
 
-			{(source === "json" && rows.length > 0) || (source === "library" && libraryRows) ? (
+			{(jsonLike && rows.length > 0) || (source === "library" && libraryRows) ? (
 				<section className={card} aria-labelledby="fg-preview">
 					<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<h2 id="fg-preview" className="font-bold text-dark dark:text-white">2 · Preview</h2>
-						{source === "json" ? (
+						{jsonLike ? (
 							<div className="flex flex-wrap items-center gap-3 text-sm">
 								<span className="text-dark-5" aria-live="polite">
 									{included.length} included · <span className={errorCount ? "font-semibold text-red-dark" : undefined}>{errorCount} with errors</span> · {checkCount} to check
@@ -454,11 +497,11 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 							<caption className="sr-only">Questions to import</caption>
 							<thead className="bg-gray-1 text-xs font-semibold uppercase text-dark-5 dark:bg-dark-2">
 								<tr>
-									{source === "json" ? <th scope="col" className="w-10 px-3 py-2"><span className="sr-only">Include</span></th> : null}
+									{jsonLike ? <th scope="col" className="w-10 px-3 py-2"><span className="sr-only">Include</span></th> : null}
 									<th scope="col" className="w-10 px-3 py-2">#</th>
 									<th scope="col" className="px-3 py-2">Question</th>
 									<th scope="col" className="px-3 py-2">Status</th>
-									{source === "json" ? <th scope="col" className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th> : null}
+									{jsonLike ? <th scope="col" className="w-24 px-3 py-2"><span className="sr-only">Actions</span></th> : null}
 								</tr>
 							</thead>
 							<tbody className="divide-y divide-gray-2 dark:divide-dark-3">
@@ -541,7 +584,7 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 				</section>
 			) : null}
 
-			{(source === "json" && rows.length > 0) || (source === "library" && libraryRows) ? (
+			{(jsonLike && rows.length > 0) || (source === "library" && libraryRows) ? (
 				<section className={card} aria-labelledby="fg-apply">
 					<h2 id="fg-apply" className="mb-3 font-bold text-dark dark:text-white">3 · Apply</h2>
 					<fieldset className="grid gap-2 sm:grid-cols-2">
@@ -561,7 +604,7 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 							</label>
 						))}
 					</fieldset>
-					{source === "json" && file?.timer ? (
+					{jsonLike && file?.timer ? (
 						<label className="mt-3 flex items-start gap-2 text-sm">
 							<input type="checkbox" checked={useFileTimer} onChange={(e) => setUseFileTimer(e.target.checked)} className="mt-1" />
 							<span>
@@ -570,12 +613,12 @@ export function QuestionImport({ gameId }: { gameId: string }) {
 							</span>
 						</label>
 					) : null}
-					{source === "json" && file?.timerNote ? <p className="mt-3 text-xs text-dark-5">{file.timerNote}</p> : null}
+					{jsonLike && file?.timerNote ? <p className="mt-3 text-xs text-dark-5">{file.timerNote}</p> : null}
 
 					{error ? <p role="alert" className="mt-3 rounded-lg border border-red-light-3 bg-red-light-5 px-3 py-2 text-sm text-red-dark">{error}</p> : null}
 
 					<div className="mt-4 flex items-center justify-end gap-3">
-						{source === "json" && errorCount > 0 ? (
+						{jsonLike && errorCount > 0 ? (
 							<p className="text-sm text-red-dark">Fix or untick the {errorCount} row{errorCount === 1 ? "" : "s"} with errors to import.</p>
 						) : null}
 						<button type="button" onClick={runImport} disabled={!canImport} className={btnPrimary}>

@@ -5,4 +5,5 @@ return [
     App\Providers\EventServiceProvider::class,
     App\Providers\Filament\AdminPanelProvider::class,
     App\Modules\FunGame\Providers\FunGameServiceProvider::class,
+    App\Modules\FileLibrary\Providers\FileLibraryServiceProvider::class,
 ];

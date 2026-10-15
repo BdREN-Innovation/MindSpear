@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import classNames from "classnames";
 import Image from "next/image";
 import axiosInstance from "@/utils/axiosInstance";
@@ -15,6 +15,11 @@ import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import moment from "@/lib/dayjs";
 import { toast } from "react-toastify";
+import { Sparkles } from "lucide-react";
+import { DocumentToQuestionsModal } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
+import type { GeneratedContext } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
+import { toQuestTasks } from "@/features/ai-generate/mappers";
+import type { GeneratedFor } from "@/features/ai-generate/types";
 
 interface QuizApiResponse {
 	data: Quiz;
@@ -24,6 +29,46 @@ function CreateQuest() {
 	const currentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const dispatch = useDispatch();
 	const router = useRouter();
+	const [aiOpen, setAiOpen] = useState(false);
+
+	/** New quest from AI-generated tasks; opens it in the editor, which loads tasks from the server. */
+	const createFromDocument = async (
+		result: GeneratedFor<"quest">,
+		{ options }: GeneratedContext
+	) => {
+		const endTime = new Date(
+			new Date().setFullYear(new Date().getFullYear() + 5)
+		);
+		try {
+			const questResponse = await axiosInstance.post("/quests/store", {
+				title: options.topic.slice(0, 255) || "Untitled Quest",
+				timezone: `${currentTimeZone}`,
+				visibility: "public",
+				quiztime_mode: true,
+				start_datetime: moment(new Date()).format("YYYY-MM-DD HH:mm:ss"),
+				end_datetime: moment(endTime)
+					.add(24, "hours")
+					.format("YYYY-MM-DD HH:mm:ss"),
+			});
+			const questId = questResponse?.data?.data?.quest?.id;
+			if (!questId) throw new Error("Quest creation failed: missing quest ID.");
+
+			await axiosInstance.post(
+				"/quest-tasks/store-multiple",
+				{ tasks: toQuestTasks(result.questions, questId) },
+				{ timeout: 60_000 }
+			);
+			toast.success(`Quest created with ${result.questions.length} tasks.`);
+			router.push(`/quest/edit/${questId}`);
+		} catch (error) {
+			const axiosError = error as AxiosError<{ message?: string }>;
+			throw new Error(
+				axiosError.response?.data?.message ||
+					axiosError.message ||
+					"The tasks were generated but couldn't be saved. Please try again."
+			);
+		}
+	};
 
 	const handleItemClick = async (quiztypename: string, status: string) => {
 		console.log(quiztypename, status);
@@ -213,8 +258,29 @@ function CreateQuest() {
 							Click Here
 						</span>
 					</div>
+
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							setAiOpen(true);
+						}}
+						className="relative z-30 mx-auto mt-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-secondary shadow-sm transition hover:bg-white hover:shadow"
+					>
+						<Sparkles className="h-3.5 w-3.5" aria-hidden />
+						Or generate from a file
+					</button>
 				</div>
 			</div>
+
+			<DocumentToQuestionsModal
+				open={aiOpen}
+				onClose={() => setAiOpen(false)}
+				title="Generate a quest from a document"
+				target="quest"
+				generateLabel="Generate quest"
+				onGenerated={createFromDocument}
+			/>
 		</div>
 	);
 }

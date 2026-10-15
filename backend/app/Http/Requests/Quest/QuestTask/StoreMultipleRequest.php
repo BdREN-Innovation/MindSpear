@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Quest\QuestTask;
 
 use App\Http\Requests\BaseFormRequest;
+use App\Models\Quest\Quest;
 
 class StoreMultipleRequest extends BaseFormRequest
 {
@@ -11,7 +12,11 @@ class StoreMultipleRequest extends BaseFormRequest
      */
     public function authorize(): bool
     {
-        return true;
+        // Tasks may only be added to quests the user created.
+        $questIds = collect($this->input('tasks', []))->pluck('quest_id')->filter()->unique();
+
+        return $questIds->isEmpty()
+            || Quest::whereIn('id', $questIds)->where('creator_id', '!=', $this->user()?->id)->doesntExist();
     }
 
     /**

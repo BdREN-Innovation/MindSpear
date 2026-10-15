@@ -1,7 +1,7 @@
 import { FaRegQuestionCircle } from "react-icons/fa";
 import { FcSurvey } from "react-icons/fc";
 import { RiTimerLine } from "react-icons/ri";
-import { LayoutList, ListChecks, Radio } from "lucide-react";
+import { FolderOpen, LayoutList, ListChecks, Radio } from "lucide-react";
 
 
 import * as Icons from "../icons";
@@ -85,6 +85,13 @@ export const NAV_DATA = [
 						icon: "/images/icons/categories.svg",
 					},
 				],
+			},
+
+			{
+				title: "My Files",
+				url: "/my-files",
+				icon: FolderOpen,
+				items: [],
 			},
 
 			{

@@ -45,3 +45,11 @@ function something()
 {
     // ..
 }
+
+/** A fake upload of $kb kilobytes with unique bytes, so the file library never de-duplicates it. */
+function libSized(string $name, int $kb): Illuminate\Http\UploadedFile
+{
+    $seed = random_bytes(16);
+
+    return Illuminate\Http\UploadedFile::fake()->createWithContent($name, substr(str_repeat($seed, (int) ceil($kb * 64)), 0, $kb * 1024));
+}

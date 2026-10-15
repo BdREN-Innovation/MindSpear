@@ -70,7 +70,8 @@ interface User {
 // Axios Setup
 // ----------------------------------
 const serverAxiosInstance: AxiosInstance = axios.create({
-	baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+	// INTERNAL_API_BASE_URL is server-only (undefined in the browser bundle).
+	baseURL: process.env.INTERNAL_API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL,
 	headers: {
 		"Content-Type": "application/json",
 	},

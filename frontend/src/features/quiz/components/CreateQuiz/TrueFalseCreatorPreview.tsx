@@ -105,72 +105,25 @@ const TrueFalseComponend: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 						<StylableInputFile
 							initialImageUrl={currentItem?.source_content_url}
 							initialImageId={currentItem?.source_image_id}
-							onImageUpload={async (file) => {
-								const formData = new FormData();
-								formData.append("file", file);
-								formData.append("name", file.name);
-
-								try {
-									let response;
-
-									if (currentItem?.source_image_id) {
-										response = await axiosInstance.post(
-											`/files/update/${currentItem?.source_image_id}`,
-											formData,
-											{
-												headers: {
-													"Content-Type":
-														"multipart/form-data",
-												},
-											}
-										);
-									} else {
-										response = await axiosInstance.post(
-											"/files/store",
-											formData,
-											{
-												headers: {
-													"Content-Type":
-														"multipart/form-data",
-												},
-											}
-										);
-									}
-
-									console.log(response, "responseImages");
-
-									dispatch(
-										updateQuizImages({
-											id: id,
-											imageUrl:
-												response.data.data.file.path,
-											imageId: response.data.data.file.id,
-										})
-									);
-
-									return {
-										path: response.data.data.file.path,
-										id: response.data.data.file.id,
-									};
-								} catch (error) {
-									console.error("Upload error:", error);
-									throw error;
-								}
-							}}
-							onImageRemove={async () => {
-								if (currentItem?.source_image_id) {
-									await axiosInstance.delete(
-										`/files/delete/${currentItem?.source_image_id}`
-									);
-									dispatch(
-										updateQuizImages({
-											id: id,
-											imageUrl: undefined,
-											imageId: undefined,
-										})
-									);
-								}
-							}}
+							onImageSelected={(image) =>
+								dispatch(
+									updateQuizImages({
+										id: id,
+										imageUrl: image.path,
+										imageId: image.id,
+									})
+								)
+							}
+							onImageRemove={() =>
+								// Only detach it from the question; the image stays in My Files.
+								dispatch(
+									updateQuizImages({
+										id: id,
+										imageUrl: undefined,
+										imageId: undefined,
+									})
+								)
+							}
 						/>
 					</div>
 

@@ -29,15 +29,16 @@ services:
 
   backend:
     build: ./backend
-    env_file: ./backend/.env
+    env_file: ./backend/.env.docker
     environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
-      PHP_CLI_SERVER_WORKERS: 1
+      # Several workers so long uploads don't block other requests
+      PHP_CLI_SERVER_WORKERS: 4
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
       - /app/vendor
     networks:
       - mindspear
@@ -49,7 +50,6 @@ services:
     command: >
       sh -c "php artisan config:clear &&
              until php -r \"new PDO('pgsql:host=postgres;port=5432;dbname=mindspear', 'myuser', 'mypassword');\" 2>/dev/null; do echo 'Waiting for postgres...'; sleep 2; done &&
-             php artisan key:generate --no-interaction --force &&
              php artisan migrate --force &&
              (php artisan tinker --execute='exit(App\\Models\\User::count() === 0 ? 0 : 1);' && php artisan db:seed --force || echo 'Seed skipped (DB already has users)') &&
              php artisan storage:link --force &&
@@ -57,14 +57,13 @@ services:
 
   reverb:
     build: ./backend
-    env_file: ./backend/.env
-    environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
+    env_file: ./backend/.env.docker
     ports:
       - "8080:8080"
     volumes:
       - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
       - /app/vendor
     networks:
       - mindspear
@@ -79,12 +78,11 @@ services:
   # Exits hourly (--max-runtime) and is restarted fresh.
   fungames-ticker:
     build: ./backend
-    env_file: ./backend/.env
-    environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
+    env_file: ./backend/.env.docker
     volumes:
       - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
       - /app/vendor
     networks:
       - mindspear
@@ -99,12 +97,11 @@ services:
   # itself about 10 s after it ends.
   fungames-queue:
     build: ./backend
-    env_file: ./backend/.env
-    environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
+    env_file: ./backend/.env.docker
     volumes:
       - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
       - /app/vendor
     networks:
       - mindspear
@@ -117,6 +114,15 @@ services:
   frontend:
     build: ./frontend
     env_file: ./frontend/.env
+    environment:
+      # Server-side (SSR / route handler) calls reach Laravel over the docker network.
+      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+      # NEXT_PUBLIC_* run in the browser, which is outside the docker network,
+      # so they use the host-published ports.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_REVERB_HOST: localhost
+      NEXT_PUBLIC_REVERB_PORT: 8080
+      NEXT_PUBLIC_APP_URL: http://localhost:2000
     ports:
       - "2000:2000"
     volumes:
@@ -127,6 +133,7 @@ services:
       - mindspear
     depends_on:
       - backend
+      - reverb
 
 networks:
   mindspear:

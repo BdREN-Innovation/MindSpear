@@ -5,6 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\Institution;
 use App\Models\User;
+use App\Modules\FileLibrary\Exceptions\FileLibraryException;
+use App\Modules\FileLibrary\Services\QuotaService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Infolists\Components\Section;
@@ -46,12 +48,29 @@ class UserResource extends Resource
                         ->revealable()
                         ->required(fn (string $operation) => $operation === 'create'),
                 ])->columns(2),
+                Forms\Components\Section::make('Storage (My Files)')->schema([
+                    Forms\Components\TextInput::make('storage_quota_bytes')
+                        ->label('Storage limit')
+                        ->suffix('MB')
+                        ->numeric()
+                        ->minValue(0)
+                        ->maxValue(1024 * 1024)
+                        ->nullable()
+                        ->formatStateUsing(fn ($state) => filled($state) ? round($state / 1048576, 2) : null)
+                        ->dehydrateStateUsing(fn ($state) => filled($state) ? (int) round((float) $state * 1048576) : null)
+                        ->helperText(fn () => 'Leave empty to use the default (' . config('file_library.default_quota_mb') . ' MB).'),
+                    Forms\Components\Placeholder::make('storage_used')
+                        ->label('Used')
+                        ->content(fn (?User $record) => $record ? self::storageSummary($record) : '—')
+                        ->visibleOn('edit'),
+                ])->columns(2),
             ]);
     }
 
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->withSum('files', 'size'))
             ->columns([
                 Tables\Columns\TextColumn::make('id')->sortable(),
                 Tables\Columns\TextColumn::make('full_name')
@@ -74,6 +93,12 @@ class UserResource extends Resource
                     ->html(),
                 Tables\Columns\TextColumn::make('email')->searchable(),
                 Tables\Columns\TextColumn::make('institution.name')->label('Institution')->toggleable(),
+                Tables\Columns\TextColumn::make('files_sum_size')
+                    ->label('Storage')
+                    ->default(0)
+                    ->formatStateUsing(fn ($state, User $record) => FileLibraryException::formatBytes((int) $state) . ' / ' . FileLibraryException::formatBytes(app(QuotaService::class)->limitFor($record)))
+                    ->sortable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->defaultSort('id', 'desc')
@@ -125,7 +150,24 @@ class UserResource extends Resource
                         TextEntry::make('created_at')->dateTime()->label('Created'),
                         TextEntry::make('updated_at')->dateTime()->label('Updated'),
                         TextEntry::make('id')->label('ID'),
+                        TextEntry::make('storage')
+                            ->label('Storage (My Files)')
+                            ->state(fn (User $record) => self::storageSummary($record)),
                     ])->columns(3),
             ]);
+    }
+
+    /** e.g. "12.4 MB of 100 MB used (12.4%)". */
+    public static function storageSummary(User $user): string
+    {
+        $usage = app(QuotaService::class)->usage($user);
+
+        return sprintf(
+            '%s of %s used (%s%%)%s',
+            FileLibraryException::formatBytes($usage['used']),
+            FileLibraryException::formatBytes($usage['limit']),
+            $usage['percent'],
+            $user->storage_quota_bytes === null ? ' — default limit' : '',
+        );
     }
 }

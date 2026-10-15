@@ -248,11 +248,11 @@ function CreateQuiz() {
 								/>
 							</div>
 							<h3 className="text-[.875rem] pt-2 font-semibold">
-								AI Generate (From Uploaded File)
+								AI Generate (From a File)
 							</h3>
 
 							<p className="text-[.875rem] text-[#7b7b7b]">
-								Turn your files into instant quizzes.
+								Use a PDF, Word, PowerPoint or text file from My Files, or upload a new one.
 							</p>
 						</div>
 

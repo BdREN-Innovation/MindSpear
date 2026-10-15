@@ -52,6 +52,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         'remember_token',
         'provider',
         'provider_id',
+        'storage_quota_bytes',
     ];
 
     /**
@@ -74,6 +75,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'storage_quota_bytes' => 'integer',
         ];
     }
 
@@ -118,6 +120,14 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
     public function institution()
     {
         return $this->belongsTo(Institution::class);
+    }
+
+    /**
+     * Files in the user's library (My Files).
+     */
+    public function files()
+    {
+        return $this->hasMany(File::class);
     }
 
     public function questOrigins()

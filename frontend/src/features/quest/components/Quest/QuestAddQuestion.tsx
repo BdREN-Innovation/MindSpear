@@ -16,14 +16,20 @@ import {
 	clearHoveredItem,
 	addNewQuestItem,
 	setSelectedItem,
+	setMultipleSelectedItems,
 } from "@/features/quiz/store/quizItems/quizSlice";
 import { setDropdownOpen } from "@/features/dashboard/store/dropdownSlice";
 import axiosInstance from "@/utils/axiosInstance";
 import Image from "next/image";
-import PdfModal from "@/features/quiz/components/PdfQuiz/PdfModal";
+import { DocumentToQuestionsModal } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
+import { toQuestTasks } from "@/features/ai-generate/mappers";
+import type { GeneratedFor } from "@/features/ai-generate/types";
+import { convertTaskData } from "@/utils/questDataTransformer";
+import { AxiosError } from "axios";
+import { toast } from "react-toastify";
 import { RootState } from "@/stores/store";
 import { useParams } from "next/navigation";
-import { FilePlus2 } from "lucide-react";
+import { FilePlus2, Sparkles } from "lucide-react";
 
 interface MenuItem {
 	key: string;
@@ -36,7 +42,7 @@ const QuestAddQuestion: React.FC = () => {
 	const params = useParams();
 	const qId = params?.id as string;
 	const [isDropDownOpen, setIsDropDownOpen] = useState(false);
-	const [showPdfModal, setShowPdfModal] = useState(false);
+	const [showAiModal, setShowAiModal] = useState(false);
 
 	const quesentList = useSelector(
 		(state: RootState) => state.quiz.multypleselectedItem,
@@ -48,6 +54,31 @@ const QuestAddQuestion: React.FC = () => {
 	const nextPosition = multyplItem.length + 1;
 
 	const dispatch = useDispatch();
+
+	/** Adds AI-generated tasks after the existing ones. */
+	const appendGeneratedTasks = async (result: GeneratedFor<"quest">) => {
+		const startSerial =
+			multyplItem.reduce((max, item) => Math.max(max, Number(item?.position) || 0), 0) + 1;
+		try {
+			const response = await axiosInstance.post(
+				"/quest-tasks/store-multiple",
+				{ tasks: toQuestTasks(result.questions, qId, startSerial) },
+				{ timeout: 60_000 },
+			);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const created = convertTaskData(response?.data?.data?.tasks ?? []) as any[];
+			dispatch(setMultipleSelectedItems([...quesentList, ...created]));
+			if (created[0]) dispatch(setSelectedItem(created[0]));
+			setShowAiModal(false);
+			toast.success(`Added ${created.length} tasks from your document.`);
+		} catch (error) {
+			const axiosError = error as AxiosError<{ message?: string }>;
+			throw new Error(
+				axiosError.response?.data?.message ||
+					"The tasks were generated but couldn't be saved. Please try again.",
+			);
+		}
+	};
 	const items = [
 		{
 			key: "qsenchoice",
@@ -331,6 +362,18 @@ const QuestAddQuestion: React.FC = () => {
 								</div>
 							))}
 						</div>
+						<button
+							type="button"
+							onClick={() => {
+								setIsDropDownOpen(false);
+								dispatch(setDropdownOpen(false));
+								setShowAiModal(true);
+							}}
+							className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-secondary/60 bg-secondary-50 px-4 py-2.5 text-sm font-semibold text-secondary transition hover:bg-secondary-100"
+						>
+							<Sparkles size={16} aria-hidden />
+							Generate tasks from a document
+						</button>
 					</div>
 				</DropdownContent>
 			</Dropdown>
@@ -339,10 +382,14 @@ const QuestAddQuestion: React.FC = () => {
 				className={`w-full xl:h-[calc(72vh-70px)] overflow-y-auto scrollbar-hidden  `}
 			>
 				<QuestQsenListShow />
-				{/* Show PDF Modal */}
-				{showPdfModal && (
-					<PdfModal onClose={() => setShowPdfModal(false)} />
-				)}
+				<DocumentToQuestionsModal
+					open={showAiModal}
+					onClose={() => setShowAiModal(false)}
+					title="Generate tasks from a document"
+					target="quest"
+					generateLabel="Add tasks"
+					onGenerated={appendGeneratedTasks}
+				/>
 			</div>
 		</div>
 	);

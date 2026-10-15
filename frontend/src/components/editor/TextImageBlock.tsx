@@ -5,7 +5,10 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ContentBlock } from "@/types/content";
+import { FileLibraryPicker } from "@/features/file-library/components/FileLibraryPicker";
+import { emitLibraryChange } from "@/features/file-library/lib/events";
 import {
+	FolderOpen,
 	Upload,
 	X,
 	Bold,
@@ -61,7 +64,7 @@ TextImageBlockProps) {
 	const [progress, setProgress] = useState<number>(0);
 	const [error, setError] = useState<string | null>(null);
 	const inputRef = useRef<HTMLInputElement | null>(null);
-	console.log(uploading, progress, error);
+	const [pickerOpen, setPickerOpen] = useState(false);
 
 	const { selectedItem } = useSelector((s: any) => s.quiz);
 
@@ -150,6 +153,7 @@ TextImageBlockProps) {
 				},
 			});
 			const fileObj = res.data?.data?.file;
+			emitLibraryChange();
 			// setFileData(fileObj);
 			dispatch(
 				contantData({
@@ -222,26 +226,63 @@ TextImageBlockProps) {
 						)}
 					</div>
 				) : (
-					<label
-						className={cn(
-							"flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-							isActive
-								? "border-slate-300 dark:border-slate-600 hover:border-primary"
-								: "border-transparent hover:border-slate-300 dark:hover:border-slate-600"
-						)}
-					>
-						<Upload className="h-8 w-8 text-slate-400 mb-2" />
-						<span className="text-sm text-slate-500 dark:text-slate-400">
-							Click to upload image
-						</span>
-						<input
-							type="file"
-							accept="image/*"
-							onChange={handleChange}
-							className="hidden"
-						/>
-					</label>
+					<div className="relative">
+						<label
+							className={cn(
+								"flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+								isActive
+									? "border-slate-300 dark:border-slate-600 hover:border-primary"
+									: "border-transparent hover:border-slate-300 dark:hover:border-slate-600"
+							)}
+						>
+							<Upload className="h-8 w-8 text-slate-400 mb-2" />
+							<span className="text-sm text-slate-500 dark:text-slate-400">
+								{uploading ? `Uploading… ${progress}%` : "Click to upload image"}
+							</span>
+							{error ? (
+								<span role="alert" className="mt-2 max-w-xs px-3 text-center text-xs text-red-600">
+									{error}
+								</span>
+							) : null}
+							<input
+								ref={inputRef}
+								type="file"
+								accept="image/png,image/jpeg,image/gif,image/webp"
+								onChange={handleChange}
+								className="hidden"
+								disabled={uploading}
+							/>
+						</label>
+						{isActive && !uploading ? (
+							<button
+								type="button"
+								onClick={() => setPickerOpen(true)}
+								className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-primary shadow-sm hover:border-primary"
+							>
+								<FolderOpen className="h-3.5 w-3.5" aria-hidden />
+								Choose from My Files
+							</button>
+						) : null}
+					</div>
 				)}
+				<FileLibraryPicker
+					open={pickerOpen}
+					onClose={() => setPickerOpen(false)}
+					accept="image"
+					confirmLabel="Use this image"
+					onSelect={(file) => {
+						setError(null);
+						// Same shape as a /files/store upload, which this block stores whole.
+						const picked: any = { id: file.id, name: file.name, path: file.url };
+						dispatch(
+							contantData({
+								id: selectedItem?.id,
+								image_url: picked,
+							})
+						);
+						setPickerOpen(false);
+					}}
+				/>
 			</div>
 
 			{/* Text Section with Tiptap Editor */}
