@@ -6,7 +6,7 @@ import { MAX_QUESTIONS, QUESTION_TYPES } from "./types";
 const typeValues = (target: keyof typeof QUESTION_TYPES) => QUESTION_TYPES[target].map((t) => t.value) as [string, ...string[]];
 
 export const generateRequestSchema = z.object({
-	target: z.enum(["quiz", "quest", "fungame"]),
+	target: z.enum(["quiz", "quest", "quest_v2", "fungame"]),
 	textData: z.string().trim().min(40, "The selected pages don't contain enough text to write questions from."),
 	topic: z.string().trim().min(1, "Enter a topic.").max(200),
 	questionCount: z.coerce.number().int().min(1).max(MAX_QUESTIONS),
@@ -37,6 +37,20 @@ export const questTaskSchema = z.object({
 	task_type: z.enum(typeValues("quest")),
 	options: z.array(z.string()).max(8).default([]),
 });
+
+/** Quest v2 types that need options, and how many at least (backend minimums: polls/ranking 2, scales 1). */
+const QUEST_V2_MIN_OPTIONS: Record<string, number> = { poll_single: 2, poll_multi: 2, ranking: 2, scales: 1, rating: 1 };
+
+export const questV2SlideSchema = z
+	.object({
+		title: text,
+		type: z.enum(typeValues("quest_v2")),
+		options: z.array(z.string()).max(12).default([]),
+	})
+	.refine((slide) => {
+		const min = QUEST_V2_MIN_OPTIONS[slide.type] ?? 0;
+		return slide.options.filter((o) => o.trim() !== "").length >= min;
+	}, "not enough options for this slide type");
 
 export const funGameQuestionSchema = z
 	.object({

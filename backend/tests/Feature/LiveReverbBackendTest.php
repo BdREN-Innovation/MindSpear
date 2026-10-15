@@ -626,7 +626,7 @@ it('queues live broadcast events instead of broadcasting synchronously in the re
         ->and($event)->not->toBeInstanceOf(ShouldBroadcastNow::class);
 });
 
-it('requires participant tokens for anonymous quest answers and coalesces aggregate jobs', function () {
+it('requires participant tokens for anonymous quest answers and queues an aggregate job per answer', function () {
     Queue::fake();
 
     $user = liveTestUser();
@@ -686,7 +686,8 @@ it('requires participant tokens for anonymous quest answers and coalesces aggreg
         ->assertJsonPath('data.state.current_aggregate.total_answers', 1)
         ->assertJsonPath('data.state.current_aggregate.answers.A', 1);
 
-    Queue::assertPushed(BroadcastLiveAggregateSnapshot::class, 1);
+    // No debounce: it was removed in 8bcb3ab, so every accepted answer queues a fresh snapshot.
+    Queue::assertPushed(BroadcastLiveAggregateSnapshot::class, 2);
 });
 
 it('requires and revokes participant tokens when anonymous quest attempts complete', function () {
@@ -733,7 +734,7 @@ it('requires and revokes participant tokens when anonymous quest attempts comple
         ->and($participant->participant_token_revoked_at)->not->toBeNull();
 });
 
-it('requires participant tokens for anonymous quiz answers and coalesces aggregate jobs', function () {
+it('requires participant tokens for anonymous quiz answers and queues an aggregate job per answer', function () {
     Queue::fake();
 
     $user = liveTestUser();
@@ -789,7 +790,8 @@ it('requires participant tokens for anonymous quiz answers and coalesces aggrega
         ->postJson("/api/v1/quiz-attempts/{$participant->id}/answer", $payload)
         ->assertOk();
 
-    Queue::assertPushed(BroadcastLiveAggregateSnapshot::class, 1);
+    // No debounce: it was removed in 8bcb3ab, so every accepted answer queues a fresh snapshot.
+    Queue::assertPushed(BroadcastLiveAggregateSnapshot::class, 2);
 });
 
 it('requires and revokes participant tokens when anonymous quiz attempts complete', function () {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import classNames from "classnames";
 import Image from "next/image";
 import axiosInstance from "@/utils/axiosInstance";
@@ -18,8 +18,11 @@ import { toast } from "react-toastify";
 import { Sparkles } from "lucide-react";
 import { DocumentToQuestionsModal } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
 import type { GeneratedContext } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
-import { toQuestTasks } from "@/features/ai-generate/mappers";
+import { toQuestSlidesBulk, toQuestTasks } from "@/features/ai-generate/mappers";
 import type { GeneratedFor } from "@/features/ai-generate/types";
+import { questAuthoringApi } from "@/features/deck/api/authoringApi";
+import { isDeckApiError } from "@/features/deck/api/errors";
+import { clearQuestV2EnabledCache, useQuestV2Enabled } from "@/features/deck-editor/components/useQuestV2Enabled";
 
 interface QuizApiResponse {
 	data: Quiz;
@@ -30,6 +33,46 @@ function CreateQuest() {
 	const dispatch = useDispatch();
 	const router = useRouter();
 	const [aiOpen, setAiOpen] = useState(false);
+	// Quest v2 rollout: users with the flag get the slide-based editor; everyone else the legacy flow.
+	const questV2 = useQuestV2Enabled();
+	const [creatingV2, setCreatingV2] = useState(false);
+	// A deck created for an AI run whose slides failed to save is reused on retry.
+	const aiDeckIdRef = useRef<number | null>(null);
+
+	/** Quest v2: an empty deck (seeded with a QR code slide), opened in the editor. */
+	const createV2Quest = async () => {
+		if (creatingV2) return;
+		setCreatingV2(true);
+		try {
+			const deck = await questAuthoringApi.createDeck();
+			router.push(`/quests/${deck.id}/edit`);
+		} catch (error) {
+			if (isDeckApiError(error) && error.code === "feature_disabled") clearQuestV2EnabledCache();
+			toast.error((error as Error)?.message || "The quest could not be created. Please try again.");
+			setCreatingV2(false);
+		}
+	};
+
+	/** Quest v2 from AI-generated slides: create the deck, add the slides in one bulk call, open the editor. */
+	const createV2FromDocument = async (
+		result: GeneratedFor<"quest_v2">,
+		{ options }: GeneratedContext
+	) => {
+		const body = toQuestSlidesBulk(result.questions);
+		if (body.slides.length === 0) {
+			throw new Error("The AI didn't write any usable slides. Try other pages or a clearer topic.");
+		}
+		let deckId = aiDeckIdRef.current;
+		if (deckId === null) {
+			const deck = await questAuthoringApi.createDeck({ title: options.topic.trim().slice(0, 255) || null });
+			deckId = deck.id;
+			aiDeckIdRef.current = deckId;
+		}
+		const { slides } = await questAuthoringApi.addSlidesBulk(deckId, body);
+		aiDeckIdRef.current = null;
+		toast.success(`Quest created with ${slides.length} slides.`);
+		router.push(`/quests/${deckId}/edit`);
+	};
 
 	/** New quest from AI-generated tasks; opens it in the editor, which loads tasks from the server. */
 	const createFromDocument = async (
@@ -71,6 +114,10 @@ function CreateQuest() {
 	};
 
 	const handleItemClick = async (quiztypename: string, status: string) => {
+		if (await questV2.resolve()) {
+			await createV2Quest();
+			return;
+		}
 		console.log(quiztypename, status);
 		const endTime = new Date(
 			new Date().setFullYear(new Date().getFullYear() + 5)
@@ -261,8 +308,10 @@ function CreateQuest() {
 
 					<button
 						type="button"
-						onClick={(e) => {
+						onClick={async (e) => {
 							e.stopPropagation();
+							// Pick the v2 or legacy wizard before it opens.
+							await questV2.resolve();
 							setAiOpen(true);
 						}}
 						className="relative z-30 mx-auto mt-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-secondary shadow-sm transition hover:bg-white hover:shadow"
@@ -273,14 +322,25 @@ function CreateQuest() {
 				</div>
 			</div>
 
-			<DocumentToQuestionsModal
-				open={aiOpen}
-				onClose={() => setAiOpen(false)}
-				title="Generate a quest from a document"
-				target="quest"
-				generateLabel="Generate quest"
-				onGenerated={createFromDocument}
-			/>
+			{questV2.enabled ? (
+				<DocumentToQuestionsModal
+					open={aiOpen}
+					onClose={() => setAiOpen(false)}
+					title="Generate a quest from a document"
+					target="quest_v2"
+					generateLabel="Generate quest"
+					onGenerated={createV2FromDocument}
+				/>
+			) : (
+				<DocumentToQuestionsModal
+					open={aiOpen}
+					onClose={() => setAiOpen(false)}
+					title="Generate a quest from a document"
+					target="quest"
+					generateLabel="Generate quest"
+					onGenerated={createFromDocument}
+				/>
+			)}
 		</div>
 	);
 }

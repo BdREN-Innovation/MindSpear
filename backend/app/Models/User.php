@@ -53,6 +53,8 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         'provider',
         'provider_id',
         'storage_quota_bytes',
+        // Quest v2 rollout flag (plan §8.3). Not taken from request input anywhere; set by admins.
+        'quest_v2_enabled',
     ];
 
     /**
@@ -76,6 +78,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'storage_quota_bytes' => 'integer',
+            'quest_v2_enabled' => 'boolean',
         ];
     }
 

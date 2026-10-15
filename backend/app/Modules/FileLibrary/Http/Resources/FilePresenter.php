@@ -20,6 +20,9 @@ class FilePresenter
             'url' => $file->url,
             'isPublic' => $file->visibility !== File::VISIBILITY_PRIVATE,
             'pageCount' => $file->page_count,
+            // Pixel size of images (after the upload resize); null for other files and older uploads.
+            'width' => $file->width,
+            'height' => $file->height,
             'extractionStatus' => $file->extraction_status,
             'createdAt' => $file->created_at?->toIso8601String(),
             'lastUsedAt' => $file->last_used_at?->toIso8601String(),

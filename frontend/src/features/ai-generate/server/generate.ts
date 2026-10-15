@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { buildPrompt } from "../prompts";
-import { funGameQuestionSchema, generateRequestSchema, keepValid, questTaskSchema, quizQuestionSchema } from "../schema";
-import { MAX_TEXT_CHARS, type GenerateRequest, type GenerateResponse, type QuestAiTask, type QuizAiQuestion } from "../types";
+import { funGameQuestionSchema, generateRequestSchema, keepValid, questTaskSchema, questV2SlideSchema, quizQuestionSchema } from "../schema";
+import { MAX_TEXT_CHARS, type GenerateRequest, type GenerateResponse, type QuestAiTask, type QuestV2AiSlide, type QuizAiQuestion } from "../types";
 
 // Server-only: used by the /api/ai/* route handlers. Never import from client components.
 
@@ -101,6 +101,8 @@ function validate(req: GenerateRequest, output: unknown): GenerateResponse {
 		case "quest":
 			// The schemas check the type names against QUESTION_TYPES, so the narrower types hold.
 			return { target: "quest", questions: keepValid(items, questTaskSchema) as QuestAiTask[] };
+		case "quest_v2":
+			return { target: "quest_v2", questions: keepValid(items, questV2SlideSchema) as QuestV2AiSlide[] };
 		case "fungame":
 			return { target: "fungame", questions: keepValid(items, funGameQuestionSchema) };
 		default:

@@ -1,6 +1,6 @@
-// My Files: the signed-in user's library of uploaded images and documents.
+// My Files: the signed-in user's library of uploaded images, videos and documents.
 
-export type FileCategory = "image" | "document";
+export type FileCategory = "image" | "document" | "video";
 
 /** Which files a picker shows and accepts. */
 export type FileAccept = FileCategory | "any";
@@ -15,10 +15,13 @@ export interface LibraryFile {
 	extension: string | null;
 	mimeType: string | null;
 	size: number;
-	/** Public URL for images; an authenticated API URL for documents (load with libraryApi.getContent). */
+	/** Public URL for images and videos; an authenticated API URL for documents (load with libraryApi.getContent). */
 	url: string;
 	isPublic: boolean;
 	pageCount: number | null;
+	/** Pixel size of images (after the server's 1024px resize); null for other files and older uploads. */
+	width: number | null;
+	height: number | null;
 	extractionStatus: ExtractionStatus;
 	createdAt: string | null;
 	lastUsedAt: string | null;
@@ -31,6 +34,7 @@ export interface StorageUsage {
 	percent: number;
 	images: { count: number; bytes: number };
 	documents: { count: number; bytes: number };
+	videos: { count: number; bytes: number };
 	maxFileSize: Record<FileCategory, number>;
 	allowed: Record<FileCategory, string[]>;
 }
@@ -94,6 +98,6 @@ export interface LibraryError {
 	code: LibraryErrorCode;
 	message: string;
 	status?: number;
-	/** file_in_use: where the image is still shown, e.g. { "quiz questions": 2 }. */
+	/** file_in_use: where the file is still shown, e.g. { "quiz questions": 2, "deck slides": 1 }. */
 	references?: Record<string, number>;
 }

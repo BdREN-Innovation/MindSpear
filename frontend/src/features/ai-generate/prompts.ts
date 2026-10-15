@@ -105,10 +105,42 @@ OUTPUT SCHEMA
 }`;
 }
 
+/** Quest v2 (slide-based): the output uses the backend slide type keys directly. */
+export function questV2Prompt(req: GenerateRequest): string {
+	return `You design slides for a live audience presentation (polls, word clouds, open questions, scales, ranking and rating) about a document.
+These slides gather opinions and reflections; they have NO correct answers.
+Reply with a single valid JSON object that matches the schema below — no markdown, no comments, no extra keys.
+
+${material(req)}
+
+${requirements(req, "slide types")}
+
+CONSTRUCTION RULES
+1. Every slide must relate to the input material and invite the audience to think about it. ${LANGUAGE_RULE}
+2. Spread items across the allowed slide types.
+3. "poll_single": a poll where each person picks one option, 3–5 options. A yes/no question is a "poll_single" whose options are exactly ["Yes","No"].
+4. "poll_multi": a poll where several options may be picked, 3–6 options.
+5. "word_cloud": a prompt answered with one to three words (e.g. "One word that describes …"); "options" must be [].
+6. "open_ended": an open question answered in a sentence or two; "options" must be [].
+7. "scales": 2–5 statements the audience rates from "Strongly disagree" to "Strongly agree"; put the statements in "options".
+8. "ranking": 3–6 items for the audience to put in order of priority; put the items in "options".
+9. "rating": 2–5 items the audience rates with 1–5 stars; put the items in "options".
+10. "title" is the question or prompt shown to the audience, under 25 words. Options are short (under 12 words each) and distinct.
+
+OUTPUT SCHEMA
+{
+  "questions": [
+    { "title": "string", "type": "poll_single | poll_multi | word_cloud | open_ended | scales | ranking | rating", "options": ["string", ...] }
+  ]
+}`;
+}
+
 export function buildPrompt(req: GenerateRequest): string {
 	switch (req.target) {
 		case "quest":
 			return questPrompt(req);
+		case "quest_v2":
+			return questV2Prompt(req);
 		case "fungame":
 			return funGamePrompt(req);
 		default:

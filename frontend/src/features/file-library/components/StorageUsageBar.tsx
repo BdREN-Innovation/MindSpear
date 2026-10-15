@@ -92,6 +92,12 @@ export function StorageUsageBar({ usage, loading, variant = "compact", showManag
 						<span className="h-2.5 w-2.5 rounded-full bg-secondary" aria-hidden />
 						Images · {usage.images.count} · {formatBytes(usage.images.bytes)}
 					</span>
+					{usage.videos ? (
+						<span className="flex items-center gap-2 text-dark-4 dark:text-dark-6">
+							<span className="h-2.5 w-2.5 rounded-full bg-yellow-dark" aria-hidden />
+							Videos · {usage.videos.count} · {formatBytes(usage.videos.bytes)}
+						</span>
+					) : null}
 				</div>
 			) : null}
 		</div>

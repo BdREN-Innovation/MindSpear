@@ -2,7 +2,10 @@
 
 namespace App\Services\Live;
 
+use App\Deck\Broadcasts\DeckBroadcaster;
+use App\Deck\Broadcasts\Payloads\ParticipantCountUpdatedPayload;
 use App\Events\Live\ImmediateLiveBroadcastEvent;
+use App\Models\Deck\DeckSession;
 use App\Models\Quest\QuestParticipant;
 use App\Models\Quest\QuestSession;
 use App\Models\Quiz\QuizParticipant;
@@ -11,6 +14,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Throwable;
 
 class LiveSessionService
@@ -25,7 +29,11 @@ class LiveSessionService
             return $session->public_channel_key;
         }
 
-        $column = $session instanceof QuestSession ? 'quest_sessions' : 'quiz_sessions';
+        $column = match (true) {
+            $session instanceof DeckSession => 'deck_sessions',
+            $session instanceof QuestSession => 'quest_sessions',
+            default => 'quiz_sessions',
+        };
 
         do {
             $key = Str::lower(Str::random(32));
@@ -46,8 +54,38 @@ class LiveSessionService
         return "host.{$module}.{$sessionId}";
     }
 
+    /** Deck sessions keep host channels apart from legacy ids during coexistence. */
+    public function deckHostChannel(string $product, int $sessionId): string
+    {
+        return "host.{$product}.v2.{$sessionId}";
+    }
+
+    public function publicChannelFor(QuestSession|QuizSession|DeckSession $session): string
+    {
+        return $this->publicChannel($this->moduleFor($session), $this->ensurePublicChannelKey($session));
+    }
+
+    /** host.{module}.{id} for legacy sessions, host.{product}.v2.{id} for deck sessions. */
+    public function hostChannelFor(QuestSession|QuizSession|DeckSession $session): string
+    {
+        return $session instanceof DeckSession
+            ? $this->deckHostChannel($session->product(), (int) $session->id)
+            : $this->hostChannel($this->moduleFor($session), (int) $session->id);
+    }
+
+    /** quest | quiz; for a deck session it is the deck's product. */
+    public function moduleFor(QuestSession|QuizSession|DeckSession $session): string
+    {
+        return match (true) {
+            $session instanceof DeckSession => $session->product(),
+            $session instanceof QuestSession => self::MODULE_QUEST,
+            default => self::MODULE_QUIZ,
+        };
+    }
+
     public function broadcastPublic(string $module, Model $session, string $event, array $payload = []): void
     {
+        $this->assertDeckModule($module, $session);
         $publicChannelKey = $this->ensurePublicChannelKey($session);
 
         $this->afterCommit(function () use ($module, $publicChannelKey, $event, $payload) {
@@ -63,9 +101,13 @@ class LiveSessionService
 
     public function broadcastHost(string $module, Model $session, string $event, array $payload = []): void
     {
-        $this->afterCommit(function () use ($module, $session, $event, $payload) {
-            $channel = $this->hostChannel($module, (int) $session->id);
+        $this->assertDeckModule($module, $session);
+        // A deck session id can equal a legacy one: never fall back to host.{module}.{id}.
+        $channel = $session instanceof DeckSession
+            ? $this->deckHostChannel($module, (int) $session->id)
+            : $this->hostChannel($module, (int) $session->id);
 
+        $this->afterCommit(function () use ($module, $channel, $event, $payload) {
             $this->broadcastSafely(new ImmediateLiveBroadcastEvent(
                 $channel,
                 $event,
@@ -99,8 +141,15 @@ class LiveSessionService
         ];
     }
 
-    public function participantCountPayload(QuestSession|QuizSession $session): array
+    public function participantCountPayload(QuestSession|QuizSession|DeckSession $session): array
     {
+        if ($session instanceof DeckSession) {
+            return [
+                'session_id' => $session->id,
+                'participant_count' => ParticipantCountUpdatedPayload::countFor($session),
+            ];
+        }
+
         $session->loadCount('participants');
 
         return [
@@ -136,8 +185,21 @@ class LiveSessionService
         $this->broadcastParticipantCount($module, $session);
     }
 
-    public function broadcastParticipantCount(string $module, QuestSession|QuizSession $session): void
+    /** Deck sessions send the typed payload once, on the public channel the host also listens to. */
+    public function broadcastParticipantCount(string $module, QuestSession|QuizSession|DeckSession $session): void
     {
+        if ($session instanceof DeckSession) {
+            $this->assertDeckModule($module, $session);
+            // Count after the commit: two joins in concurrent transactions would
+            // each count only their own uncommitted row and both report N+1.
+            $this->afterCommit(fn () => app(DeckBroadcaster::class)->broadcast(
+                $session,
+                ParticipantCountUpdatedPayload::fromSession($session),
+            ));
+
+            return;
+        }
+
         $payload = $this->participantCountPayload($session);
 
         $this->broadcastPublic($module, $session, 'participant.count.updated', $payload);
@@ -179,6 +241,14 @@ class LiveSessionService
         }
 
         $callback();
+    }
+
+    /** A deck session only broadcasts under its own product; a mismatch is a bug. */
+    private function assertDeckModule(string $module, Model $session): void
+    {
+        if ($session instanceof DeckSession && $session->product() !== $module) {
+            throw new InvalidArgumentException("Deck session {$session->id} is a {$session->product()} session, not {$module}.");
+        }
     }
 
     private function withMeta(string $module, string $event, array $payload): array

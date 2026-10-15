@@ -6,6 +6,7 @@ use App\Models\File;
 use App\Models\User;
 use App\Modules\FileLibrary\Exceptions\FileLibraryException;
 use App\Modules\FileLibrary\Models\FileTextContent;
+use Illuminate\Http\File as LocalFile;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -13,10 +14,11 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Saves uploads into the user's library: checks type and size, reuses an
- * identical file the user already has, enforces the quota and extracts
- * document text. Images are public (/storage/library/...); documents are
- * private and only served through the library API.
+ * Saves uploads into the user's library: checks type and size, shrinks large
+ * images, reuses an identical file the user already has, enforces the quota
+ * and extracts document text. Images and videos are public
+ * (/storage/library/...); documents are private and only served through the
+ * library API.
  */
 class FileStorageService
 {
@@ -31,11 +33,20 @@ class FileStorageService
         'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip', 'application/octet-stream'],
         'pptx' => ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/zip', 'application/octet-stream'],
         'txt' => ['text/*'],
+        'mp4' => ['video/mp4'],
+    ];
+
+    /** Storage folder per category. */
+    private const FOLDERS = [
+        File::CATEGORY_IMAGE => 'images',
+        File::CATEGORY_VIDEO => 'videos',
+        File::CATEGORY_DOCUMENT => 'documents',
     ];
 
     public function __construct(
         private readonly QuotaService $quota,
         private readonly TextExtractionService $extractor,
+        private readonly ImageProcessor $images,
     ) {}
 
     /**
@@ -44,8 +55,26 @@ class FileStorageService
     public function store(User $user, UploadedFile $upload, ?string $name = null): array
     {
         [$extension, $category, $mime] = $this->inspect($upload);
-        $size = (int) $upload->getSize();
-        $checksum = hash_file('sha256', $upload->getRealPath());
+        $prepared = $this->prepare($upload, $category, $mime);
+
+        try {
+            return $this->storePrepared($user, $upload, $name, $extension, $category, $mime, $prepared);
+        } finally {
+            if ($prepared['temp']) {
+                @unlink($prepared['temp']);
+            }
+        }
+    }
+
+    /**
+     * @param  array{path: string, temp: ?string, size: int, width: ?int, height: ?int}  $prepared
+     * @return array{file: File, deduplicated: bool}
+     */
+    private function storePrepared(User $user, UploadedFile $upload, ?string $name, string $extension, string $category, string $mime, array $prepared): array
+    {
+        // Size and checksum come from the bytes we keep (after any resize).
+        $size = $prepared['size'];
+        $checksum = hash_file('sha256', $prepared['path']);
 
         // Same bytes already in the library: reuse them, no extra quota.
         $existing = File::where('user_id', $user->id)->where('checksum', $checksum)->where('category', $category)->first();
@@ -55,7 +84,7 @@ class FileStorageService
             return ['file' => $existing, 'deduplicated' => true];
         }
 
-        $stored = $this->write($user, $upload, $category, $extension);
+        $stored = $this->write($user, $prepared['path'], $category, $extension);
 
         try {
             $file = $this->quota->withReservation($user, $size, fn () => File::create([
@@ -71,18 +100,20 @@ class FileStorageService
                 'disk_path' => $stored['disk_path'],
                 'visibility' => $stored['visibility'],
                 'checksum' => $checksum,
+                'width' => $prepared['width'],
+                'height' => $prepared['height'],
                 'extraction_status' => $this->initialExtractionStatus($extension, $category),
                 'last_used_at' => now(),
                 'user_id' => $user->id,
                 'created_by' => $user->id,
-            ]));
+            ]), newFile: true);
         } catch (Throwable $e) {
             Storage::disk($stored['disk'])->delete($stored['disk_path']);
             throw $e;
         }
 
         if (TextExtractionService::supports($extension)) {
-            $this->extractText($file, $upload->getRealPath());
+            $this->extractText($file, $prepared['path']);
         }
 
         return ['file' => $file->refresh(), 'deduplicated' => false];
@@ -92,12 +123,29 @@ class FileStorageService
     public function replace(User $user, File $file, UploadedFile $upload, ?string $name = null): File
     {
         [$extension, $category, $mime] = $this->inspect($upload);
-        $size = (int) $upload->getSize();
-        $stored = $this->write($user, $upload, $category, $extension);
+        $prepared = $this->prepare($upload, $category, $mime);
+
+        try {
+            return $this->replacePrepared($user, $file, $upload, $name, $extension, $category, $mime, $prepared);
+        } finally {
+            if ($prepared['temp']) {
+                @unlink($prepared['temp']);
+            }
+        }
+    }
+
+    /**
+     * @param  array{path: string, temp: ?string, size: int, width: ?int, height: ?int}  $prepared
+     */
+    private function replacePrepared(User $user, File $file, UploadedFile $upload, ?string $name, string $extension, string $category, string $mime, array $prepared): File
+    {
+        $size = $prepared['size'];
+        $checksum = hash_file('sha256', $prepared['path']);
+        $stored = $this->write($user, $prepared['path'], $category, $extension);
         $old = ['disk' => $file->disk, 'disk_path' => $file->disk_path];
 
         try {
-            $this->quota->withReservation($user, $size - (int) $file->size, function () use ($file, $upload, $stored, $extension, $category, $mime, $size, $name, $user) {
+            $this->quota->withReservation($user, $size - (int) $file->size, function () use ($file, $upload, $stored, $extension, $category, $mime, $size, $checksum, $prepared, $name, $user) {
                 $file->forceFill([
                     'name' => $name ? mb_substr($name, 0, 255) : $file->name,
                     'path' => $stored['path'],
@@ -110,7 +158,9 @@ class FileStorageService
                     'disk' => $stored['disk'],
                     'disk_path' => $stored['disk_path'],
                     'visibility' => $stored['visibility'],
-                    'checksum' => hash_file('sha256', $upload->getRealPath()),
+                    'checksum' => $checksum,
+                    'width' => $prepared['width'],
+                    'height' => $prepared['height'],
                     'extraction_status' => $this->initialExtractionStatus($extension, $category),
                     'page_count' => null,
                     'updated_by' => $user->id,
@@ -126,7 +176,7 @@ class FileStorageService
             Storage::disk($old['disk'] ?: $this->disk())->delete($old['disk_path']);
         }
         if (TextExtractionService::supports($extension)) {
-            $this->extractText($file, $upload->getRealPath());
+            $this->extractText($file, $prepared['path']);
         }
 
         return $file->refresh();
@@ -139,7 +189,7 @@ class FileStorageService
         return $file;
     }
 
-    /** Soft delete: the bytes stay on disk, but the file leaves the library and frees quota. */
+    /** Soft delete: the bytes stay on disk, but the file leaves the library and frees quota (not the daily upload allowance). */
     public function delete(File $file, User $user): void
     {
         $file->forceFill(['is_deleted' => true, 'is_active' => false, 'deleted_by' => $user->id])->save();
@@ -203,8 +253,9 @@ class FileStorageService
         $extension = strtolower($upload->getClientOriginalExtension());
         $allowed = config('file_library.allowed');
         $category = match (true) {
-            in_array($extension, $allowed['image'], true) => File::CATEGORY_IMAGE,
-            in_array($extension, $allowed['document'], true) => File::CATEGORY_DOCUMENT,
+            in_array($extension, $allowed['image'] ?? [], true) => File::CATEGORY_IMAGE,
+            in_array($extension, $allowed['video'] ?? [], true) => File::CATEGORY_VIDEO,
+            in_array($extension, $allowed['document'] ?? [], true) => File::CATEGORY_DOCUMENT,
             default => null,
         };
 
@@ -214,7 +265,7 @@ class FileStorageService
                 'ppt' => ' Please save it as .pptx and upload again.',
                 default => '',
             };
-            $list = implode(', ', array_map(fn ($e) => '.' . $e, array_merge($allowed['image'], $allowed['document'])));
+            $list = implode(', ', array_map(fn ($e) => '.' . $e, array_merge(...array_values($allowed))));
 
             throw FileLibraryException::invalidFile(".{$extension} files are not supported.{$hint} Allowed: {$list}.");
         }
@@ -230,7 +281,7 @@ class FileStorageService
         if ($size <= 0) {
             throw FileLibraryException::invalidFile('The file is empty.');
         }
-        $maxMb = (int) config($category === File::CATEGORY_IMAGE ? 'file_library.max_image_mb' : 'file_library.max_document_mb');
+        $maxMb = (int) config('file_library.max_' . $category . '_mb');
         if ($size > $maxMb * 1024 * 1024) {
             throw FileLibraryException::invalidFile(sprintf('This file is %s; %ss can be at most %d MB.', FileLibraryException::formatBytes($size), $category, $maxMb));
         }
@@ -239,17 +290,40 @@ class FileStorageService
     }
 
     /**
+     * Images are resized here, before anything is hashed or counted; other files pass through.
+     *
+     * @return array{path: string, temp: ?string, size: int, width: ?int, height: ?int}
+     */
+    private function prepare(UploadedFile $upload, string $category, string $mime): array
+    {
+        $original = ['path' => $upload->getRealPath(), 'temp' => null, 'size' => (int) $upload->getSize(), 'width' => null, 'height' => null];
+        if ($category !== File::CATEGORY_IMAGE) {
+            return $original;
+        }
+
+        $image = $this->images->prepare($upload->getRealPath(), $mime);
+
+        return [
+            'path' => $image['path'],
+            'temp' => $image['temp'],
+            'size' => $image['resized'] ? (int) filesize($image['path']) : $original['size'],
+            'width' => $image['width'],
+            'height' => $image['height'],
+        ];
+    }
+
+    /**
      * @return array{disk: string, disk_path: string, path: ?string, visibility: string}
      */
-    private function write(User $user, UploadedFile $upload, string $category, string $extension): array
+    private function write(User $user, string $localPath, string $category, string $extension): array
     {
         $disk = $this->disk();
-        $public = $category === File::CATEGORY_IMAGE;
-        $relative = sprintf('library/%d/%s/%s', $user->id, $public ? 'images' : 'documents', now()->format('Y/m'));
+        $public = in_array($category, File::PUBLIC_CATEGORIES, true);
+        $relative = sprintf('library/%d/%s/%s', $user->id, self::FOLDERS[$category], now()->format('Y/m'));
         $directory = ($public ? 'public/' : 'private/') . $relative;
         $fileName = Str::random(40) . '.' . $extension;
 
-        if (Storage::disk($disk)->putFileAs($directory, $upload, $fileName) === false) {
+        if (Storage::disk($disk)->putFileAs($directory, new LocalFile($localPath), $fileName) === false) {
             throw new \RuntimeException('Could not save the file.');
         }
 
@@ -296,7 +370,7 @@ class FileStorageService
     private function initialExtractionStatus(string $extension, string $category): string
     {
         return match (true) {
-            $category === File::CATEGORY_IMAGE => 'none',
+            $category === File::CATEGORY_IMAGE, $category === File::CATEGORY_VIDEO => 'none',
             $extension === 'pdf' => 'client',
             TextExtractionService::supports($extension) => 'none',
             default => 'unsupported',

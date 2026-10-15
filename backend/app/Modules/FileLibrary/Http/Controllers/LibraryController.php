@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-/** My Files: the signed-in user's own images and documents. Other users' files look like 404s. */
+/** My Files: the signed-in user's own images, videos and documents. Other users' files look like 404s. */
 class LibraryController extends ApiBaseController
 {
     public function __construct(
@@ -31,7 +31,7 @@ class LibraryController extends ApiBaseController
     {
         $params = $request->validate([
             'search' => 'nullable|string|max:100',
-            'category' => 'nullable|in:image,document',
+            'category' => 'nullable|in:image,document,video',
             'sort' => 'nullable|in:newest,oldest,name,size,last_used',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
@@ -101,7 +101,7 @@ class LibraryController extends ApiBaseController
         if (! $request->boolean('force')) {
             $references = $this->references->references($owned);
             if ($references) {
-                throw FileLibraryException::inUse($references);
+                throw FileLibraryException::inUse($references, (string) $owned->category);
             }
         }
 
@@ -126,8 +126,8 @@ class LibraryController extends ApiBaseController
     {
         $owned = $this->ownedFile($request, $file);
 
-        if ($owned->isImage()) {
-            throw FileLibraryException::invalidFile('Images have no text to generate questions from.');
+        if ($owned->isImage() || $owned->isVideo()) {
+            throw FileLibraryException::invalidFile(($owned->isImage() ? 'Images' : 'Videos') . ' have no text to generate questions from.');
         }
         if ($owned->extension === 'pdf') {
             return $this->okResponse(['kind' => 'pdf', 'pageCount' => $owned->page_count, 'pages' => [], 'outline' => []]);

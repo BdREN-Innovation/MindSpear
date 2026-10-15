@@ -1,0 +1,104 @@
+"use client";
+
+import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { cn } from "@/lib/utils";
+import type { Deck, DeckSettingsPatch, Slide, SlidePatch } from "@/features/deck/types";
+import type { OptionsApi, SlideMediaApi } from "../slides/types";
+import { ContentTab } from "./inspector/ContentTab";
+import { DesignTab } from "./inspector/DesignTab";
+import { SettingsTab } from "./inspector/SettingsTab";
+
+type Tab = "content" | "design" | "settings";
+
+const TABS: { key: Tab; label: string }[] = [
+	{ key: "content", label: "Content" },
+	{ key: "design", label: "Design" },
+	{ key: "settings", label: "Settings" },
+];
+
+export interface InspectorPanelProps {
+	deck: Deck;
+	slide: Slide | null;
+	errors?: Record<string, string[]>;
+	onPatch(slideId: number, patch: SlidePatch, options?: { immediate?: boolean }): void;
+	options: OptionsApi | null;
+	media: SlideMediaApi | null;
+	onUpdateSettings(patch: DeckSettingsPatch): Promise<void>;
+	onOpenDeckSettings(): void;
+}
+
+/** Right column: Content (type Editor) / Design (theme) / Settings (timer, results, submissions). */
+export function InspectorPanel({ deck, slide, errors, onPatch, options, media, onUpdateSettings, onOpenDeckSettings }: InspectorPanelProps) {
+	const [tab, setTab] = useState<Tab>("content");
+	const baseId = useId();
+	const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+
+	// WAI-ARIA tabs: arrows move between tabs (automatic activation).
+	const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+		const index = TABS.findIndex((t) => t.key === tab);
+		let next: number | null = null;
+		if (event.key === "ArrowRight") next = (index + 1) % TABS.length;
+		else if (event.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length;
+		else if (event.key === "Home") next = 0;
+		else if (event.key === "End") next = TABS.length - 1;
+		if (next === null) return;
+		event.preventDefault();
+		const key = TABS[next].key;
+		setTab(key);
+		tabRefs.current[key]?.focus();
+	};
+
+	return (
+		<aside
+			// The shell's single-key shortcuts stay out of here (type editors own the keyboard).
+			data-deck-inspector
+			aria-label="Slide inspector"
+			className="flex h-full w-[22rem] shrink-0 flex-col border-l border-stroke bg-white dark:border-stroke-dark dark:bg-gray-dark"
+		>
+			<div role="tablist" aria-label="Inspector" className="flex border-b border-stroke px-2 dark:border-stroke-dark">
+				{TABS.map(({ key, label }) => (
+					<button
+						key={key}
+						ref={(element) => {
+							tabRefs.current[key] = element;
+						}}
+						type="button"
+						role="tab"
+						id={`${baseId}-tab-${key}`}
+						aria-selected={tab === key}
+						aria-controls={`${baseId}-panel-${key}`}
+						tabIndex={tab === key ? 0 : -1}
+						onClick={() => setTab(key)}
+						onKeyDown={onKeyDown}
+						className={cn(
+							"relative min-h-12 flex-1 px-3 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-600",
+							tab === key
+								? "text-dark after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary dark:text-white"
+								: "text-dark-5 hover:text-dark dark:text-dark-6 dark:hover:text-white"
+						)}
+					>
+						{label}
+					</button>
+				))}
+			</div>
+
+			<div
+				role="tabpanel"
+				id={`${baseId}-panel-${tab}`}
+				aria-labelledby={`${baseId}-tab-${tab}`}
+				tabIndex={0}
+				className="min-h-0 flex-1 overflow-y-auto p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-600"
+			>
+				{tab === "design" ? (
+					<DesignTab deck={deck} onUpdateSettings={onUpdateSettings} onOpenDeckSettings={onOpenDeckSettings} />
+				) : !slide || !options || !media ? (
+					<p className="text-sm text-dark-5 dark:text-dark-6">Select a slide to edit it.</p>
+				) : tab === "content" ? (
+					<ContentTab slide={slide} deck={deck} errors={errors} onPatch={onPatch} options={options} media={media} />
+				) : (
+					<SettingsTab slide={slide} deck={deck} errors={errors} onPatch={onPatch} />
+				)}
+			</div>
+		</aside>
+	);
+}

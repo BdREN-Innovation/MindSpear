@@ -140,7 +140,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 					: !options.topic.trim()
 						? "Enter a topic."
 						: options.questionTypes.length === 0
-							? `Choose at least one ${target === "quest" ? "task" : "question"} type.`
+							? `Choose at least one ${noun.singular} type.`
 							: options.questionCount < 1 || options.questionCount > MAX_QUESTIONS
 								? `Choose between 1 and ${MAX_QUESTIONS} ${noun.plural}.`
 								: null;

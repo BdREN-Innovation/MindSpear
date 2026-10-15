@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
- * A file in a user's library ("My Files"). Images are public (served from
- * /storage); documents are private and served through the library API.
+ * A file in a user's library ("My Files"). Images and videos are public (served
+ * from /storage); documents are private and served through the library API.
  * Soft-deleted files stay on disk but no longer count toward the quota.
  */
 class File extends Model
@@ -21,6 +21,11 @@ class File extends Model
     public const CATEGORY_IMAGE = 'image';
 
     public const CATEGORY_DOCUMENT = 'document';
+
+    public const CATEGORY_VIDEO = 'video';
+
+    /** Categories stored publicly under /storage/library/{user}/{folder}. */
+    public const PUBLIC_CATEGORIES = [self::CATEGORY_IMAGE, self::CATEGORY_VIDEO];
 
     public const VISIBILITY_PUBLIC = 'public';
 
@@ -40,6 +45,8 @@ class File extends Model
         'visibility',
         'checksum',
         'page_count',
+        'width',
+        'height',
         'extraction_status',
         'last_used_at',
         'user_id',
@@ -64,6 +71,8 @@ class File extends Model
         'is_deleted' => 'boolean',
         'size' => 'integer',
         'page_count' => 'integer',
+        'width' => 'integer',
+        'height' => 'integer',
         'user_id' => 'integer',
         'created_by' => 'integer',
         'updated_by' => 'integer',
@@ -94,6 +103,11 @@ class File extends Model
     public function isImage(): bool
     {
         return $this->category === self::CATEGORY_IMAGE;
+    }
+
+    public function isVideo(): bool
+    {
+        return $this->category === self::CATEGORY_VIDEO;
     }
 
     // Relationships

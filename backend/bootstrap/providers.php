@@ -6,4 +6,5 @@ return [
     App\Providers\Filament\AdminPanelProvider::class,
     App\Modules\FunGame\Providers\FunGameServiceProvider::class,
     App\Modules\FileLibrary\Providers\FileLibraryServiceProvider::class,
+    App\Providers\DeckServiceProvider::class,
 ];

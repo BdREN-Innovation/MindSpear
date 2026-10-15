@@ -33,17 +33,29 @@ class FileLibraryException extends RuntimeException
         return new self($message, 422, 'quota_exceeded', ['used' => $used, 'limit' => $limit, 'required' => $required]);
     }
 
+    public static function dailyUploadLimit(int $uploaded, int $limit, int $required): self
+    {
+        $message = sprintf(
+            'Upload limit reached: you have uploaded %s in the last 24 hours (deleted files included) and the daily limit is %s. Please try again later.',
+            self::formatBytes($uploaded),
+            self::formatBytes($limit),
+        );
+
+        return new self($message, 422, 'daily_upload_limit', ['uploaded' => $uploaded, 'limit' => $limit, 'required' => $required]);
+    }
+
     public static function invalidFile(string $message): self
     {
         return new self($message, 422, 'invalid_file');
     }
 
-    public static function inUse(array $references): self
+    public static function inUse(array $references, string $category = 'image'): self
     {
         $total = array_sum($references);
+        $noun = in_array($category, ['image', 'video'], true) ? $category : 'file';
 
         return new self(
-            sprintf('This image is used in %d %s. Those questions keep showing it, but it will no longer be in My Files.', $total, $total === 1 ? 'place' : 'places'),
+            sprintf('This %s is used in %d %s. Those places keep showing it, but it will no longer be in My Files.', $noun, $total, $total === 1 ? 'place' : 'places'),
             409,
             'file_in_use',
             ['references' => $references, 'total' => $total],

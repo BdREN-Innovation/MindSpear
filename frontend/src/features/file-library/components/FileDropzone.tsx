@@ -34,10 +34,34 @@ interface Props {
 const ACCEPT_HINT: Record<FileAccept, string> = {
 	image: "Images",
 	document: "Documents",
-	any: "Documents and images",
+	video: "Videos (browser-playable MP4)",
+	any: "Documents, images and videos",
 };
 
 let nextKey = 1;
+
+/** Share of the user's storage one largest-allowed video takes, or null when it's negligible. */
+function videoQuotaShare(usage: StorageUsage): number | null {
+	const { video } = usage.maxFileSize;
+	if (!video || usage.limit <= 0) return null;
+	const percent = Math.round((video / usage.limit) * 100);
+	return percent >= 1 ? percent : null;
+}
+
+function maxSizeHint(accept: FileAccept, usage: StorageUsage): string {
+	const { image, document, video } = usage.maxFileSize;
+	// One large video can use a big share of the quota; say so before people pick one.
+	const share = videoQuotaShare(usage);
+	if (accept === "any") {
+		const videoHint = video ? `, ${formatBytes(video)} per video${share ? ` (one uses ${share}% of your storage)` : ""}` : "";
+		return `Up to ${formatBytes(document)} per document, ${formatBytes(image)} per image${videoHint}`;
+	}
+	const hint = `Up to ${formatBytes(usage.maxFileSize[accept])} per file`;
+	if (accept === "video" && share) {
+		return `${hint} · one ${formatBytes(video)} video uses ${share}% of your storage`;
+	}
+	return hint;
+}
 
 /** Drag-and-drop upload into My Files, with per-file progress and friendly errors. */
 export function FileDropzone({ accept, usage, onUploaded, multiple = false, compact = false, className }: Props) {
@@ -102,11 +126,7 @@ export function FileDropzone({ accept, usage, onUploaded, multiple = false, comp
 	const extensions = acceptedExtensions(accept, usage);
 	const { getRootProps, getInputProps, isDragActive, open } = useDropzone({ onDrop, multiple, noClick: true, noKeyboard: true });
 	const full = usage ? usage.remaining <= 0 : false;
-	const maxSizes =
-		usage &&
-		(accept === "any"
-			? `Up to ${formatBytes(usage.maxFileSize.document)} per document, ${formatBytes(usage.maxFileSize.image)} per image`
-			: `Up to ${formatBytes(usage.maxFileSize[accept])} per file`);
+	const maxSizes = usage ? maxSizeHint(accept, usage) : null;
 
 	return (
 		<div className={className}>

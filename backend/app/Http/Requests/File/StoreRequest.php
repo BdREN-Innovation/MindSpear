@@ -28,8 +28,17 @@ class StoreRequest extends BaseFormRequest
         ];
     }
 
+    /**
+     * The largest file any library category takes (videos are the biggest), so
+     * this pre-check never refuses an upload FileStorageService would accept;
+     * the per-category limit is applied there with a friendlier message.
+     */
     public static function maxKilobytes(): int
     {
-        return max((int) config('file_library.max_image_mb'), (int) config('file_library.max_document_mb')) * 1024;
+        return max(
+            (int) config('file_library.max_image_mb'),
+            (int) config('file_library.max_document_mb'),
+            (int) config('file_library.max_video_mb'),
+        ) * 1024;
     }
 }

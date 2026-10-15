@@ -1,12 +1,15 @@
 FROM php:8.4-cli
 
+# GD needs JPEG and WebP so My Files can shrink photos (ImageProcessor), and exif
+# so phone photos are turned upright before they are re-encoded.
 RUN apt-get update && apt-get install -y \
-    git unzip libpq-dev libzip-dev libicu-dev libpng-dev libxml2-dev \
- && docker-php-ext-install pdo pdo_pgsql pgsql zip intl gd dom xml pcntl \
+    git unzip libpq-dev libzip-dev libicu-dev libpng-dev libjpeg62-turbo-dev libwebp-dev libxml2-dev \
+ && docker-php-ext-configure gd --with-jpeg --with-webp \
+ && docker-php-ext-install pdo pdo_pgsql pgsql zip intl gd exif dom xml pcntl \
  && rm -rf /var/lib/apt/lists/* \
  && echo "variables_order = EGPCS" > /usr/local/etc/php/conf.d/env.ini
-# My Files uploads: allow documents up to 25 MB (config/file_library.php) plus form overhead
-RUN printf "upload_max_filesize = 30M\npost_max_size = 32M\nmemory_limit = 512M\n" > /usr/local/etc/php/conf.d/uploads.ini
+# My Files uploads: allow videos up to 50 MB (config/file_library.php) plus form overhead
+RUN printf "upload_max_filesize = 60M\npost_max_size = 64M\nmemory_limit = 512M\n" > /usr/local/etc/php/conf.d/uploads.ini
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

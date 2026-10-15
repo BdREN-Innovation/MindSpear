@@ -112,6 +112,7 @@ export function FileBrowser({
 								["all", "All"],
 								["document", "Documents"],
 								["image", "Images"],
+								["video", "Videos"],
 							] as const
 						).map(([value, label]) => (
 							<button
@@ -199,7 +200,7 @@ export function FileBrowser({
 							<>
 								<FolderOpen className="mb-3 h-10 w-10 text-primary" aria-hidden />
 								<p className="font-semibold text-dark dark:text-white">
-									{category === "image" ? "No images yet" : category === "document" ? "No documents yet" : "No files yet"}
+									{category === "image" ? "No images yet" : category === "document" ? "No documents yet" : category === "video" ? "No videos yet" : "No files yet"}
 								</p>
 								<p className="mt-1 max-w-sm text-sm text-dark-5">Files you upload are kept here so you can reuse them in quizzes, quests and games.</p>
 								{emptyAction ? <div className="mt-4">{emptyAction}</div> : null}

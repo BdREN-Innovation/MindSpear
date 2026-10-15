@@ -32,6 +32,24 @@ class QuotaService
         return (int) File::where('user_id', $userId)->sum('size');
     }
 
+    /** At least the default daily allowance, and never less than the user's own quota. */
+    public function dailyUploadLimitFor(User $user): int
+    {
+        return max(max(0, (int) config('file_library.max_daily_upload_mb', 1024)) * 1024 * 1024, $this->limitFor($user));
+    }
+
+    /**
+     * Bytes written for the user in the last 24 hours, files deleted since included:
+     * a delete frees quota but leaves the bytes on disk.
+     */
+    public function uploadedToday(int $userId): int
+    {
+        return (int) File::withTrashed()
+            ->where('user_id', $userId)
+            ->where('created_at', '>=', now()->subDay())
+            ->sum('size');
+    }
+
     public function usage(User $user): array
     {
         $rows = File::where('user_id', $user->id)
@@ -46,7 +64,8 @@ class QuotaService
         ];
         $images = $byCategory(File::CATEGORY_IMAGE);
         $documents = $byCategory(File::CATEGORY_DOCUMENT);
-        $used = $images['bytes'] + $documents['bytes'];
+        $videos = $byCategory(File::CATEGORY_VIDEO);
+        $used = $images['bytes'] + $documents['bytes'] + $videos['bytes'];
         $limit = $this->limitFor($user);
 
         return [
@@ -56,32 +75,44 @@ class QuotaService
             'percent' => $limit > 0 ? min(100, round($used / $limit * 100, 1)) : 100,
             'images' => $images,
             'documents' => $documents,
+            'videos' => $videos,
             'maxFileSize' => [
                 'image' => (int) config('file_library.max_image_mb') * 1024 * 1024,
                 'document' => (int) config('file_library.max_document_mb') * 1024 * 1024,
+                'video' => (int) config('file_library.max_video_mb') * 1024 * 1024,
             ],
             'allowed' => config('file_library.allowed'),
         ];
     }
 
     /**
-     * Runs $insert only if $bytes still fit in the user's quota. The advisory lock
-     * serialises concurrent uploads by the same user so two can't both squeeze in.
+     * Runs $insert only if $bytes still fit in the user's quota (and, for a new
+     * file, in their daily upload allowance). The advisory lock serialises
+     * concurrent uploads by the same user so two can't both squeeze in.
      *
      * @template T
      *
      * @param  Closure(): T  $insert
      * @return T
      */
-    public function withReservation(User $user, int $bytes, Closure $insert): mixed
+    public function withReservation(User $user, int $bytes, Closure $insert, bool $newFile = false): mixed
     {
-        return DB::transaction(function () use ($user, $bytes, $insert) {
+        return DB::transaction(function () use ($user, $bytes, $insert, $newFile) {
             DB::select('SELECT pg_advisory_xact_lock(?, ?)', [self::LOCK_NAMESPACE, $user->id]);
 
             $used = $this->usedBy($user->id);
             $limit = $this->limitFor($user);
             if ($bytes > 0 && $used + $bytes > $limit) {
                 throw FileLibraryException::quotaExceeded($used, $limit, $bytes);
+            }
+
+            // Replacing a file's bytes deletes the old ones, so only new files count here.
+            if ($newFile && $bytes > 0) {
+                $uploaded = $this->uploadedToday($user->id);
+                $dailyLimit = $this->dailyUploadLimitFor($user);
+                if ($uploaded + $bytes > $dailyLimit) {
+                    throw FileLibraryException::dailyUploadLimit($uploaded, $dailyLimit, $bytes);
+                }
             }
 
             return $insert();

@@ -1,5 +1,6 @@
 import type { ImportFileQuestionV1 } from "@/features/fun-games/types";
-import type { FunGameAiQuestion, QuestAiTask, QuizAiQuestion } from "./types";
+import { DECK_LIMITS, type BulkSlideInput, type BulkSlidesInput } from "@/features/deck/types";
+import type { FunGameAiQuestion, QuestAiTask, QuestV2AiSlide, QuizAiQuestion } from "./types";
 
 // Turn AI output into the payloads each editor already saves.
 
@@ -45,6 +46,42 @@ export function toQuestTasks(tasks: QuestAiTask[], questId: string | number, sta
 			},
 		};
 	});
+}
+
+/** Quest v2 types whose options are free text slots; the others take none. */
+const QUEST_V2_OPTION_TYPES = new Set(["poll_single", "poll_multi", "scales", "ranking", "rating"]);
+
+/**
+ * Slides for POST /quests/v2/{deck}/slides/bulk (backend BulkSlidesRequest):
+ * {type, title, options?: [{label}]}; config stays at the type defaults.
+ * Labels are trimmed, de-duplicated and capped like the backend (title ≤ 280,
+ * label ≤ 200, ranking ≤ 12 / scales ≤ 20 / others ≤ 30 options).
+ */
+export function toQuestSlides(slides: QuestV2AiSlide[]): BulkSlideInput[] {
+	return slides.slice(0, DECK_LIMITS.maxBulkSlides).map((slide) => {
+		const title = slide.title.trim().slice(0, DECK_LIMITS.maxSlideTitle);
+		if (!QUEST_V2_OPTION_TYPES.has(slide.type)) return { type: slide.type, title };
+
+		const seen = new Set<string>();
+		const labels = slide.options
+			.map((option) => option.trim().slice(0, DECK_LIMITS.maxOptionLabel))
+			.filter((label) => {
+				const key = label.toLowerCase();
+				if (!label || seen.has(key)) return false;
+				seen.add(key);
+				return true;
+			})
+			.slice(0, DECK_LIMITS.optionMax[slide.type] ?? DECK_LIMITS.optionMax.default);
+
+		// Too few usable options: let the backend seed the type's default (empty) ones.
+		const min = DECK_LIMITS.optionMin[slide.type] ?? 1;
+		return labels.length >= min ? { type: slide.type, title, options: labels.map((label) => ({ label })) } : { type: slide.type, title };
+	});
+}
+
+/** The bulk body, inserted after `afterPosition` (null = at the end). */
+export function toQuestSlidesBulk(slides: QuestV2AiSlide[], afterPosition: number | null = null): BulkSlidesInput {
+	return { slides: toQuestSlides(slides), after_position: afterPosition };
 }
 
 /** Rows for the fun-game JSON import preview (single answer only). */

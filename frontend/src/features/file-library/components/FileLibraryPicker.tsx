@@ -39,7 +39,9 @@ export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Us
 	useEffect(() => {
 		if (!usage || tabChosen.current) return;
 		tabChosen.current = true;
-		const count = accept === "any" ? usage.images.count + usage.documents.count : usage[accept === "image" ? "images" : "documents"].count;
+		const videos = usage.videos?.count ?? 0;
+		const count =
+			accept === "any" ? usage.images.count + usage.documents.count + videos : accept === "video" ? videos : usage[accept === "image" ? "images" : "documents"].count;
 		if (count === 0) setTab("upload");
 	}, [usage, accept]);
 
@@ -144,7 +146,8 @@ interface PickerProps extends Omit<FilePickerPanelProps, "onCancel"> {
 
 /** Modal file picker: reuse something from My Files or upload a new file. */
 export function FileLibraryPicker({ open, onClose, title, ...panel }: PickerProps) {
-	const defaultTitle = panel.accept === "image" ? "Choose an image" : panel.accept === "document" ? "Choose a document" : "Choose a file";
+	const defaultTitle =
+		panel.accept === "image" ? "Choose an image" : panel.accept === "document" ? "Choose a document" : panel.accept === "video" ? "Choose a video" : "Choose a file";
 	return (
 		<Modal title={title ?? defaultTitle} open={open} onClose={onClose} size="md" destroyOnClose>
 			{open ? <FilePickerPanel {...panel} onCancel={onClose} /> : null}

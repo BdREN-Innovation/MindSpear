@@ -8,6 +8,11 @@ import moment from "@/lib/dayjs";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui";
 import { toast } from "react-toastify";
+import { questParticipantApi } from "@/features/deck/api/participantApi";
+import { toDeckApiError } from "@/features/deck/api/errors";
+import { saveJoinDraft } from "@/features/deck/live/participantSession";
+import { isV2JoinCode } from "@/features/deck-participant/lib/joinCode";
+import { friendlyError } from "@/features/deck-participant/lib/errors";
 
 function JoinPage() {
   const [currentJoinCode, setCurrentJoinCode] = useState("");
@@ -29,6 +34,30 @@ function JoinPage() {
     if (!trimmed) {
       toast.error("Please enter a join code");
       return;
+    }
+
+    // Quest v2 first: a 6-character code from the v2 alphabet is looked up
+    // by-code; only a 404 falls through to the legacy Q/T/S prefix logic.
+    if (isV2JoinCode(trimmed)) {
+      const v2Code = trimmed.toUpperCase().replace(/[\s-]+/g, "");
+      try {
+        const session = await questParticipantApi.lookupByCode(v2Code);
+        saveJoinDraft("quest", {
+          sessionId: session.session_id,
+          joinCode: session.join_code || v2Code,
+          deckTitle: session.deck_title,
+          publicChannelKey: session.public_channel_key,
+        });
+        router.push(`/play/${v2Code}`);
+        return;
+      } catch (error) {
+        const deckError = toDeckApiError(error);
+        if (deckError.status === 429) {
+          toast.error(friendlyError(deckError, "lookup"));
+          return;
+        }
+        // 404 (not a live v2 session) or a transport error: try the legacy codes.
+      }
     }
 
     const prefix = trimmed.charAt(0).toUpperCase();

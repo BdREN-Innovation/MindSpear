@@ -14,7 +14,11 @@ class UploadRequest extends BaseFormRequest
 
     public function rules(): array
     {
-        $maxKb = max((int) config('file_library.max_image_mb'), (int) config('file_library.max_document_mb')) * 1024;
+        $maxKb = max(
+            (int) config('file_library.max_image_mb'),
+            (int) config('file_library.max_document_mb'),
+            (int) config('file_library.max_video_mb'),
+        ) * 1024;
 
         return [
             'file' => 'required|file|max:' . $maxKb,

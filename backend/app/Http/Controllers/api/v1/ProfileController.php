@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers\api\v1;
 
+use App\Deck\Support\DeckFeature;
 use App\Http\Requests\Profile\ChangePasswordRequest;
 use App\Http\Requests\Profile\UpdateProfilePictureRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
+use App\Models\Deck\Deck;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,8 +25,12 @@ class ProfileController extends ApiBaseController
                 return $this->unauthorizedResponse([], __('Unauthorized access.'));
             }
 
-            // Return the user's profile
-            return $this->okResponse(['profile' => $request->user()], __('Profile retrieved successfully.'));
+            // Return the user's profile. quest_v2_enabled is the effective flag: the
+            // user's own, or true for everyone while QUEST_V2_DEFAULT_ENABLED is on.
+            $profile = $request->user()->toArray();
+            $profile['quest_v2_enabled'] = DeckFeature::enabled($request->user(), Deck::PRODUCT_QUEST);
+
+            return $this->okResponse(['profile' => $profile], __('Profile retrieved successfully.'));
         } catch (Throwable $e) {
             // Log the error for debugging purposes
             Log::error('Failed to retrieve profile', [

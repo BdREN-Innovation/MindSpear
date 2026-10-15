@@ -59,7 +59,7 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 
 			<fieldset>
 				<legend className={labelClass}>
-					{target === "quest" ? "Task" : "Question"} types <span className="text-red">*</span>
+					{noun.singular.charAt(0).toUpperCase() + noun.singular.slice(1)} types <span className="text-red">*</span>
 				</legend>
 				<div className="flex flex-wrap gap-2">
 					{QUESTION_TYPES[target].map((type) => {

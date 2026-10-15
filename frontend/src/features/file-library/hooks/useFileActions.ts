@@ -35,8 +35,8 @@ export function useFileActions() {
 						.join(", ");
 					await ConfirmDialog.show(
 						{
-							title: "This image is still in use",
-							text: `It appears in ${places}. Those questions will keep showing it, but you won't be able to reuse it from My Files. Delete anyway?`,
+							title: `This ${file.category === "document" ? "file" : file.category} is still in use`,
+							text: `It appears in ${places}. Those places will keep showing it, but you won't be able to reuse it from My Files. Delete anyway?`,
 							confirmButtonText: "Delete anyway",
 						},
 						async () => {

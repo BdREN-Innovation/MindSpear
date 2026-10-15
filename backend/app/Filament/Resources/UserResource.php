@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources;
 
+use App\Deck\Support\DeckFeature;
 use App\Filament\Resources\UserResource\Pages;
+use App\Models\Deck\Deck;
 use App\Models\Institution;
 use App\Models\User;
 use App\Modules\FileLibrary\Exceptions\FileLibraryException;
@@ -21,6 +23,7 @@ class UserResource extends Resource
     protected static ?string $model = User::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
+
     protected static ?string $navigationGroup = 'Management';
 
     public static function form(Form $form): Form
@@ -64,6 +67,13 @@ class UserResource extends Resource
                         ->content(fn (?User $record) => $record ? self::storageSummary($record) : '—')
                         ->visibleOn('edit'),
                 ])->columns(2),
+                Forms\Components\Section::make('Features')->schema([
+                    Forms\Components\Toggle::make('quest_v2_enabled')
+                        ->label('Quest v2')
+                        ->helperText(fn () => DeckFeature::enabledForEveryone(Deck::PRODUCT_QUEST)
+                            ? 'Quest v2 is currently on for every account (QUEST_V2_DEFAULT_ENABLED).'
+                            : 'Lets this user create, edit and host Quest v2 decks.'),
+                ]),
             ]);
     }
 
@@ -75,7 +85,7 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('id')->sortable(),
                 Tables\Columns\TextColumn::make('full_name')
                     ->label('Name')
-                    ->searchable(['first_name','last_name'])
+                    ->searchable(['first_name', 'last_name'])
                     ->formatStateUsing(function ($record) {
                         $name = e($record->full_name);
                         $raw = $record->getRawOriginal('profile_picture');
@@ -88,6 +98,7 @@ class UserResource extends Resource
                             $initial = strtoupper(mb_substr($base, 0, 1));
                             $avatar = "<span class=\"h-9 w-9 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 inline-flex items-center justify-center text-sm font-semibold shrink-0\">{$initial}</span>";
                         }
+
                         return "<span class=\"inline-flex items-center gap-2\">{$avatar}<span>{$name}</span></span>";
                     })
                     ->html(),
@@ -154,7 +165,25 @@ class UserResource extends Resource
                             ->label('Storage (My Files)')
                             ->state(fn (User $record) => self::storageSummary($record)),
                     ])->columns(3),
+                Section::make('Features')
+                    ->schema([
+                        TextEntry::make('quest_v2_enabled')
+                            ->label('Quest v2')
+                            ->state(fn (User $record) => self::questV2Summary($record))
+                            ->badge()
+                            ->color(fn (User $record) => DeckFeature::enabled($record, Deck::PRODUCT_QUEST) ? 'success' : 'gray'),
+                    ]),
             ]);
+    }
+
+    /** "Enabled" / "Disabled", noting when QUEST_V2_DEFAULT_ENABLED turns it on for everyone. */
+    public static function questV2Summary(User $user): string
+    {
+        if ($user->quest_v2_enabled) {
+            return 'Enabled';
+        }
+
+        return DeckFeature::enabledForEveryone(Deck::PRODUCT_QUEST) ? 'Enabled for everyone (QUEST_V2_DEFAULT_ENABLED)' : 'Disabled';
     }
 
     /** e.g. "12.4 MB of 100 MB used (12.4%)". */
