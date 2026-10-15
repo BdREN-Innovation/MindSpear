@@ -85,10 +85,10 @@ New event payloads (routed through `LiveBroadcastEvent` with typed DTOs, not new
 |---|---|---|
 | `slide.changed` | Public | Host navigated to a new slide |
 | `slide.state.changed` | Public | State machine transitioned (state + state_version + seconds_remaining) |
-| `slide.aggregate.updated` | Public | Debounced (500ms) aggregate snapshot — live-updating charts |
-| `slide.closed` | Public | Voting closed; final aggregate attached |
-| `qa.question.submitted` | Public | New Q&A question appended (payload: question_id, body, participant emoji, upvote_count=0) |
-| `qa.question.upvoted` | Public | Upvote delta (question_id, upvote_count) |
+| `slide.aggregate.updated` | Public only for `live_aggregate` slides with "Show votes to participants" on (`config.show_results_to_participants`, default off, §5.6); otherwise Private (host) | Debounced (500ms) aggregate snapshot — live-updating charts |
+| `slide.closed` | Public | Voting closed; final aggregate attached only when participants may see results (else `aggregate: null` and the host gets the final aggregate as a host-only `slide.aggregate.updated`) |
+| `qa.question.submitted` | Public (Private (host) when the slide hides the feed from participants) | New Q&A question appended (payload: question_id, body, participant emoji, upvote_count=0) |
+| `qa.question.upvoted` | Public (Private (host) for hidden questions or a hidden feed) | Absolute count (question_id, upvote_count) |
 | `qa.question.moderated` | Private (host) + Public (redacted) | Host hid / starred / marked answered |
 | `participant.count.updated` | Public | Already exists |
 | `answer.submitted` | Private (host) | Already exists — extend payload to include `time_to_answer_ms` |
@@ -256,6 +256,14 @@ $aggregateService->schedule(
 
 Service maintains per-slide-run timestamps in Redis (`agg:debounce:{slide_run_id}`). If a broadcast was sent in the last 500ms, the next call schedules a job instead of firing immediately.
 
+The trailing job runs on the default queue (the `queue` service). Its worker runs with `--sleep=0.2`; with the default 3 s poll the last update of a burst could land up to 3 s late.
+
+**Lessons from the legacy debounce (removed in `8bcb3ab`).** Legacy live sessions had a 1s `Cache::add` debounce that dispatched a *delayed* job and dropped every other call. In Docker no worker consumed the `default` queue (fixed: `queue` service in `docker-compose.yml`), so the delayed job never ran and charts froze; the debounce was removed and every answer now queues a snapshot. The v2 debounce must:
+- broadcast the first change immediately (leading edge), and guarantee one trailing broadcast after the window (never drop the last state);
+- compute the aggregate when the job runs, not when it was scheduled;
+- keep at most one pending trailing job per slide run;
+- be covered by a test that fakes time and asserts the final broadcast carries the final count.
+
 **Phase 1 exit criteria:**
 - Migrations green on PostgreSQL.
 - Every slide type has a registry class + Pest tests for `validateConfig`, `validateAnswer`, `aggregate`, `serializeForParticipant` (privacy), `score` (zero for Quest).
@@ -274,6 +282,95 @@ Quest v2 adds no storage of its own. All media is a row in `files` owned by the 
 - **Reference tracking.** `FileReferenceService` gets the new columns (`decks.cover_file_id`, `slides.media_file_id`, `slide_options.image_file_id`) as exact id matches (no filename `LIKE`). Deleting a file from My Files that a deck still uses shows the existing "still in use" warning. Because deletes are soft deletes and files stay on disk, decks keep showing the media.
 - **Duplicate / delete.** Duplicating a deck or slide copies the `*_file_id` values — no new files, no extra quota. Deleting a deck or slide never touches My Files.
 - **Ownership.** Attaching a file to a slide requires `FilePolicy::manage` (the file belongs to the deck owner).
+
+### Implementation notes (done 2026-10-17)
+
+Phase 1 is built: migrations are green on PostgreSQL, the full backend suite passes (681 tests), and a tinker smoke created a quest deck with all 20 slide types, snapshotted a session and broadcast to the dev Reverb. Where the code differs from the text above, **the code is the contract**; Phases 2–3 build against what follows.
+
+**Where things live (backend/).**
+- Schema: `database/migrations/Deck/2026_10_17_000001…000010` (loaded by `App\Providers\DeckServiceProvider`), plus `app/Modules/FileLibrary/Database/Migrations/2026_10_17_000101_add_dimensions_to_files.php` and `…000102_index_deck_file_references.php`. `slides (deck_id, position)` is unique only `WHERE deleted_at IS NULL`. Runs also snapshot `title_snapshot` / `body_snapshot`. `deck_session_slide_runs.slide_id` is `nullOnDelete`.
+- Models and factories: `app/Models/Deck/*`, `database/factories/Deck/*`. Use `DeckFactory::newOwner()` for users in tests; `UserFactory` targets a `name` column that no longer exists.
+- Engine: `app/Deck/Slides/{SlideTypeContract, AbstractSlideType, SlideTypeRegistry, ScoreResult, UnknownSlideType, AppendsSubmissions, TakesMedia}.php`. Types live in `app/Deck/Slides/Types/Quest/*` (11) and `app/Deck/Slides/Types/Content/*` (9). Helpers that are not types: `PollOptions`, `PollSettings`, `PollText`, `PointCloud`.
+- Broadcasting: `app/Deck/Broadcasts/{BroadcastPayload, DeckChannels, DeckBroadcaster}.php` and `Payloads/*`. Q&A: `app/Deck/Qa/{LiveQaService, Jobs/BroadcastQaUpvoteCount}.php`. Trailing aggregate job: `app/Jobs/Deck/BroadcastDeckAggregate.php`. Config: `config/deck.php`.
+- Tests: `tests/Feature/Deck/*`. `Phase1IntegrationTest.php` checks the shared rules across every registered type.
+
+**Slide type contract (differs from §1.3).** `SlideTypeRegistry` discovers every concrete type under `app/Deck/Slides/Types`; nothing is registered by hand.
+```php
+key(); products(); category() /* poll|interactive|content */; revealModel(); acceptsAnswers();
+defaultConfig(); defaultOptions() /* list<{label, payload}> */;
+validateConfig(array $config): array;                                  // normalised; unknown keys dropped; bare error keys
+validateAnswer(array $payload, array $config, array $options): array;  // returns the payload to store
+score(array $payload, array $config, array $options, int $timeToAnswerMs): ScoreResult;
+aggregate(array $config, array $options, Collection $answers): array;  // pure; answers = DeckParticipantAnswer rows
+serializeForPresenter(DeckSessionSlideRun $run, array $aggregate): array;
+serializeForParticipant(DeckSessionSlideRun $run): array;              // never aggregate / is_correct
+// registry: for($key), has(), all(), keys(), forProduct($product), aggregate(DeckSessionSlideRun $run, ?Collection $answers = null)
+```
+- `$options` is the run's `options_snapshot`: `list<{id, position, label, image_file_id, image_url, is_correct, payload}>`.
+- Validation error keys are bare (`option_ids`, `items.2`, `media`). Controllers add the `config.` / `answer_payload.` prefix in one place.
+- Phase 2 must enforce minimum option counts: at least 2 for poll_single, poll_multi and ranking; at least 1 statement for scales.
+- Phase 2 must also cap option counts, because aggregates are broadcast whole and Reverb drops publishes over 10,000 bytes. Measured worst-case Pusher bodies:
+
+  | Type | Size measured | Over 10 KB at |
+  |---|---|---|
+  | ranking | 4.5 KB at 10 items, 6.0 KB at 12, 8.8 KB at 15 | 14.7 KB at 20 items |
+  | scales (10 points) | 3.9 KB at 10 statements, 7.3 KB at 20 | 10.8 KB at 30 statements |
+  | rating | 6.6 KB at 30 items | — |
+
+  Suggested caps: ranking ≤ 12 items, scales ≤ 20 statements, everything else ≤ 30 options.
+- `AppendsSubmissions` (word_cloud, open_ended): the submit endpoint merges a repeat submission with `mergeSubmissions()`; every other type replaces the answer (`updateOrCreate`). The interface docblock describes the locked insert-or-merge flow Phase 3 must implement, with a concurrency test.
+
+**Per-type config / answer / aggregate (summary; each class docblock has the full shape).** Every live poll type's config ends with `show_results_to_participants: bool = false` (`PollSettings`; this is §5.6's "Show votes to participants").
+
+| Type | Config (defaults) | Answer in → stored | Aggregate |
+|---|---|---|---|
+| `poll_single` | `result_layout: bars`, `submit_mode: instant\|confirm` | `{option_id}` | `{total_responses, total_votes, options[{option_id, count, percentage}]}` |
+| `poll_multi` | `min_selections: 1`, `max_selections: null` | `{option_ids[]}` → in option order | as above; % of respondents, plus `average_selections_per_participant` |
+| `word_cloud` | `max_entries_per_participant: 3` (total), `max_entry_length: 25`, `profanity_filter_enabled: true`, `allow_multiple_submissions: false` | `{entries[]}` → `{entries[], entry_times[]}` | `{total_responses, total_entries, distinct_words, truncated, words[{word, count, first_seen_at}]}`, ≤ 75 words within a 7,000-byte budget |
+| `open_ended` | `max_length: 500`, `max_submissions_per_participant: 1`, `profanity_filter_enabled: true` | `{text}` → `{entries[{body, submitted_at}]}` | broadcast preview: 10 newest cards, bodies cut to 200 chars (`body_truncated`, `truncated`). Full pages come from `OpenEndedSlideType::page()` for `GET /aggregate?page=N` |
+| `scales` | `scale_points: 5`, `scale_labels[5]`, `require_all_statements: false` | `{ratings[{option_id, value}]}` | `{total_responses, scale_points, statements[{option_id, count, mean, distribution[]}]}` |
+| `ranking` | `require_full_ranking: true` | `{order[]}` (best first) | `{total_responses, item_count, items[{option_id, rank, average_position, count, position_counts[]}]}` |
+| `qa_audience` | `allow_anonymous`, `show_feed_to_participants`, `sort: top\|newest`, `profanity_filter_enabled: true`, `max_question_length: 280` (10..1000) | no answers (`acceptsAnswers()` false) → `LiveQaService` | describes the feed only |
+| `points_allocation` | `total_points: 100` | `{allocations[{option_id, points}]}`, sum must equal total → every option listed | `{total_responses, total_points, total_points_distributed, options[{option_id, points, percentage, average_points}]}` |
+| `rating` | `scale: 3\|5\|7\|10 = 5`, `require_all_items: false` | `{ratings[{option_id, value}]}` | `{total_responses, scale, items[{option_id, count, mean, distribution[]}]}` |
+| `matrix_2x2` | `x_axis{low, high}`, `y_axis{low, high}` | `{x, y}`, 0–100 (y 100 = top) | `{total_responses, total_points, points (latest 150), density{size: 20, counts}, centroid}` |
+| `pin_on_image` | `max_pins_per_participant: 1` (snapshot adds `media`) | `{pins[{x, y}]}` or `{x, y}`, 0–100 from top-left | `{total_responses, total_pins, pins (latest 150), density}` |
+| content (9) | heading `{subtitle}` (the heading text is the slide `title`); paragraph `{align, text_size}` with its rich text in `slides.body`, checked by `ParagraphSlideType::validateBody()`; bullets/numbered `{items[]}`; quote `{text, attribution}`; image `{caption, alt}`; video `{video_url}` plus derived `video_provider`/`video_id`/`embed_url` (`VideoSlideType::parseVideoUrl()`); big_text `{text}`; qr_code `{show_join_code}`, with the code and URL taken from the session | none | `[]` |
+
+**Media (server-owned, `TakesMedia`).** `validateConfig()` drops any `media` an author sends. Only `withMedia(array $config, ?File $file)` adds `media = {file_id, url (File::url), width, height, mime}`. All content types and `pin_on_image` implement it.
+- Session start: `$config = $type instanceof TakesMedia ? $type->withMedia($slide->config, $slide->mediaFile /* withTrashed */) : $slide->config`.
+- Then, for pin_on_image (`requiresMedia()`), call `assertMediaPresent($config)`. It returns 422 keyed `media`, plus `media.*` reasons, when there is no image or its width/height are unknown. Older library images have null dimensions: Phase 2 should fill them lazily with `getimagesize` when a file is attached.
+- `PUT /slides/{id}/media`: a `{file_id}` sets `media_file_id` and, on video slides, clears `config.video_url`. A `{video_url}` clears `media_file_id`.
+
+**Broadcast payloads (`App\Deck\Broadcasts\Payloads`, all with `slide_run_id` + `server_time`).**
+- `SlideChangedPayload::fromRun($run, $participantSlide, $totalSlides)` (public; any aggregate is removed).
+- `SlideStateChangedPayload::fromRun($run)` (public): `{state, state_version, seconds_remaining, ends_at, duration_seconds, state_started_at, voting_started_at, closed_at}`.
+- `SlideAggregateUpdatedPayload::fromRun($run, $aggregate, $visibility)`.
+- `SlideClosedPayload::fromRun($run, ?$aggregate)` (always public).
+- `AnswerSubmittedPayload::fromAnswer($answer, $totalResponses, $isUpdate)` (always host).
+- `ParticipantCountUpdatedPayload::fromSession($session)` (public).
+- `QaQuestionSubmittedPayload`, `QaQuestionUpvotedPayload` (the absolute count) and `QaQuestionModeratedPayload::forHost()/forPublic()`. A hidden question is redacted on the public channel to `{question_id, slide_run_id, is_hidden: true}`.
+- All of these go out through `DeckBroadcaster::broadcast($session, $payload)`. It sends after the DB commit, synchronously, and routes host visibility only to `private-host.{product}.v2.{id}`. `LiveBroadcastEvent::fromPayload($payload, $channel, $meta = [], $now = false)` wraps a payload.
+
+**Live services (§1.6–1.7 as built).**
+- `LiveAggregateService::schedule(DeckSessionSlideRun $run, ?Closure $compute = null, ?int $debounceMs = null)`: call it after every accepted answer. It broadcasts on the leading edge, then queues one owner-locked trailing `BroadcastDeckAggregate` per run, which recomputes when it runs.
+- `resultsVisibility($run)` returns public only for a `live_aggregate` type with `show_results_to_participants` on. `broadcastDeckAggregateNow()` and `broadcastClosed()` both follow it.
+- Phase 3's close action must call `broadcastClosed($run)`: a public `slide.closed`, plus a host-only final aggregate when results are hidden. `GET /slide-runs/{id}/aggregate` must apply the same visibility rule to participants.
+- `LiveSessionService` gains `publicChannelFor()`, `hostChannelFor()`, `deckHostChannel()` and `moduleFor()`. `broadcastParticipantCount()` accepts a `DeckSession` and counts after commit. `state()` and the joined/completed broadcasts stay legacy-only; Phase 3 builds its own state payload.
+- `ParticipantTokenService` gains `issue()`/`validateRequest()`/`revokeParticipant()` for `DeckParticipant`, plus `participantForDeckSession(Request, $session)`, `resolveDeckParticipant($token, $session)` and `revokeForDeckSession($session)` (call it on session end).
+- `LiveQaService`:
+  - Methods: `submitQuestion($run, $participant, $body)`, `upvote()`, `removeUpvote()`, `moderate($question, $flags)` and `topN($run, $n, $sort = 'top', $includeHidden = false)`.
+  - Moderation flags: `is_hidden|hide`, `is_starred|star`, `is_answered|mark_answered`. Values must be real booleans.
+  - Errors are `ValidationException` (422) keyed `body`, `slide_run`, `participant`, `question` or `flags`.
+  - Upvote broadcasts are debounced to 200 ms.
+
+**Files (§1.9 as built).**
+- `files.width`/`height` are recorded at upload.
+- Images are resized to fit 1024 px with GD (jpeg, png, gif, webp) after EXIF orientation is applied. Animated GIFs and images over `max_image_pixels` are stored unchanged.
+- The new `video` category accepts mp4 up to 50 MB.
+- A daily upload cap applies (`max_daily_upload_mb`, error code `daily_upload_limit`).
+- `FileReferenceService` counts deck covers, slides and options by id.
+- The backend image and the `queue` service must be recreated (`docker compose up -d backend queue`) to pick up the new GD build, the PHP upload limits and the worker's `--sleep=0.2`.
 
 ## Phase 2 — Quest authoring API
 
@@ -474,10 +571,12 @@ Participant view of Q&A feed:
 | `qa_audience` | Via `LiveQaService::topN()` — handled separately |
 | `points_allocation` | Per option: `sum(allocated) / total_points_distributed * 100` (percentage) |
 | `rating` | Per item: mean + count + distribution histogram |
-| `matrix_2x2` | Raw points `[{x, y}, …]`, plus centroid; presenter renders scatter |
-| `pin_on_image` | Raw pins `[{x, y}, …]` (percentages); presenter overlays heatmap (client-side gaussian blur on canvas) |
+| `matrix_2x2` | `total_points`, the latest 150 raw points `[{x, y}, …]` (percentages 0–100), a 20×20 `density` grid of every point, and the centroid of every point; presenter renders scatter |
+| `pin_on_image` | `total_pins`, the latest 150 raw pins `[{x, y}, …]` (percentages 0–100) and a 20×20 `density` grid of every pin; presenter overlays pins + heatmap (client-side gaussian blur on canvas) |
 
 Every aggregate function is pure and deterministic — same inputs → same output. Easy to unit test.
+
+Aggregates go out whole (`slide.aggregate.updated`, `slide.closed`, public or host channel), and Reverb rejects publish requests over `REVERB_MAX_REQUEST_SIZE` (10,000 bytes by default), so an aggregate must not grow with the audience. That's why matrix and pin cap their raw lists (`PointCloud`). List-shaped aggregates (`word_cloud`, `open_ended`) need the same care.
 
 ### 3.6 Participant join with emoji
 
@@ -510,13 +609,173 @@ Emoji list = `config/deck.php` constant of ~40 curated emoji. Reject anything no
 - Full happy path per type: author → session start → 3 participants join → submit answers → aggregate correct → close voting → reconnect participant → `GET /aggregate` returns frozen result.
 - Q&A: 3 participants, cross-upvote, host hides one, host stars another, `topN` returns correct order.
 - 100-points: rejects submission where sum ≠ 100.
-- Matrix 2×2: rejects coordinate outside [0, 1].
+- Matrix 2×2: rejects coordinate outside [0, 100] (percentages of the plane, the same unit as pin_on_image).
 - Pin-on-image: rejects pin outside image bounds; deduplicates if participant re-submits.
 - Reconnect after `voting → closed`: state endpoint returns `closed` + final aggregate.
 - Quiz-only slide types rejected on Quest session endpoints.
 - Token revocation: revoked token → 401 on answer submission.
 
 **Phase 3 exit criteria:** full Pest suite green on PostgreSQL; Tinker-driven smoke test with 3 participants produces correct aggregates across every Quest type.
+
+### Implementation notes (Phases 2–3, done 2026-10-18)
+
+Phases 2 and 3 are built and pass. The full backend suite is green on PostgreSQL: 903 tests, 819 of them in `tests/Feature/Deck`. Those include `QuestV2EndToEndTest.php`, which covers §3.7's first bullet for all 10 answer-taking types, each run with results public and with results hidden. It also covers Q&A, a timed slide, a whole-deck walkthrough, and token revocation after the end, all through the HTTP API only.
+
+A throwaway tinker smoke drove the real kernel against dev PostgreSQL, Redis and Reverb. Three participants answered every Quest type plus Q&A, and each aggregate matched the expected numbers. The smoke then removed every row it had created. Where the code differs from §2–§3, **the code is the contract** for Phases 4–7.
+
+Follow-ups on 2026-10-19: option reorder endpoint, a 100-slide cap with `slide_limit_reached`, gating by the `quest_v2_enabled` flag (`feature_disabled`), a per-IP `deck-lookup` throttle on by-code, and `syncDue` on aggregate reads. After them the suite has 910 tests, 826 of them in `tests/Feature/Deck`, all green.
+
+**Where things live (backend/).**
+- Routes: `routes/deck/{meta, quest_authoring, quest_media, quest_sessions, quest_participants, quest_qa, quest_review}.php`. Each file registers through `DeckRoutes::authoring()`/`sessions()`, once per product in `config('deck.routes')`. Quiz v2 needs only a config entry.
+- Authoring: `app/Deck/Authoring/*`. Media: `app/Deck/Media/DeckMediaService.php`. Sessions: `app/Deck/Sessions/{SessionLauncher, SessionStateMachine, JoinCodeGenerator}.php` and `app/Jobs/Deck/TransitionSlideRunJob.php`. Participants: `app/Deck/Participants/*`. Q&A: `app/Deck/Qa/SessionQaService.php`. Controllers: `app/Deck/Http/Controllers/**`.
+
+#### Conventions
+- Envelope: `{status, message, data}`. Validation errors return 422 `data.validation_errors.{key}`. Every other error carries `data.code`: `not_found`, `conflict`, `invalid_state`, `unsupported_type`, `slide_limit_reached`, `forbidden`, `feature_disabled`, `unauthorized`, `results_hidden` or `too_many_requests`, sometimes with extra keys.
+- **Rollout flag (added 2026-10-19):** authoring and hosting need `users.quest_v2_enabled` (Filament → Users → Features → "Quest v2"), or `QUEST_V2_DEFAULT_ENABLED=true` (`config('deck.quest_v2_default_enabled')`) for everyone. Without it they answer **403** `{message: "Quest v2 is not enabled for your account.", data.code: 'feature_disabled'}`, checked after Sanctum (signed out stays 401) and before any lookup or validation. Gated: every `/quests/v2` route (deck CRUD, slides, options, media, cover, start session), and on `/quest-sessions/v2` advance, end, Q&A moderation, and the **host branch** of state, aggregate and the Q&A feed. Never gated: by-code, join, every participant-token route (state, answers, my-answer, aggregate, Q&A, review) and `meta/emoji-avatars`. `GET /api/v1/profile/show` returns `data.profile.quest_v2_enabled` as the effective value (own flag OR the config default). Code: `App\Deck\Support\DeckFeature`, middleware alias `deck.feature`.
+- **Casing:**
+  - Request bodies are snake_case everywhere.
+  - Authoring responses (`/quests/v2/...`) use the owner-only camelCase presenters (`DeckPresenter`, `SlidePresenter`, `OptionPresenter`). They include `isCorrect`. Never show them to participants.
+  - Live endpoints (`/quest-sessions/v2/...`, session start) are snake_case, the same shape as the broadcast payloads.
+- Another user's deck or session, another product's, or a soft-deleted one answers **404**, never 403.
+- Positions are 1-based. A new deck has one `qr_code` slide at position 1. Reorder requests (slides and options) use the same 1-based positions.
+- Throttles:
+  - `deck-author` for authoring and host routes.
+  - `deck-join` for join.
+  - `deck-lookup` for `GET by-code` (added 2026-10-19), per IP only, so made-up tokens no longer bypass it: 30 misses (404) a minute per IP, and 300 lookups a minute per IP overall (a classroom shares one address). Over either → 429.
+  - `deck-participant` plus a per-IP cap (`ParticipantReadAccess::IP_THROTTLE`, 1,800/min) on token routes. On answers, Q&A, my-answer, aggregate, Q&A feed and review, the per-IP cap applies whatever token is sent.
+- Participant auth uses the `X-Participant-Token` header (64 characters, returned by join). Host auth is Sanctum. **A presenter client must not send `X-Participant-Token`.** On the dual routes (state, aggregate, Q&A feed), the header selects the participant view.
+
+#### Endpoint table
+
+Authoring (`/api/v1/quests/v2`, Sanctum + `throttle:deck-author` + `deck.feature`). Names are `deck.quest.*`. Every row can also answer 403 `feature_disabled`.
+
+Slide cap (2026-10-19): `config('deck.max_slides_per_deck')` (`DECK_MAX_SLIDES_PER_DECK`, default **100**) live slides per deck, enforced on append, bulk, slide duplicate and deck duplicate. Over it → 422 `{message: "A deck can have at most 100 slides.", data: {code: 'slide_limit_reached', max_slides: 100, validation_errors: {slides: [same message]}}}`; nothing is written.
+
+| Method | Path | Request | Response `data` | Errors |
+|---|---|---|---|---|
+| GET | `/` | `?search` (≤100), `sort=updated\|created\|title`, `direction=asc\|desc`, `per_page` 1..50 (default 20), `page` | `{items:[deck summary], meta:{currentPage, perPage, total, lastPage}}` | 422 |
+| POST | `/` | `{title?` ≤255 (default "Untitled quest"), `description?` ≤2000, `settings?}` | 201 `{deck: detail}`, seeded with one qr_code slide | 422 |
+| GET | `/{deck}` | – | `{deck: detail}` (slides in position order, options, media) | 404 |
+| PATCH | `/{deck}` | `{title?, description?, settings?}`; settings merge onto the stored ones, and null resets a key | `{deck: summary}` | 404, 422 (unknown settings key) |
+| DELETE | `/{deck}` | – | `{}`, soft delete (not blocked by sessions) | 404 |
+| POST | `/{deck}/duplicate` | – | 201 `{deck: detail}`, titled "Copy of …", with file refs copied and no new files | 404, 422 `slide_limit_reached` |
+| POST | `/{deck}/slides` | `{type, after_position?}` (null/absent = end, 0 = first) | 201 `{slide, order}` | 422 `unsupported_type`, 422 `slide_limit_reached` |
+| POST | `/{deck}/slides/bulk` | `{slides:[{type, title?, body?, config?, options?:[{label?, payload?}]}], after_position?}`, 1..50; all-or-nothing | 201 `{slides, order}` | 422 keyed `slides.N.*`, 422 `slide_limit_reached` |
+| POST | `/{deck}/slides/reorder` | `{slides:[{id, position}]}` covering every live slide | `{order}` | 422 `slides.N.id`, 409 `conflict` (a slide is missing) |
+| GET | `/{deck}/slides/{slide}` | – | `{slide}` | 404 |
+| PATCH | `/{deck}/slides/{slide}` | `{title?` ≤280, `body?` (paragraph only), `config?` (merged recursively onto the stored config; lists replace), `time_limit_seconds?` 5..3600\|null, `get_ready_seconds?` 0..30\|null`}` | `{slide}` | 422 `config.<key>`, `title`, `body` or the timer keys (types that take no answers have no timer), plus the broadcast-budget 422 below |
+| DELETE | `/{deck}/slides/{slide}` | – | `{order}`, soft delete; later slides close up | 404 |
+| POST | `/{deck}/slides/{slide}/duplicate` | – | 201 `{slide, order}` at the next position | 404, 422 `slide_limit_reached` |
+| POST | `/{deck}/slides/{slide}/options` | `{label?` ≤200, `payload?` object ≤512 B`}` | 201 `{option, slide}`, appended last | 422 `options` (at the cap, or the type takes no options) |
+| POST | `/{deck}/slides/{slide}/options/reorder` (2026-10-19, `deck.quest.options.reorder`) | `[{id, position}]` (bare list, or `{options:[...]}`); positions are **1-based** and must be exactly `1..n`; every option of the slide exactly once | `{slide}`, options in the new order (stored `position` 1..n); one transaction | 404 (deck/slide), 422 `options.N.id` (not on this slide, or repeated), `options.N.position` (outside 1..n or repeated), `options` (empty or too long), 409 `conflict` (an option is missing: "The option list changed. Reload and try again.") |
+| PATCH | `/{deck}/slides/{slide}/options/{option}` | `{label?, payload?}` | `{option, slide}` | 404, 422 |
+| DELETE | `/{deck}/slides/{slide}/options/{option}` | – | `{slide}`, hard delete; later options close up | 422 `options` (below the minimum) |
+| PUT | `/{deck}/slides/{slide}/options/{option}/image` | `{file_id: int\|null}` | `{option}` | 404 `File not found.`, 422 `file_id` |
+| PUT | `/{deck}/slides/{slide}/media` | exactly one of `{file_id}`, `{file_id:null}`, `{video_url}`, `{video_url:null}` | `{slide}` (`mediaFileId`, `media`; video slides get the derived `config.video_*` keys) | 422 `file_id` / `video_url` (wrong kind, wrong type, bad link, unreadable pin_on_image image) |
+| PUT | `/{deck}/cover` | `{file_id: int\|null}` | `{deck: summary}` | 404, 422 `file_id` |
+| POST | `/{deck}/sessions` | – | 201 HOST STATE | 404, 409 `conflict` (no slides, or a live session already exists: `data.session_id`), 422 `unsupported_type` / `slides.{pos}.media*` |
+
+Live session (`/api/v1/quest-sessions/v2`). Names are `deck.quest.sessions.*`.
+
+| Method | Path | Auth | Request | Response `data` | Errors |
+|---|---|---|---|---|---|
+| GET | `/by-code/{code}` | public, `throttle:deck-lookup` (per IP) | case-insensitive; spaces and dashes ignored | `{session_id, join_code, product, deck_title, status, public_channel_key}` (live only) | 404, 429 |
+| GET | `/{session}/state` | host (Sanctum) **or** participant (token) | – | HOST STATE or PARTICIPANT STATE | 401, 404, 403 `feature_disabled` (host branch) |
+| GET | `/{session}/participant-state` | participant | – | PARTICIPANT STATE (alias) | 401, 404 |
+| POST | `/{session}/advance` | host | `{action: start_voting\|close_voting\|next_slide\|previous_slide\|jump_to, target_run_id?, force?}` | HOST STATE | 409 `invalid_state` `{slide_run_id, state, state_version, requires_force?}` or `{status}`, 404 (jump target), 422, 403 `feature_disabled` |
+| POST | `/{session}/end` | host | – | HOST STATE | 409 (already ended), 403 `feature_disabled` |
+| POST | `/{session}/participants/join` | public, `throttle:deck-join` | `{join_code, display_name` 1..40, `emoji_avatar` (one of `GET /api/v1/meta/emoji-avatars`)`}` | 201 `{participant_id, participant_token, public_channel_key, session_id, display_name` (cleaned + masked), `emoji_avatar}` | 404 (unknown session **or wrong code**), 409 `invalid_state` `{session_status:'pending'}`, 403 `forbidden` `{session_status:'ended'}`, 422 |
+| POST | `/{session}/slide-runs/{run}/answers` | participant | `{answer_payload: object}` (≤ `deck.max_answer_body_kb` = 32 KB) | **204** | 401, 404, 409 `invalid_state` `data.reason` = `no_answers` \| `session_not_live` \| `not_current_slide` (+`current_slide_run_id`) \| `not_voting` (+`state, state_version`) \| `time_up`; 413 `payload_too_large`; 422 `answer_payload.*`, 422 `unsupported_type` |
+| GET | `/{session}/slide-runs/{run}/my-answer` | participant (review token too) | – | `{slide_run_id, answer_payload` (as stored), `time_to_answer_ms, submitted_at}` | 404 `You have not answered this slide.` |
+| GET | `/{session}/slide-runs/{run}/aggregate[?page=N]` | host or participant (review token too) | `page` (open_ended full-text pages, 20 a page) | `{slide_run_id, type, state, state_version, closed_at, final, visibility, total_responses, aggregate, server_time}`; applies an overdue timer first (`syncDue`, 2026-10-19), so it never reports `voting`/`final:false` past the deadline | 403 `results_hidden` (participant: results not public, or a run the host has not reached), 403 `feature_disabled` (host without the flag and no token; with a token it is a participant read), 401, 404 |
+| POST | `/{session}/slide-runs/{run}/qa/questions` | participant | `{body}` (trimmed, ≤ `config.max_question_length`) | 201 `{question: participantItem}` | 409 `invalid_state` `reason` = `not_qa_slide` \| `session_not_live` \| `not_open`; 422 `body`; 429 `too_many_requests` (+`retry_after`; `deck.qa_questions_per_minute`, default 10) |
+| GET | `/{session}/slide-runs/{run}/qa/questions` | host or participant (review token too) | `?sort=top\|new\|newest&limit=1..500` (default: the slide's sort, 100) | `{slide_run_id, state, viewer, sort, show_feed_to_participants, own_only, total, limit, questions:[item]}` | 401, 404, 409 (not a Q&A run), 403 `feature_disabled` (host branch) |
+| POST / DELETE | `/{session}/qa/questions/{question}/upvote` | participant | – | `{question_id, slide_run_id, upvote_count, has_upvoted}` (idempotent) | 404 (hidden, another session's, or another participant's while the feed is hidden), 409 `not_open` |
+| PATCH | `/{session}/qa/questions/{question}` | host | any of `is_hidden\|hide`, `is_starred\|star`, `is_answered\|mark_answered` (booleans) | `{question: hostItem}` | 422 `flags`, 404, 403 `feature_disabled` |
+| GET | `/{session}/review` | participant (review token) | – | REVIEW (below) | 409 `invalid_state` `reason: session_not_ended`, 401, 404 |
+| GET | `/api/v1/meta/emoji-avatars` | public, cacheable | – | `{emojis:[40], labels:{emoji: label}}` | – |
+
+#### State payloads
+- **HOST STATE** (start, advance, end and host GET state):
+  - Identity and join info: `{session_id, join_code, public_channel_key, session:{id, deck_id, product, deck_title, status, current_slide_run_id, total_slides, started_at, ended_at}, join:{join_code, join_url (FRONTEND_URL + /join/{CODE}), public_channel_key}, channels:{public:'session.quest.{key}', host:'host.quest.v2.{id}'}, participant_count`.
+  - Runs: `runs:[participant view of every run]` and `current_run: presenter view (participant view + live aggregate) | null`.
+  - Results and timer: `results_visibility: 'public'|'host'|null, seconds_remaining, ends_at, duration_seconds, server_time}`.
+  - The Q&A feed is not included; read it from the feed GET.
+- **PARTICIPANT STATE:**
+  - Session and participant: `{session_id, session:{…same as host… + public_channel_key}, participant:{id, display_name, emoji_avatar}`.
+  - Current run: `current_run` and `current_slide_run` (the same participant view, never an aggregate or answer key), `has_answered`, `my_submission_for_current_slide` (my-answer shape) or null.
+  - Results and timer: `results_visibility`, `aggregate` (only when results are public, else null), `seconds_remaining, ends_at, duration_seconds, server_time}`.
+  - A participant never receives the list of runs while the session is live.
+- **Run (participant view, `serializeForParticipant`):**
+  - Identity: `{id, slide_id, type, category, reveal_model, accepts_answers, position, title, body`.
+  - Content: `config` (snapshot; answer keys and `_`-prefixed keys stripped; pin_on_image and image slides carry `media{file_id, url, width, height, mime}`) and `options:[{id, position, label, image_url, payload}]`.
+  - State and timer: `state, state_version, time_limit_seconds, get_ready_seconds, state_started_at, voting_started_at, closed_at}`. Answers reference option **`id`** from here.
+- **REVIEW** (new, ended sessions only): `{session_id, session:{id, deck_id, product, deck_title, status, total_slides, started_at, ended_at, public_channel_key}, participant, runs:[participant view + {my_answer|null, results_visibility, aggregate|null}], server_time}`. Q&A runs return `aggregate: null`; read their questions from the feed GET with the same token.
+- Broadcasts:
+  - `slide.changed` carries the participant view. If the body would be over 8,500 bytes, it carries a slim `{id, slide_id, type, category, reveal_model, accepts_answers, position, state, state_version, refetch:true}` instead; clients then GET state.
+  - New events: `session.ended` (public) `{slide_run_id, session_id, status:'ended', ended_at, server_time}` and `participant.joined` (host) `{participant_id, display_name, emoji_avatar, joined_at}`.
+  - `answer.submitted` (host) carries only the incoming submission, shortened when large (`body_truncated` / `truncated` / `{omitted:true}`).
+
+#### State machine
+- Run kinds:
+  - Answer types: `waiting → get_ready` (only when `get_ready_seconds > 0`) `→ voting → closed`.
+  - Q&A: `waiting → open → closed`, with no timer.
+  - Content: stays `waiting`; `start_voting` on it gives 409.
+- `start_voting` works only from `waiting`. `close_voting` works only from `voting`/`open`. A closed run never reopens.
+- Leaving an active run (next, previous, jump or end) closes it. Moving backwards away from an active run needs `force:true`; without it the response is 409 with `requires_force`. Forward jumps close the run without asking.
+- `next_slide` on the last run, `previous_slide` on the first, and `jump_to` the current run all give 409. Navigating never changes the state of the run it lands on. `state_version` starts at 0 and goes up on every transition.
+- Timers:
+  - Snapshots come only from the slide's own `time_limit_seconds`/`get_ready_seconds`; null or 0 means off. Authoring seeds them from the deck settings `default_time_limit`/`get_ready_seconds` when the slide is created; later deck changes never reach existing slides.
+  - `TransitionSlideRunJob` fires at the deadline. Every state read, aggregate read (host and participant) and host action first applies an overdue timer (`syncDue`), so a late queue never leaves a run open.
+  - Answers after `voting_started_at + time_limit + 1 s` get 409 `time_up`.
+- `end` closes the active run, sends `slide.closed` and then `session.ended`, and revokes every participant token. Revoked tokens still work for the **read** routes (my-answer, aggregate, Q&A feed, review) of that ended session until the token's own expiry (6 h after the join). Writes and state give 401.
+
+#### Answers: payload and merge rules
+- Inbound payloads follow the Phase 1 table above, and `validateAnswer()` normalises them.
+- One row is kept per participant per run, with a locked insert-or-merge:
+  - `word_cloud`: the new entries replace the old ones, or are appended when `allow_multiple_submissions` is on (up to `max_entries_per_participant`).
+  - `open_ended`: entries are appended up to `max_submissions_per_participant`; at 1 they replace.
+  - Every other type replaces the stored answer.
+- `time_to_answer_ms` and `submitted_at` are refreshed on every submission.
+- Rejected cases:
+  - `points_allocation` whose sum ≠ total.
+  - `matrix_2x2` or `pin_on_image` coordinates outside 0..100.
+  - `ranking` that leaves items out while `require_full_ranking` is on.
+  - `pin_on_image` with more pins than the cap. Exact duplicate pins are dropped.
+
+#### Decisions taken
+- **Participant state route:** `GET {session}/state` serves both callers, chosen by the token header. `participant-state` is an alias.
+- **Review (§7.5):** tokens are revoked at the end, but a token revoked *by the end* still reads my-answer, aggregate, the Q&A feed and the new `GET {session}/review`. A participant the host removed before the end stays locked out.
+- **Results visibility:** participants see aggregates only when `config.show_results_to_participants` is true (default false) **and** the host has reached that run. Otherwise they get 403 `results_hidden`, or `aggregate:null` in state and review. The host always sees them.
+- **Hidden Q&A questions** are hidden from every participant, the author included. Upvoting a hidden question gives 404.
+- **`show_feed_to_participants:false`:** participants see only their own questions (`own_only:true`).
+- **Q&A feed order:** the host feed lists starred questions first and then the chosen sort, and includes hidden ones. The participant feed excludes hidden questions. Own upvotes are allowed.
+- **Display names:** they never appear in Q&A items or aggregates. Only the emoji is shown. `allow_anonymous` is not enforced.
+- **Joining:**
+  - Join needs the join code, so a guessed session id alone is not enough.
+  - Every join creates a new participant; there is no rejoin.
+  - A pending session gives 409; an ended one gives 403.
+- **Slide size limit:** authoring refuses slide edits whose `slide.changed` body would exceed 8,500 bytes. These 422s land on `config`, `body`, `title`, `options`, `payload`/`label` or `slides.N`.
+- **Option payloads** are capped at 512 B.
+
+#### For the frontend (Phases 4–7)
+- **Join flow (7.1):**
+  1. `GET by-code/{code}` gives `session_id`.
+  2. `POST {session_id}/participants/join {join_code, display_name, emoji_avatar}`.
+  3. Store `participant_token` and `public_channel_key`. Subscribe to `session.quest.{key}`.
+  - Load the emoji picker from `GET /api/v1/meta/emoji-avatars`.
+- **Reconnect (7.6):** `GET {session}/state` with the token. Use `current_slide_run` and `my_submission_for_current_slide`. When `slide.changed` carries `refetch:true`, GET state again. Count down from `ends_at`, corrected by `server_time`; when it reaches 0, GET state to apply the server's transition.
+- **Review (7.5):** after `session.ended`, call `GET {session}/review` with the same token. For open_ended pages use `GET .../aggregate?page=N`; for Q&A, the feed GET.
+- **Presenter (Phase 6):** use host state and the host channel `private-host.quest.v2.{id}`, where hidden-results aggregates arrive. Load the Q&A panel from the feed GET with no token header. Send `force:true` after the "go back" confirmation.
+- **Editor (Phase 5):**
+  - Upload through `POST /api/v1/library/files`, then attach with `PUT .../media|cover|image`.
+  - The response's `order` array is authoritative after any move.
+  - `config` PATCH merges. For scales, `scale_points` may be sent alone.
+  - Show 422 keys inline (`config.x`, `options`, `file_id`, `video_url`, `slides.N.*`).
+  - Option drag-reorder: `POST .../slides/{slide}/options/reorder` with every option as `[{id, position}]`, positions 1..n (list index + 1, same as returned `position`). Replace the slide from the response's `slide`. On 409 `conflict`, refetch the slide.
+  - Slide cap: on `data.code === 'slide_limit_reached'` show `message` (also on `validation_errors.slides`); `data.max_slides` is the cap.
+  - Route to the v2 editor/presenter only when `profile.quest_v2_enabled` is true. Any authoring or hosting call can still answer 403 `feature_disabled` (the flag can be turned off at any time); show its `message`.
+- Answers return 204 with no body. Show the submitted state, then rely on `has_answered`/`my_submission_for_current_slide` after a reload.
 
 ---
 
@@ -1011,3 +1270,8 @@ See the updated [QUIZ_REDESIGN_PLAN.md](QUIZ_REDESIGN_PLAN.md) for the reduced-s
 | Video: YouTube/Vimeo links and mp4 from My Files (max 50 MB) | User-confirmed. Uploads count toward quota; no transcoding. |
 | AI "Generate from a document" ported to Quest v2 | User-confirmed. The feature already exists for Quest v1 and must not disappear at cutover. |
 | PostgreSQL in local dev and tests | The file library depends on PostgreSQL-only features. |
+| Live results go to participants only when the slide opts in (`show_results_to_participants`, default off) | §5.6's Mentimeter model: the presenter shows the live chart. Enforced server-side by channel routing, so participants never receive results they are not meant to see, and the default does not fan every aggregate out to the whole audience. |
+| Slide media is server-owned (`TakesMedia::withMedia`), never author config | One trusted path from `slides.media_file_id` + `File::url` into `config_snapshot.media` for image, video and pin_on_image; a config edit cannot point a slide at an arbitrary URL. |
+| Matrix 2×2 and pin coordinates are percentages 0–100 | One unit for both planes; matches how the participant UI measures taps. |
+| Images too large to decode safely (> `max_image_pixels`) are stored unresized, not refused | Keeps the legacy `/files/store` uploads working; dimensions are still recorded. |
+| Daily cap on new upload bytes (`max_daily_upload_mb`, at least the user's quota) | Upload-then-delete churn could otherwise fill the disk, since soft-deleted files stay on disk. |
