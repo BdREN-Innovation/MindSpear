@@ -64,7 +64,7 @@ auth.json
 backend/.env.production
 
 # Root-level docs — keep deployment guides; everything else is internal/planning
-/*.md
+# /*.md
 !/README.md
 !/READMEv2.md
 
