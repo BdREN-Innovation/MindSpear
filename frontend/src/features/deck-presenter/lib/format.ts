@@ -34,6 +34,13 @@ export function formatDuration(startIso: string | null | undefined, endIso: stri
 	return rest ? `${hours} h ${rest} min` : `${hours} h`;
 }
 
+/** total_entries of multi-entry aggregates (open_ended: one person can send several), else null. */
+export function aggregateEntries(aggregate: unknown): number | null {
+	if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return null;
+	const total = (aggregate as { total_entries?: unknown }).total_entries;
+	return typeof total === "number" && Number.isFinite(total) ? total : null;
+}
+
 /** Best-effort total_responses of any aggregate shape (content / Q&A have none). */
 export function aggregateResponses(aggregate: unknown): number | null {
 	if (!aggregate || typeof aggregate !== "object" || Array.isArray(aggregate)) return null;

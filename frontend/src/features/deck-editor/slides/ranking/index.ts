@@ -1,7 +1,7 @@
 import { ArrowDownNarrowWide } from "lucide-react";
 import type { RankingAggregate, SlideOf } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleCount } from "../pollSingle/common";
+import { sampleCount } from "../shared/samples";
 import { RankingEditor } from "./Editor";
 import { RankingParticipant } from "./Participant";
 import { RankingPresenter } from "./Presenter";

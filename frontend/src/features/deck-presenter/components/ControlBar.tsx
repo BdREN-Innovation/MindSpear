@@ -39,6 +39,16 @@ const CONNECTION: Record<DeckConnectionStatus, { label: string; dot: string }> =
 	idle: { label: "Not connected", dot: "bg-[var(--deck-text-muted)]" },
 };
 
+/** Responses on the current run; `people` is set for multi-entry types (open_ended), where the two can differ. */
+export interface ResponseTally {
+	count: number;
+	people: number | null;
+}
+
+function plural(count: number, one: string, many: string): string {
+	return `${count} ${count === 1 ? one : many}`;
+}
+
 export interface ControlBarProps {
 	runs: ParticipantRunView[];
 	currentRunId: number | null;
@@ -56,7 +66,7 @@ export interface ControlBarProps {
 	onSlideListOpenChange: (open: boolean) => void;
 	participantCount: number | null;
 	/** Responses on the current run (answer slides), else null. */
-	responses: number | null;
+	responses: ResponseTally | null;
 	connection: DeckConnectionStatus;
 	qrOpen: boolean;
 	onToggleQr: () => void;
@@ -186,11 +196,24 @@ export function ControlBar(props: ControlBarProps) {
 				{responses !== null && (
 					<span
 						className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
-						title={`${responses} ${responses === 1 ? "response" : "responses"} on this slide`}
+						title={`${plural(responses.count, "response", "responses")}${
+							responses.people !== null ? ` from ${plural(responses.people, "person", "people")}` : ""
+						} on this slide`}
 					>
 						<BarChart3 className="h-5 w-5" aria-hidden />
-						{responses}
-						<span className="sr-only"> {responses === 1 ? "response" : "responses"}</span>
+						{responses.people !== null && responses.people !== responses.count ? (
+							<>
+								{plural(responses.count, "response", "responses")}
+								<span className="font-medium text-[var(--deck-text-muted)]">
+									· {plural(responses.people, "person", "people")}
+								</span>
+							</>
+						) : (
+							<>
+								{responses.count}
+								<span className="sr-only"> {responses.count === 1 ? "response" : "responses"}</span>
+							</>
+						)}
 					</span>
 				)}
 				<span

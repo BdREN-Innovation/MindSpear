@@ -1,5 +1,5 @@
 import type { PinOnImageAggregate, SlideOf } from "@/features/deck/types";
-import { densityOf, gaussianCluster, seededRandom } from "./pointMath";
+import { densityOf, gaussianCluster, seededRandom } from "../shared/pointMath";
 
 /** Fake results for the editor canvas: a few pin clusters (y 0 = top edge). */
 export function samplePinAggregate(slide: SlideOf<"pin_on_image">): PinOnImageAggregate {

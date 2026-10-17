@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { EditorProps } from "../types";
 import { MediaSlot, NumberField } from "../shared";
+import { QuestionField } from "../shared/editorKit";
 
-// pin_on_image editor (plan §5.4): the image is mandatory (session start
+// pin_on_image editor (plan §5.4): the question; the image is mandatory (session start
 // refuses the slide without one, or when its width/height are unknown, since
 // the heatmap needs the aspect ratio), plus the pin cap 1..10.
 
@@ -32,6 +33,14 @@ export function PinOnImageEditor({ slide, onChange, media, errors, disabled }: E
 
 	return (
 		<div className="flex flex-col gap-5">
+			<QuestionField<"pin_on_image">
+				title={slide.title}
+				onChange={onChange}
+				errors={errors}
+				disabled={disabled}
+				placeholder="Where would you like the new café?"
+			/>
+
 			<div className="flex flex-col gap-2">
 				<MediaSlot
 					accept="image"

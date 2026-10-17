@@ -13,6 +13,7 @@ import {
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DeckThemeProvider, getDeckTheme, type DeckTheme } from "@/features/deck/theme";
+import { recentNavigation, type NavDirection } from "./navDirection";
 import { useKeyboardInset } from "./useKeyboardInset";
 import { ShellStyles } from "./shellStyles";
 
@@ -84,6 +85,12 @@ export interface AppShellProps {
 	contentClassName?: string;
 	/** Changing it replays the entrance transition (e.g. the run id). */
 	transitionKey?: string | number;
+	/**
+	 * 1 = slide in from the right (forward), -1 = from the left (back), 0 = fade
+	 * up. Default: the direction of a navigation marked just before this mount
+	 * (markNavigation). Off under reduced motion.
+	 */
+	transitionDirection?: NavDirection;
 	/** Element id of the scrolling content (for skip links / tests). */
 	contentId?: string;
 }
@@ -96,11 +103,14 @@ export function AppShell({
 	children,
 	contentClassName,
 	transitionKey,
+	transitionDirection,
 	contentId,
 }: AppShellProps) {
 	const resolved = useMemo(() => (typeof theme === "object" && theme ? theme : getDeckTheme(theme)), [theme]);
 	const keyboardInset = useKeyboardInset();
 	const reduceMotion = useReducedMotion();
+	const [mountDirection] = useState(recentNavigation);
+	const direction = transitionDirection ?? mountDirection;
 	useThemeColorMeta(resolved.themeColor);
 
 	// Live region: clear then set, so the same sentence twice is announced twice.
@@ -140,8 +150,14 @@ export function AppShell({
 					<motion.div
 						key={transitionKey}
 						className="flex min-h-full flex-col"
-						initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-						animate={{ opacity: 1, y: 0 }}
+						initial={
+							reduceMotion
+								? false
+								: direction
+									? { opacity: 0, x: 32 * direction, y: 0 }
+									: { opacity: 0, x: 0, y: 12 }
+						}
+						animate={{ opacity: 1, x: 0, y: 0 }}
 						transition={{ type: "spring", stiffness: 380, damping: 34 }}
 					>
 						{children}

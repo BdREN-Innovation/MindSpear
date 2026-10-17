@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import type { RichTextDoc } from "@/features/deck/types";
 import type { EditorProps } from "../types";
 import { CharCount, SegmentedField } from "../shared";
-import { SlideTitleField, fieldError } from "../heading/contentKit";
+import { SlideTitleField, fieldError } from "../shared/contentKit";
 import { MAX_BODY_TEXT, bodyLimitProblem, bodyStats, canonicalBody, isSafeHref, normaliseBody, type BodyStats } from "./body";
 
 // Paragraph Editor: a TipTap editor whose schema is EXACTLY what

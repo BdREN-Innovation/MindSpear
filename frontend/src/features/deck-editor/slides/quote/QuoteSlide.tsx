@@ -4,7 +4,7 @@ import { Quote as QuoteIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EditorProps, ParticipantProps, PresenterProps } from "../types";
 import { TextAreaField, TextField } from "../shared";
-import { ContentPhone, ContentStage, FitText, PreviewHint, contentSize, fieldError, type ContentVariant } from "../heading/contentKit";
+import { ContentPhone, ContentStage, FitText, PreviewHint, contentSize, fieldError, type ContentVariant } from "../shared/contentKit";
 
 // `quote`: a large quote (config.text, multi-line ≤ 500) with an optional
 // attribution (≤ 120). The slide title is not shown; the quote is the slide.

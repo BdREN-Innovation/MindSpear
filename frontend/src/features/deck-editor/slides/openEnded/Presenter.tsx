@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Radio } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play, Radio, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { chartColor, type DeckTheme } from "@/features/deck/theme";
 import { DECK_LIMITS, type OpenEndedAggregate, type OpenEndedCard } from "@/features/deck/types";
 import type { PresenterProps } from "../types";
+import { fallbackTitle } from "../shared/labels";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersReducedMotion } from "../shared";
 
 // open_ended presenter (plan §6.3): a 3-column card wall, newest first. The
@@ -15,8 +16,12 @@ import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersRedu
 // (GET .../aggregate?page=N, 20 cards a page, via host.loadAggregatePage);
 // "Live" returns to the auto-updating newest cards. New cards fade in at the
 // top and the rest slide down (no motion with prefers-reduced-motion).
+// Over capacity the wall also pages by itself (plan §6.3): Newest → page 1 →
+// … → last → Newest, one step every AUTO_ADVANCE_MS; any manual page change
+// restarts the wait, and the host can pause / resume it.
 
 const PAGE_SIZE = DECK_LIMITS.openEndedPageSize;
+const AUTO_ADVANCE_MS = 10_000;
 
 interface BrowseState {
 	runId: number;
@@ -46,6 +51,8 @@ export function OpenEndedPresenter({ run, aggregate, theme, mode, host }: Presen
 	const canBrowse = mode === "live" && !!loadPage && (totalEntries > liveItems.length || !!aggregate?.truncated);
 	const items: OpenEndedCard[] = active?.data?.items ?? liveItems;
 	const waiting = aggregate === null && mode === "live";
+	const [autoAdvance, setAutoAdvance] = useState(true);
+	const autoActive = canBrowse && autoAdvance && !active?.loading && !active?.error;
 
 	const goTo = async (page: number) => {
 		if (!loadPage) return;
@@ -66,12 +73,26 @@ export function OpenEndedPresenter({ run, aggregate, theme, mode, host }: Presen
 		setBrowse(null);
 	};
 
+	// The next auto step; keyed on the page shown, so a manual change restarts the wait.
+	const shownPage = active?.page ?? 0;
+	const step = useRef<() => void>(() => undefined);
+	step.current = () => {
+		if (!active) void goTo(1);
+		else if (active.page < lastPage) void goTo(active.page + 1);
+		else backToLive();
+	};
+	useEffect(() => {
+		if (!autoActive) return;
+		const timer = window.setTimeout(() => step.current(), AUTO_ADVANCE_MS);
+		return () => window.clearTimeout(timer);
+	}, [autoActive, shownPage, run.id]);
+
 	return (
 		<PresenterStage style={theme.cssVars as CSSProperties}>
 			<header className="flex items-start justify-between gap-[3cqw]">
-				<SlideTitle title={run.title} fallback="Your question" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("open_ended")} />
 				<div className="flex shrink-0 flex-col items-end gap-[0.6cqw] pt-[0.8cqw]">
-					{aggregate ? <ResponseCount count={totalEntries} /> : null}
+					{aggregate ? <ResponsesAndPeople entries={totalEntries} people={aggregate.total_responses} /> : null}
 					{canBrowse || active ? (
 						<nav aria-label="Response pages" className="flex items-center gap-[0.5cqw]">
 							{active ? (
@@ -97,6 +118,14 @@ export function OpenEndedPresenter({ run, aggregate, theme, mode, host }: Presen
 							>
 								<ChevronRight className="h-5 w-5" aria-hidden />
 							</PagerButton>
+							{canBrowse ? (
+								<PagerButton
+									onClick={() => setAutoAdvance((on) => !on)}
+									label={autoAdvance ? "Pause automatic paging" : "Resume automatic paging"}
+								>
+									{autoAdvance ? <Pause className="h-4 w-4" aria-hidden /> : <Play className="h-4 w-4" aria-hidden />}
+								</PagerButton>
+							) : null}
 						</nav>
 					) : null}
 				</div>
@@ -165,6 +194,25 @@ export function OpenEndedPresenter({ run, aggregate, theme, mode, host }: Presen
 				</p>
 			) : null}
 		</PresenterStage>
+	);
+}
+
+/**
+ * "4 responses · 3 people" when people sent several each (same wording as the
+ * presenter control bar), else "3 responses".
+ */
+function ResponsesAndPeople({ entries, people }: { entries: number; people: number }) {
+	if (entries === people) return <ResponseCount count={entries} />;
+	return (
+		<p
+			aria-live="polite"
+			aria-atomic="true"
+			className="m-0 inline-flex items-center gap-[0.6cqw] font-semibold tabular-nums"
+			style={{ color: "var(--deck-text-muted)", fontSize: "clamp(0.875rem, 1.6cqw, 1.25rem)" }}
+		>
+			<Users className="h-[1.2em] w-[1.2em]" aria-hidden />
+			{entries} {entries === 1 ? "response" : "responses"} · {people} {people === 1 ? "person" : "people"}
+		</p>
 	);
 }
 

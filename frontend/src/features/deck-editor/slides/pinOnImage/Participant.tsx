@@ -3,18 +3,21 @@
 
 import { useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { ImageOff, X } from "lucide-react";
-import type { Point, RunMedia } from "@/features/deck/types";
+import type { PinOnImageAggregate, Point, RunMedia } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
 import type { ParticipantProps } from "../types";
 import { haptic, SubmitBar, SubmittedState } from "../shared";
-import { useAnswerFlow, useDraft } from "./answerFlow";
-import { clampPercent, describePoint, isPoint, pointKeys, roundPercent } from "./pointMath";
+import { useAnswer } from "../shared/answer";
+import { displayTitle } from "../shared/labels";
+import { AnswerSummary, ParticipantLayout, ParticipantNotice, ResultsSection, countLabel, isReadOnlyView, notVotingMessage, resultsTitle } from "../shared/participantKit";
+import { clampPercent, describePoint, isPoint, pointKeys, roundPercent } from "../shared/pointMath";
 
 // pin_on_image participant (plan §7.3): full-width image, tap to drop
 // pulsing pins (up to max_pins_per_participant), tap a pin to remove it,
 // Submit. Coordinates are percentages of the image, origin top-left, 2 dp
 // (exactly what PinOnImageSlideType validates). Keyboard: arrows move a
 // crosshair, Enter / Space drops a pin, Backspace removes the last one.
+// Public results (aggregate passed) show everyone's pins in every view.
 
 const FOCUS_RING =
 	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
@@ -165,35 +168,37 @@ function PinBoard({
 	);
 }
 
-export function PinOnImageParticipant({ run, mySubmission, onSubmit, disabled, aggregate, mode }: ParticipantProps<"pin_on_image">) {
+export function PinOnImageParticipant({ run, mySubmission, onSubmit, disabled, theme, aggregate, mode }: ParticipantProps<"pin_on_image">) {
+	const review = mode === "review";
+	const readOnly = isReadOnlyView(mode, run.state);
 	const max = Math.max(1, run.config.max_pins_per_participant ?? 1);
 	const media = run.config.media ?? null;
-	const stored = useMemo(() => storedPins(mySubmission), [mySubmission]);
-	const [pins, setPins, markClean] = useDraft<Point[]>(stored, JSON.stringify(stored));
-	const flow = useAnswerFlow(onSubmit, stored.length > 0, markClean);
+	const answer = useAnswer(run.id, mySubmission, onSubmit);
+	const stored = useMemo(() => storedPins(answer.latest), [answer.latest]);
+	const [pins, setPins] = useState<Point[]>([]);
 	const [cursor, setCursor] = useState<Point | null>(null);
 	const [announcement, setAnnouncement] = useState("");
-	const review = mode === "review";
-	const locked = disabled || flow.busy || review;
+	const locked = disabled || answer.busy || readOnly;
+	const title = displayTitle(run.title, "pin_on_image");
 
 	const place = (point: Point) => {
 		if (locked) return;
 		if (pins.length >= max && max > 1) {
 			setAnnouncement(`All ${max} pins are placed. Tap a pin to remove it first.`);
-			haptic([10, 40, 10]);
+			haptic("error");
 			return;
 		}
 		// One pin: tapping again moves it.
 		setPins((current) => (max === 1 ? [point] : [...current, point]));
 		setAnnouncement(max === 1 ? `Pin placed at ${describePoint(point)}.` : `Pin ${pins.length + 1} of ${max} placed.`);
-		haptic(10);
+		haptic("tap");
 	};
 
 	const remove = (index: number) => {
 		if (locked) return;
 		setPins((current) => current.filter((_, i) => i !== index));
 		setAnnouncement(`Pin ${index + 1} removed.`);
-		haptic(10);
+		haptic("tap");
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -216,83 +221,128 @@ export function PinOnImageParticipant({ run, mySubmission, onSubmit, disabled, a
 		}
 	};
 
-	const otherPins = aggregate?.pins;
 	const helpId = `pin-help-${run.id}`;
+	const results = aggregate ? <PinResults aggregate={aggregate} media={media} mine={stored} title={resultsTitle(mode, run.state)} /> : null;
+	const summary =
+		stored.length > 0 ? (
+			<AnswerSummary label={stored.length === 1 ? "Your pin" : "Your pins"}>
+				<PinBoard media={media} pins={stored} compact label={`Your ${stored.length === 1 ? "pin" : `${stored.length} pins`} on the image.`} />
+			</AnswerSummary>
+		) : null;
 
-	if (flow.showSubmitted || review) {
-		const shown = flow.showSubmitted ? pins : stored;
+	if (readOnly) {
 		return (
-			<SubmittedState
-				title={review ? "Your pins" : shown.length === 1 ? "Your pin is in" : "Your pins are in"}
-				message={review ? (shown.length ? null : "You didn't drop a pin on this slide.") : "Waiting for the host to continue."}
-				onEdit={!review && !disabled ? flow.edit : undefined}
-				editLabel="Move my pins"
-				editHint={!review && !disabled ? "You can change your pins until voting closes." : undefined}
-			>
-				{shown.length || otherPins?.length ? (
-					<PinBoard
-						media={media}
-						pins={shown}
-						otherPins={otherPins}
-						compact
-						label={`Your ${shown.length === 1 ? "pin" : `${shown.length} pins`} on the image${otherPins?.length ? `, with ${otherPins.length} pins from others` : ""}.`}
-					/>
-				) : null}
-			</SubmittedState>
+			<ParticipantLayout theme={theme} title={title}>
+				{/* With results, the image below already shows your pins. */}
+				{stored.length > 0 ? (results ? null : summary) : review ? <ParticipantNotice>You didn&apos;t drop a pin on this slide.</ParticipantNotice> : null}
+				{results}
+			</ParticipantLayout>
 		);
 	}
 
+	if (stored.length > 0 && !answer.editing) {
+		return (
+			<ParticipantLayout theme={theme} title={title}>
+				<SubmittedState
+					title={stored.length === 1 ? "Your pin is in" : "Your pins are in"}
+					onEdit={
+						disabled
+							? undefined
+							: () => {
+									setPins(stored);
+									setCursor(null);
+									answer.edit();
+								}
+					}
+					editLabel="Move my pins"
+					editHint={!disabled ? "You can change your pins until voting closes." : undefined}
+					className="px-0 py-6"
+				>
+					{results ?? summary}
+				</SubmittedState>
+			</ParticipantLayout>
+		);
+	}
+
+	const lockedMessage = disabled ? notVotingMessage(run.state) : null;
+
 	return (
-		<div className="flex min-h-full w-full flex-col" style={{ color: "var(--deck-text, #111928)" }}>
-			<div className="flex flex-1 flex-col gap-4 px-4 pb-4 pt-5">
-				<div className="flex flex-col gap-1">
-					<h2 className="m-0 break-words text-xl font-bold leading-snug">{run.title || "Drop a pin on the image"}</h2>
-					<p id={helpId} className="m-0 text-sm" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
-						{max === 1 ? "Tap the image to drop your pin. Tap again to move it." : `Tap the image to drop up to ${max} pins. Tap a pin to remove it.`}
-					</p>
-				</div>
-
-				<PinBoard
-					media={media}
-					pins={pins}
-					interactive={!locked}
-					cursor={cursor}
-					onPlace={place}
-					onRemove={remove}
-					onKeyDown={onKeyDown}
-					onPointerDown={() => setCursor(null)}
-					label="Image to drop pins on. Arrow keys move the crosshair, Enter drops a pin, Backspace removes the last pin."
-					describedBy={helpId}
+		<ParticipantLayout
+			theme={theme}
+			title={title}
+			subtitle={max === 1 ? "Tap the image to drop your pin. Tap again to move it." : `Tap the image to drop up to ${max} pins. Tap a pin to remove it.`}
+			subtitleId={helpId}
+			footer={
+				<SubmitBar
+					label={answer.editing ? "Update pins" : "Submit"}
+					onClick={() => {
+						const next = pins.map((pin) => ({ x: roundPercent(pin.x), y: roundPercent(pin.y) }));
+						void answer.submit({ pins: next }, { pins: next });
+					}}
+					loading={answer.busy}
+					disabled={disabled || pins.length === 0}
+					hint={`${pins.length} / ${max} ${max === 1 ? "pin" : "pins"} placed`}
+					error={answer.fieldError}
 				/>
+			}
+		>
+			{lockedMessage ? <ParticipantNotice>{lockedMessage}</ParticipantNotice> : null}
 
-				{pins.length > 1 && !locked ? (
-					<button
-						type="button"
-						onClick={() => {
-							setPins([]);
-							setAnnouncement("All pins removed.");
-						}}
-						className={cn("mx-auto flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold", FOCUS_RING)}
-						style={{ color: "var(--deck-text-muted, #4B5563)", background: "var(--deck-surface-muted, #F3F4F6)" }}
-					>
-						<X className="h-4 w-4" aria-hidden />
-						Clear all pins
-					</button>
-				) : null}
-
-				<p className="sr-only" aria-live="polite">
-					{announcement}
-				</p>
-			</div>
-
-			<SubmitBar
-				label={flow.editing ? "Update pins" : "Submit"}
-				onClick={() => void flow.submit({ pins: pins.map((pin) => ({ x: roundPercent(pin.x), y: roundPercent(pin.y) })) })}
-				loading={flow.busy}
-				disabled={disabled || review || pins.length === 0}
-				hint={`${pins.length} / ${max} ${max === 1 ? "pin" : "pins"} placed`}
-				error={flow.errorMessage}
+			<PinBoard
+				media={media}
+				pins={pins}
+				interactive={!locked}
+				cursor={cursor}
+				onPlace={place}
+				onRemove={remove}
+				onKeyDown={onKeyDown}
+				onPointerDown={() => setCursor(null)}
+				label="Image to drop pins on. Arrow keys move the crosshair, Enter drops a pin, Backspace removes the last pin."
+				describedBy={helpId}
 			/>
-		</div>
+
+			{pins.length > 1 && !locked ? (
+				<button
+					type="button"
+					onClick={() => {
+						setPins([]);
+						setAnnouncement("All pins removed.");
+					}}
+					className={cn("mx-auto flex min-h-11 items-center gap-1.5 rounded-full px-4 text-sm font-semibold", FOCUS_RING)}
+					style={{ color: "var(--deck-text-muted, #4B5563)", background: "var(--deck-surface-muted, #F3F4F6)" }}
+				>
+					<X className="h-4 w-4" aria-hidden />
+					Clear all pins
+				</button>
+			) : null}
+
+			<p className="sr-only" aria-live="polite">
+				{announcement}
+			</p>
+
+			{answer.editing ? (
+				<button
+					type="button"
+					onClick={answer.cancelEdit}
+					disabled={answer.busy}
+					className={cn("min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 hover:underline", FOCUS_RING)}
+					style={{ color: "var(--deck-text-muted, #4B5563)" }}
+				>
+					Keep my pins
+				</button>
+			) : null}
+
+			{results}
+		</ParticipantLayout>
+	);
+}
+
+/** Everyone's pins (latest 150) on the image, with your own on top. */
+function PinResults({ aggregate, media, mine, title }: { aggregate: PinOnImageAggregate; media: RunMedia | null; mine: Point[]; title: string }) {
+	const label = `${aggregate.total_pins} ${aggregate.total_pins === 1 ? "pin" : "pins"} from everyone${mine.length ? `, with your ${mine.length === 1 ? "pin" : `${mine.length} pins`}` : ""}.`;
+	return (
+		<ResultsSection title={title} summary={countLabel(aggregate.total_responses, "response", "responses")}>
+			<PinBoard media={media} pins={mine} otherPins={aggregate.pins} compact label={label} />
+		</ResultsSection>
 	);
 }

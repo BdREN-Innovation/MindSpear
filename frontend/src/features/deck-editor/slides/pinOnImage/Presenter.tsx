@@ -6,19 +6,23 @@ import { motion } from "framer-motion";
 import { Flame, ImageIcon, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PresenterProps } from "../types";
-import { TIMER_CHIP_CLEARANCE } from "./stageLayout";
 import { PresenterStage, ResponseCount, SlideTitle, usePrefersReducedMotion } from "../shared";
-import { HeatmapCanvas } from "./HeatmapCanvas";
-import { pointKeys } from "./pointMath";
+import { HeatmapCanvas } from "../shared/HeatmapCanvas";
+import { fallbackTitle } from "../shared/labels";
+import { pointKeys } from "../shared/pointMath";
+import { TIMER_CHIP_CLEARANCE } from "../shared/stageLayout";
 
 // pin_on_image presenter (plan §6.3): the image fitted into the stage at its
 // own aspect (snapshot media width/height), with either the pins (latest 150,
 // fading in as they arrive) or a client-side gaussian heatmap of every pin.
+// The Pins / Heatmap switch is live only: in 'preview' (editor canvas, slide
+// rail thumbnails) the stage sits inside a <button>, so no controls render.
 
 type View = "pins" | "heatmap";
 
-export function PinOnImagePresenter({ run, aggregate }: PresenterProps<"pin_on_image">) {
+export function PinOnImagePresenter({ run, aggregate, mode }: PresenterProps<"pin_on_image">) {
 	const [view, setView] = useState<View>("pins");
+	const interactive = mode === "live";
 	const reduceMotion = usePrefersReducedMotion();
 	const media = run.config.media ?? null;
 	const aspect = media?.width && media?.height ? media.width / media.height : 16 / 9;
@@ -30,38 +34,40 @@ export function PinOnImagePresenter({ run, aggregate }: PresenterProps<"pin_on_i
 		<PresenterStage>
 			{/* Right padding keeps the shell's timer chip area (top-right ~220×56 px) clear. */}
 			<div className="flex items-start justify-between gap-[2cqw]" style={TIMER_CHIP_CLEARANCE}>
-				<SlideTitle title={run.title} fallback="Tap the image to drop a pin" size="md" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("pin_on_image")} size="md" />
 				<div className="flex shrink-0 items-center gap-[1.5cqw]">
 					<ResponseCount count={aggregate?.total_responses ?? 0} />
-					<div
-						role="group"
-						aria-label="Results view"
-						className="flex rounded-full p-[0.3cqw]"
-						style={{ background: "var(--deck-surface-muted)" }}
-					>
-						{(
-							[
-								["pins", "Pins", MapPin],
-								["heatmap", "Heatmap", Flame],
-							] as const
-						).map(([value, label, Icon]) => (
-							<button
-								key={value}
-								type="button"
-								aria-pressed={view === value}
-								onClick={() => setView(value)}
-								className="flex min-h-11 items-center gap-[0.5cqw] rounded-full px-[1.2cqw] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus)]"
-								style={{
-									fontSize: "clamp(0.75rem, 1.3cqw, 1.1rem)",
-									background: view === value ? "var(--deck-primary)" : "transparent",
-									color: view === value ? "var(--deck-on-primary)" : "var(--deck-text-muted)",
-								}}
-							>
-								<Icon className="h-[1.1em] w-[1.1em]" aria-hidden />
-								{label}
-							</button>
-						))}
-					</div>
+					{interactive ? (
+						<div
+							role="group"
+							aria-label="Results view"
+							className="flex rounded-full p-[0.3cqw]"
+							style={{ background: "var(--deck-surface-muted)" }}
+						>
+							{(
+								[
+									["pins", "Pins", MapPin],
+									["heatmap", "Heatmap", Flame],
+								] as const
+							).map(([value, label, Icon]) => (
+								<button
+									key={value}
+									type="button"
+									aria-pressed={view === value}
+									onClick={() => setView(value)}
+									className="flex min-h-11 items-center gap-[0.5cqw] rounded-full px-[1.2cqw] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus)]"
+									style={{
+										fontSize: "clamp(0.75rem, 1.3cqw, 1.1rem)",
+										background: view === value ? "var(--deck-primary)" : "transparent",
+										color: view === value ? "var(--deck-on-primary)" : "var(--deck-text-muted)",
+									}}
+								>
+									<Icon className="h-[1.1em] w-[1.1em]" aria-hidden />
+									{label}
+								</button>
+							))}
+						</div>
+					) : null}
 				</div>
 			</div>
 

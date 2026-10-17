@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { RunMedia } from "@/features/deck/types";
 import type { EditorProps, ParticipantProps, PresenterProps } from "../types";
 import { MediaSlot, TextField } from "../shared";
-import { ContentPhone, ContentStage, ContentTitle, SlideTitleField, contentSize, fieldError, type ContentVariant } from "../heading/contentKit";
+import { ContentPhone, ContentStage, ContentTitle, SlideTitleField, contentSize, fieldError, type ContentVariant } from "../shared/contentKit";
 
 // `image`: one My Files image (slides.media_file_id → snapshot config.media)
 // with an optional caption (≤ 200) and alt text (≤ 250). The image is shown

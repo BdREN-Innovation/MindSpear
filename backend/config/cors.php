@@ -36,9 +36,14 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    // Retry-After on 429s must be readable cross-origin: the participant app
+    // waits that long before its next try.
+    'exposed_headers' => ['Retry-After'],
 
-    'max_age' => 0,
+    // Participant requests carry X-Participant-Token, so each one would be
+    // preflighted; cache the preflight for 2 hours (browsers cap it: Chrome
+    // at 2 h, Firefox at 24 h).
+    'max_age' => 7200,
 
     'supports_credentials' => true,
 

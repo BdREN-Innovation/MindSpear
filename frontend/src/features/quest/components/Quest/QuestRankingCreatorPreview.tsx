@@ -98,6 +98,7 @@ const QuestRankingCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 						data={series}
 						categories={labels}
 						colors={allOptions.map((opt: { color: string; }) => opt.color || "")}
+						showEmptyChart
 					/>
 				</div>
 			</div>

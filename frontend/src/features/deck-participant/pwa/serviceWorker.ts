@@ -6,6 +6,10 @@
 // reload, so it registers only when NEXT_PUBLIC_PWA_DEV=true or
 // localStorage "mindspear:pwa-dev" = "1"; otherwise any earlier dev
 // registration is removed.
+//
+// The script URL carries the build id (/sw.js?v=<id>): a deploy changes the
+// URL, so the browser installs the new worker, which names its caches after
+// that id and drops the old ones on activation.
 
 export const PWA_SCOPE = "/play";
 const SW_URL = "/sw.js";
@@ -30,7 +34,12 @@ export function serviceWorkerWanted(): boolean {
 
 let started = false;
 
-export function registerParticipantServiceWorker(): void {
+/** /sw.js?v=<build id> ("dev" when unknown). */
+export function serviceWorkerUrl(version: string | null | undefined): string {
+	return `${SW_URL}?v=${encodeURIComponent(version || "dev")}`;
+}
+
+export function registerParticipantServiceWorker(version?: string | null): void {
 	if (started || typeof window === "undefined" || !("serviceWorker" in navigator)) return;
 	started = true;
 
@@ -43,7 +52,7 @@ export function registerParticipantServiceWorker(): void {
 	}
 
 	const register = () => {
-		navigator.serviceWorker.register(SW_URL, { scope: PWA_SCOPE }).catch((error: unknown) => {
+		navigator.serviceWorker.register(serviceWorkerUrl(version), { scope: PWA_SCOPE }).catch((error: unknown) => {
 			console.warn("MindSpear service worker registration failed", error);
 		});
 	};

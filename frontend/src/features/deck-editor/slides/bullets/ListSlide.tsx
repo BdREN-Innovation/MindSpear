@@ -9,7 +9,7 @@ import {
 	PreviewHint,
 	SlideTitleField,
 	type ContentVariant,
-} from "../heading/contentKit";
+} from "../shared/contentKit";
 import { ListItemsEditor } from "./ListItemsEditor";
 
 // bullets / numbered share everything but the marker (NumberedSlideType

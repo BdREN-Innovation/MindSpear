@@ -26,6 +26,16 @@ import type { DeckApiError } from "../api/errors";
 // - an equal version is merged (slide.changed is followed by a
 //   slide.state.changed with the same version that adds the timer fields);
 // - a jump of more than one version is applied and triggers a resync.
+//
+// Results visibility follows the backend rule (LiveAggregateService::
+// resultsVisibility): public only for a live_aggregate type whose slide turned
+// on show_results_to_participants. It is derived from the run on every
+// slide.changed (the participant state is not re-read on each slide), and an
+// aggregate arriving on the public channel proves it is public.
+//
+// Aggregates only move forward: within one run + state_version, a snapshot or
+// event older than the held aggregate (server_time, else total_responses) is
+// dropped, so a slow REST read can't make the chart jump back.
 
 export type DeckConnectionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected";
 
@@ -64,6 +74,8 @@ export interface ChannelState<S extends DeckSessionState = DeckSessionState> {
 	runState: RunStateInfo | null;
 	/** Latest aggregate of the current run (null when none / not visible to this viewer). */
 	aggregate: SlideAggregate | null;
+	/** Where `aggregate` came from, to keep newer results when an older copy arrives late. */
+	aggregateMeta: AggregateMeta | null;
 	resultsVisibility: ResultsVisibility | null;
 	participantCount: number | null;
 	totalSlides: number | null;
@@ -85,6 +97,14 @@ export interface ChannelState<S extends DeckSessionState = DeckSessionState> {
 
 export const QA_EVENT_LIMIT = 200;
 
+export interface AggregateMeta {
+	runId: number;
+	stateVersion: number;
+	totalResponses: number | null;
+	/** Epoch ms of the payload's server_time (null when unknown). */
+	serverTime: number | null;
+}
+
 export type ChannelAction<S extends DeckSessionState> =
 	| { type: "status"; status: DeckConnectionStatus }
 	| { type: "resync_started" }
@@ -101,6 +121,7 @@ export function initialChannelState<S extends DeckSessionState>(snapshot?: S | n
 		slimRun: null,
 		runState: null,
 		aggregate: null,
+		aggregateMeta: null,
 		resultsVisibility: null,
 		participantCount: null,
 		totalSlides: null,
@@ -141,6 +162,42 @@ function currentRunId(state: ChannelState<DeckSessionState>): number | null {
 	return state.currentRun?.id ?? state.slimRun?.id ?? null;
 }
 
+/**
+ * Who may see a run's results, from the run itself (same rule as the backend).
+ * null for a slim live_aggregate run: its config is unknown until the refetch.
+ */
+export function runResultsVisibility(run: ParticipantRunView | SlimRunView | null | undefined): ResultsVisibility | null {
+	if (!run) return null;
+	if (run.reveal_model !== "live_aggregate") return "host";
+	if (isSlimRunView(run)) return null;
+	const config = run.config as { show_results_to_participants?: unknown } | null;
+	return config?.show_results_to_participants === true ? "public" : "host";
+}
+
+function parseTime(value: IsoDateTime | null | undefined): number | null {
+	if (!value) return null;
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function totalOf(aggregate: SlideAggregate | null | undefined): number | null {
+	const total = (aggregate as { total_responses?: unknown } | null | undefined)?.total_responses;
+	return typeof total === "number" ? total : null;
+}
+
+/** True when `incoming` may replace the held aggregate (newer, or nothing comparable is held). */
+export function isNewerAggregate(held: AggregateMeta | null, incoming: AggregateMeta): boolean {
+	if (!held || held.runId !== incoming.runId) return true;
+	if (incoming.stateVersion !== held.stateVersion) return incoming.stateVersion > held.stateVersion;
+	// Same run + version: server_time orders them (one server clock). Without it,
+	// fall back to the response count, which only grows while a run is open.
+	if (held.serverTime !== null && incoming.serverTime !== null) return incoming.serverTime >= held.serverTime;
+	if (held.totalResponses !== null && incoming.totalResponses !== null) {
+		return incoming.totalResponses >= held.totalResponses;
+	}
+	return true;
+}
+
 export function applySnapshot<S extends DeckSessionState>(
 	state: ChannelState<S>,
 	snapshot: S,
@@ -160,9 +217,24 @@ export function applySnapshot<S extends DeckSessionState>(
 	}
 
 	const host = isHostSessionState(snapshot);
-	const aggregate: SlideAggregate | null = host
+	const incoming: SlideAggregate | null = host
 		? ((snapshot.current_run as PresenterRunView | null)?.aggregate ?? null)
 		: snapshot.aggregate;
+	const incomingMeta: AggregateMeta | null =
+		run && incoming
+			? {
+					runId: run.id,
+					stateVersion: run.state_version,
+					totalResponses: totalOf(incoming),
+					serverTime: parseTime(snapshot.server_time),
+				}
+			: null;
+	// A held aggregate of the same run that is newer than this read (an event
+	// landed while the request was in flight) wins over the snapshot's copy.
+	const keepHeld =
+		!!incomingMeta && !!state.aggregate && !isNewerAggregate(state.aggregateMeta, incomingMeta);
+	const aggregate = keepHeld ? state.aggregate : incoming;
+	const aggregateMeta = keepHeld ? state.aggregateMeta : incomingMeta;
 
 	return {
 		...state,
@@ -178,7 +250,8 @@ export function applySnapshot<S extends DeckSessionState>(
 				}
 			: null,
 		aggregate,
-		resultsVisibility: snapshot.results_visibility,
+		aggregateMeta,
+		resultsVisibility: snapshot.results_visibility ?? runResultsVisibility(run),
 		participantCount: host ? snapshot.participant_count : state.participantCount,
 		totalSlides: snapshot.session.total_slides,
 		latestState: snapshot,
@@ -202,20 +275,43 @@ function pushQa<S extends DeckSessionState>(
 	};
 }
 
-/** slide.aggregate.updated on either channel. */
+/**
+ * slide.aggregate.updated (either channel) or the final aggregate of slide.closed.
+ * `visibility` is what the channel proves: an aggregate on the public channel
+ * is public; host-channel copies leave the visibility alone.
+ */
 function applyAggregate<S extends DeckSessionState>(
 	state: ChannelState<S>,
-	runId: number,
-	version: number,
-	aggregate: SlideAggregate
+	event: {
+		slide_run_id: number;
+		state_version: number;
+		total_responses: number | null;
+		aggregate: SlideAggregate;
+		server_time?: IsoDateTime | null;
+	},
+	visibility: ResultsVisibility | null
 ): ChannelState<S> {
+	const runId = event.slide_run_id;
+	const version = event.state_version;
 	if (runId !== currentRunId(state as ChannelState<DeckSessionState>)) return state;
 	const held = state.runState?.state_version ?? -1;
 	if (version < held) return state;
+	const meta: AggregateMeta = {
+		runId,
+		stateVersion: version,
+		totalResponses: event.total_responses ?? totalOf(event.aggregate),
+		serverTime: parseTime(event.server_time),
+	};
+	const resyncRequests = version > held + 1 ? state.resyncRequests + 1 : state.resyncRequests;
+	if (state.aggregate && !isNewerAggregate(state.aggregateMeta, meta)) {
+		return { ...state, resultsVisibility: visibility ?? state.resultsVisibility, resyncRequests };
+	}
 	return {
 		...state,
-		aggregate,
-		resyncRequests: version > held + 1 ? state.resyncRequests + 1 : state.resyncRequests,
+		aggregate: event.aggregate,
+		aggregateMeta: meta,
+		resultsVisibility: visibility ?? state.resultsVisibility,
+		resyncRequests,
 	};
 }
 
@@ -240,7 +336,7 @@ export function channelReducer<S extends DeckSessionState>(
 			const event = action.event;
 			const next = { ...state, lastEvent: { channel: "host" as const, event } };
 			if (event.event === "slide.aggregate.updated") {
-				return applyAggregate(next, event.slide_run_id, event.state_version, event.aggregate);
+				return applyAggregate(next, event, null);
 			}
 			if (event.event.startsWith("qa.question.")) {
 				return pushQa(next, "host", event as DeckQaEventPayload);
@@ -256,6 +352,9 @@ export function channelReducer<S extends DeckSessionState>(
 				case "slide.changed": {
 					const slide = event.slide;
 					const slim = isSlimRunView(slide);
+					// A run that arrives past `waiting` was visited before (the host went
+					// back): read state once for its results and my earlier answer.
+					const revisited = slide.state !== "waiting";
 					return {
 						...next,
 						epoch: state.epoch + 1,
@@ -264,9 +363,13 @@ export function channelReducer<S extends DeckSessionState>(
 						slimRun: slim ? slide : null,
 						runState: runStateFromRun(slide, null, event.server_time),
 						aggregate: null,
+						aggregateMeta: null,
+						resultsVisibility: runResultsVisibility(slide),
 						totalSlides: event.total_slides ?? state.totalSlides,
 						resyncRequests:
-							slim || action.resyncOnSlideChange ? state.resyncRequests + 1 : state.resyncRequests,
+							slim || revisited || action.resyncOnSlideChange
+								? state.resyncRequests + 1
+								: state.resyncRequests,
 					};
 				}
 
@@ -315,18 +418,33 @@ export function channelReducer<S extends DeckSessionState>(
 							} as ParticipantRunView)
 						: null;
 
-					return {
+					const moved: ChannelState<S> = {
 						...next,
 						currentRun,
 						runState,
-						// slide.closed carries the final aggregate only when participants may see it.
-						aggregate: closed && event.aggregate ? event.aggregate : state.aggregate,
 						resyncRequests: event.state_version > held + 1 ? state.resyncRequests + 1 : state.resyncRequests,
 					};
+					if (!closed) return moved;
+					// slide.closed carries the final aggregate only when participants may
+					// see it; null means the results stay on the host's screen.
+					if (event.aggregate) {
+						return applyAggregate(
+							moved,
+							{
+								slide_run_id: event.slide_run_id,
+								state_version: event.state_version,
+								total_responses: event.total_responses,
+								aggregate: event.aggregate,
+								server_time: event.server_time,
+							},
+							"public"
+						);
+					}
+					return { ...moved, resultsVisibility: "host" };
 				}
 
 				case "slide.aggregate.updated":
-					return applyAggregate(next, event.slide_run_id, event.state_version, event.aggregate);
+					return applyAggregate(next, event, "public");
 
 				case "participant.count.updated":
 					return { ...next, participantCount: event.participant_count };

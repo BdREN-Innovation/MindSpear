@@ -2,8 +2,8 @@
 
 import type { EditorProps } from "../types";
 import { OptionListEditor, SegmentedField, SelectField } from "../shared";
-import { EditorGroup, QuestionField } from "./common";
-import { RESULT_LAYOUT_CHOICES } from "./PollResults";
+import { EditorGroup, QuestionField } from "../shared/editorKit";
+import { RESULT_LAYOUT_CHOICES, resultLayoutHint } from "../shared/PollResults";
 
 const SUBMIT_MODES = [
 	{ value: "instant" as const, label: "Tap to vote" },
@@ -49,6 +49,7 @@ export function PollSingleEditor({ slide, onChange, onOptionsChange, errors, dis
 					value={config.result_layout ?? "bars"}
 					options={RESULT_LAYOUT_CHOICES}
 					onChange={(result_layout) => onChange({ config: { result_layout } })}
+					hint={resultLayoutHint(config.result_layout, "single")}
 					error={errors?.["config.result_layout"]}
 					disabled={disabled}
 				/>

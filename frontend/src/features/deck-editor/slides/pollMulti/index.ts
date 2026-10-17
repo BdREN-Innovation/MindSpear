@@ -1,7 +1,7 @@
 import { ListChecks } from "lucide-react";
 import type { PollMultiAggregate, SlideOf } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleCount } from "../pollSingle/common";
+import { sampleCount } from "../shared/samples";
 import { PollMultiEditor } from "./Editor";
 import { PollMultiParticipant } from "./Participant";
 import { PollMultiPresenter } from "./Presenter";

@@ -17,16 +17,19 @@ import {
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { cn } from "@/lib/utils";
-import type { RunOption } from "@/features/deck/types";
+import type { RankingAggregate, RunOption } from "@/features/deck/types";
 import type { ParticipantProps } from "../types";
-import { SubmitBar, SubmittedState, haptic, useSubmit } from "../shared";
-import { AnswerSummary, ParticipantLayout, ParticipantNotice, notVotingMessage, numberedLabel, useAnswerHistory } from "../pollSingle/common";
+import { SubmitBar, SubmittedState, haptic } from "../shared";
+import { useAnswer } from "../shared/answer";
+import { displayTitle, numberedLabel } from "../shared/labels";
+import { AnswerSummary, ParticipantLayout, ParticipantNotice, ResultsSection, countLabel, isReadOnlyView, notVotingMessage, resultsTitle } from "../shared/participantKit";
 
 // ranking on the phone (plan §7.3): drag the handle to reorder (mouse,
 // touch, or keyboard: Space, arrows, Space), or tap an item for Move up /
 // Move down buttons (a single-tap alternative to dragging). With
 // require_full_ranking off, items can be left out ("Not ranked") and the
 // answer is the ranked top-k prefix. Submit sends {order: [ids best first]}.
+// Public results (aggregate passed) show the overall ranking in every view.
 
 const FOCUS_RING =
 	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
@@ -45,8 +48,9 @@ function settle(lists: Lists, ids: number[], requireFull: boolean): Lists {
 	return requireFull ? { ranked: [...ranked, ...unranked, ...missing], unranked: [] } : { ranked: [...ranked, ...missing], unranked };
 }
 
-export function RankingParticipant({ run, mySubmission, onSubmit, disabled, theme, mode }: ParticipantProps<"ranking">) {
+export function RankingParticipant({ run, mySubmission, onSubmit, disabled, theme, aggregate, mode }: ParticipantProps<"ranking">) {
 	const review = mode === "review";
+	const readOnly = isReadOnlyView(mode, run.state);
 	const requireFull = run.config.require_full_ranking !== false;
 	const ids = run.options.map((option) => option.id);
 	const byId = new Map(run.options.map((option, index) => [option.id, { option, index }]));
@@ -55,9 +59,8 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 		return match ? numberedLabel(match.option, match.index, "Item") : "Item";
 	};
 
-	const { submit, busy, errorMessage, reset } = useSubmit(onSubmit);
-	const { latest, record } = useAnswerHistory(run.id, mySubmission);
-	const [editing, setEditing] = useState(false);
+	const answer = useAnswer(run.id, mySubmission, onSubmit);
+	const { busy } = answer;
 	const [rawLists, setLists] = useState<Lists>(() => ({ ranked: ids, unranked: [] }));
 	const [expandedId, setExpandedId] = useState<number | null>(null);
 	const [announcement, setAnnouncement] = useState("");
@@ -69,51 +72,63 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 		useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 	);
 
-	const answeredOrder = Array.isArray(latest?.order) ? latest.order.filter((id) => byId.has(id)) : [];
+	const answeredOrder = Array.isArray(answer.latest?.order) ? answer.latest.order.filter((id) => byId.has(id)) : [];
 	const hasAnswer = answeredOrder.length > 0;
-	const locked = disabled || review;
-	const title = run.title;
+	const title = displayTitle(run.title, "ranking");
+	const left = ids.filter((id) => !answeredOrder.includes(id));
+	const results = aggregate ? (
+		<OverallRanking aggregate={aggregate} labelOf={labelOf} mine={answeredOrder} title={resultsTitle(mode, run.state)} />
+	) : null;
 
-	if (review || (hasAnswer && !editing)) {
-		const left = ids.filter((id) => !answeredOrder.includes(id));
+	const summary = (
+		<AnswerSummary label="Your ranking">
+			<ol className="m-0 flex list-none flex-col gap-2 p-0">
+				{answeredOrder.map((id, index) => (
+					<li key={id} className="flex items-start gap-3">
+						<RankBadge position={index + 1} />
+						<span className="min-w-0 break-words pt-0.5 font-semibold">{labelOf(id)}</span>
+					</li>
+				))}
+			</ol>
+			{left.length > 0 ? (
+				<p className="m-0 text-sm" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+					Not ranked: {left.map((id) => labelOf(id)).join(", ")}
+				</p>
+			) : null}
+		</AnswerSummary>
+	);
+
+	if (readOnly) {
 		return (
-			<ParticipantLayout theme={theme} title={title} fallbackTitle="Ranking">
-				{!hasAnswer ? (
-					<ParticipantNotice>You didn&apos;t rank this slide.</ParticipantNotice>
-				) : (
-					<SubmittedState
-						title="Thanks, your ranking is in"
-						message={review ? null : "Waiting for the host to continue."}
-						onEdit={
-							locked
-								? undefined
-								: () => {
-										reset();
-										setLists(settle({ ranked: answeredOrder, unranked: left }, ids, requireFull));
-										setExpandedId(null);
-										setEditing(true);
-									}
-						}
-						editLabel="Change ranking"
-						className="px-0 py-6"
-					>
-						<AnswerSummary label="Your ranking">
-							<ol className="m-0 flex list-none flex-col gap-2 p-0">
-								{answeredOrder.map((id, index) => (
-									<li key={id} className="flex items-start gap-3">
-										<RankBadge position={index + 1} />
-										<span className="min-w-0 break-words pt-0.5 font-semibold">{labelOf(id)}</span>
-									</li>
-								))}
-							</ol>
-							{left.length > 0 ? (
-								<p className="m-0 text-sm" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
-									Not ranked: {left.map((id) => labelOf(id)).join(", ")}
-								</p>
-							) : null}
-						</AnswerSummary>
-					</SubmittedState>
-				)}
+			<ParticipantLayout theme={theme} title={title}>
+				{hasAnswer ? summary : review ? <ParticipantNotice>You didn&apos;t rank this slide.</ParticipantNotice> : null}
+				{results}
+			</ParticipantLayout>
+		);
+	}
+
+	if (hasAnswer && !answer.editing) {
+		return (
+			<ParticipantLayout theme={theme} title={title}>
+				<SubmittedState
+					title="Thanks, your ranking is in"
+					onEdit={
+						disabled
+							? undefined
+							: () => {
+									setLists(settle({ ranked: answeredOrder, unranked: left }, ids, requireFull));
+									setExpandedId(null);
+									answer.edit();
+								}
+					}
+					editLabel="Change ranking"
+					className="px-0 py-6"
+				>
+					<div className="flex flex-col gap-4">
+						{summary}
+						{results}
+					</div>
+				</SubmittedState>
 			</ParticipantLayout>
 		);
 	}
@@ -127,7 +142,7 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 		const from = ranked.indexOf(id);
 		const to = from + delta;
 		if (from < 0 || to < 0 || to >= ranked.length) return;
-		haptic(10);
+		haptic("select");
 		setLists({ ranked: arrayMove(ranked, from, to), unranked });
 		setAnnouncement(`${labelOf(id)} moved to position ${to + 1} of ${ranked.length}.`);
 	};
@@ -139,7 +154,7 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 	};
 
 	const addBack = (id: number) => {
-		haptic(10);
+		haptic("select");
 		setLists({ ranked: [...ranked, id], unranked: unranked.filter((other) => other !== id) });
 		setAnnouncement(`${labelOf(id)} added at position ${ranked.length + 1}.`);
 	};
@@ -149,19 +164,14 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 		const from = ranked.indexOf(Number(active.id));
 		const to = ranked.indexOf(Number(over.id));
 		if (from < 0 || to < 0) return;
-		haptic(10);
+		haptic("select");
 		setLists({ ranked: arrayMove(ranked, from, to), unranked });
 	};
 
 	const send = () => {
 		if (!canSubmit) return;
 		const order = ranked.slice();
-		void submit({ order }).then((ok) => {
-			if (ok) {
-				record({ order });
-				setEditing(false);
-			}
-		});
+		void answer.submit({ order }, { order });
 	};
 
 	const positionOf = (id: UniqueIdentifier) => ranked.indexOf(Number(id)) + 1;
@@ -170,7 +180,6 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 		<ParticipantLayout
 			theme={theme}
 			title={title}
-			fallbackTitle="Ranking"
 			subtitle="Put your favourite at the top: drag the handle, or tap an item to move it."
 			footer={
 				<SubmitBar
@@ -179,7 +188,7 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 					loading={busy}
 					disabled={disabled || !canSubmit}
 					hint={requireFull ? "Rank every item, best first." : `${ranked.length} of ${ids.length} ranked`}
-					error={errorMessage}
+					error={answer.fieldError}
 				/>
 			}
 		>
@@ -262,13 +271,10 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 				{announcement}
 			</p>
 
-			{editing ? (
+			{answer.editing ? (
 				<button
 					type="button"
-					onClick={() => {
-						reset();
-						setEditing(false);
-					}}
+					onClick={answer.cancelEdit}
 					disabled={busy}
 					className={cn("min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 hover:underline", FOCUS_RING)}
 					style={{ color: "var(--deck-text-muted, #4B5563)" }}
@@ -276,7 +282,55 @@ export function RankingParticipant({ run, mySubmission, onSubmit, disabled, them
 					Keep my ranking
 				</button>
 			) : null}
+
+			{results}
 		</ParticipantLayout>
+	);
+}
+
+/** Everyone's ranking: the aggregate order (ties share a rank) with the average position. */
+function OverallRanking({
+	aggregate,
+	labelOf,
+	mine,
+	title,
+}: {
+	aggregate: RankingAggregate;
+	labelOf: (id: UniqueIdentifier) => string;
+	mine: number[];
+	title: string;
+}) {
+	const hasResults = aggregate.total_responses > 0;
+	return (
+		<ResultsSection title={title} summary={countLabel(aggregate.total_responses, "response", "responses")}>
+			{hasResults ? (
+				<ol aria-label="Overall ranking, best first" className="m-0 flex list-none flex-col gap-2 p-0">
+					{aggregate.items.map((item) => {
+						const yours = mine.indexOf(item.option_id);
+						return (
+							<li key={item.option_id} className="flex items-center gap-3 text-sm">
+								<RankBadge position={item.rank ?? 0} />
+								<span className="min-w-0 flex-1 break-words font-semibold">
+									{labelOf(item.option_id)}
+									{yours >= 0 ? (
+										<span className="ml-1.5 text-xs font-normal" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+											you: #{yours + 1}
+										</span>
+									) : null}
+								</span>
+								<span className="shrink-0 tabular-nums" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+									{item.average_position !== null ? `avg ${item.average_position.toFixed(1)}` : "–"}
+								</span>
+							</li>
+						);
+					})}
+				</ol>
+			) : (
+				<p className="m-0 text-sm" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+					No rankings yet.
+				</p>
+			)}
+		</ResultsSection>
 	);
 }
 

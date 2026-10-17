@@ -3,8 +3,9 @@
 
 import { useMemo } from "react";
 import type { PresenterProps } from "../types";
-import { TIMER_CHIP_CLEARANCE } from "../pinOnImage/stageLayout";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle } from "../shared";
+import { fallbackTitle, numberedLabel } from "../shared/labels";
+import { TIMER_CHIP_CLEARANCE } from "../shared/stageLayout";
 import { StarMeter } from "./StarRow";
 
 // rating presenter (plan §6.3): one row per item with a star row filled to
@@ -17,7 +18,7 @@ export function RatingPresenter({ run, aggregate }: PresenterProps<"rating">) {
 		const byId = new Map((aggregate?.items ?? []).map((item) => [item.option_id, item]));
 		return run.options.map((option, index) => ({
 			id: option.id,
-			label: option.label?.trim() || `Item ${index + 1}`,
+			label: numberedLabel(option, index, "Item"),
 			imageUrl: option.image_url,
 			mean: byId.get(option.id)?.mean ?? null,
 			count: byId.get(option.id)?.count ?? 0,
@@ -34,7 +35,7 @@ export function RatingPresenter({ run, aggregate }: PresenterProps<"rating">) {
 		<PresenterStage>
 			{/* Right padding keeps the shell's timer chip area (top-right ~220×56 px) clear. */}
 			<div className="flex items-start justify-between gap-[2cqw]" style={TIMER_CHIP_CLEARANCE}>
-				<SlideTitle title={run.title} fallback="Rate these" size="md" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("rating")} size="md" />
 				<ResponseCount count={aggregate?.total_responses ?? 0} className="shrink-0" />
 			</div>
 

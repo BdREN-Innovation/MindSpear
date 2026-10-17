@@ -1,8 +1,7 @@
 import type { DensityGrid, Point } from "@/features/deck/types";
 
 // Percentage-plane helpers shared by pin_on_image and matrix_2x2 (both use
-// 0..100 on each axis, backend PointCloud). Kept in this folder because
-// slides/shared is owned by another agent.
+// 0..100 on each axis, backend PointCloud).
 
 /** Backend PointCloud::GRID_SIZE. */
 export const GRID_SIZE = 20;

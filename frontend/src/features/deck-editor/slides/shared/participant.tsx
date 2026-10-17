@@ -137,7 +137,7 @@ export function OptionCard({
 			aria-checked={selected}
 			disabled={disabled}
 			onClick={() => {
-				if (hapticFeedback) haptic(10);
+				if (hapticFeedback) haptic("select");
 				onSelect();
 			}}
 			className={cn(
@@ -212,7 +212,8 @@ export interface SubmittedStateProps {
 /** ✓ "Thanks, your answer is in" screen shown after a submit and after a reload with has_answered. */
 export function SubmittedState({
 	title = "Thanks, your answer is in",
-	message = "Waiting for the host to continue.",
+	// No default: the shell's SubmittedStrip already says "Answer sent · waiting for the host".
+	message,
 	editHint,
 	onEdit,
 	editLabel = "Change answer",

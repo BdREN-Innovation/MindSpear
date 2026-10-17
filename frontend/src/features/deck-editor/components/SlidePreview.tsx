@@ -18,9 +18,12 @@ import type { RunState, Slide } from "@/features/deck/types";
 import { getSlideType } from "../slideRegistry";
 import type { PresenterSessionInfo } from "../slides/types";
 
-// Shared by the canvas, the rail thumbnails and the full-screen preview: a
-// slide's Presenter rendered at a fixed 16:9 design size and scaled to fit,
-// so every view lays the slide out exactly like the big screen does.
+// Shared by the canvas, the rail thumbnails, the full-screen preview and the
+// presenter's stage: a slide's Presenter rendered at a fixed 16:9 design size
+// and scaled to fit, so every view lays the slide out exactly like the big
+// screen does. The wrapper around the Presenter is the inline-size container,
+// so cqw units (PresenterStage's padding and gaps too) resolve against the
+// 1280 px slide, never the browser window.
 
 export const SLIDE_BASE_WIDTH = 1280;
 export const SLIDE_BASE_HEIGHT = 720;
@@ -132,6 +135,12 @@ interface SlidePresenterPreviewProps {
 	totalSlides: number;
 }
 
+const PREVIEW_FRAME_STYLE: CSSProperties = {
+	background: "var(--deck-bg)",
+	color: "var(--deck-text)",
+	containerType: "inline-size",
+};
+
 /** The slide's Presenter in preview mode (no session, no network) with the type's sample results. */
 export function SlidePresenterPreview({ slide, theme, totalSlides }: SlidePresenterPreviewProps) {
 	const entry = getSlideType(slide.type);
@@ -159,11 +168,7 @@ export function SlidePresenterPreview({ slide, theme, totalSlides }: SlidePresen
 
 	const Presenter = entry.Presenter;
 	return (
-		<DeckThemeProvider
-			theme={theme}
-			className="h-full w-full overflow-hidden"
-			style={{ background: "var(--deck-bg)", color: "var(--deck-text)" }}
-		>
+		<DeckThemeProvider theme={theme} className="h-full w-full overflow-hidden" style={PREVIEW_FRAME_STYLE}>
 			<SlideErrorBoundary resetKey={slide}>
 				<Presenter run={run} aggregate={aggregate} state={state} theme={theme} mode="preview" session={session} />
 			</SlideErrorBoundary>

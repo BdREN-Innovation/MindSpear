@@ -3,7 +3,8 @@
 import { useMemo, type CSSProperties } from "react";
 import type { PresenterProps } from "../types";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle } from "../shared";
-import { PollResultsChart, pollRows } from "./PollResults";
+import { fallbackTitle } from "../shared/labels";
+import { PollResultsChart, pollRows } from "../shared/PollResults";
 
 export function PollSinglePresenter({ run, aggregate, theme, mode }: PresenterProps<"poll_single">) {
 	const rows = useMemo(() => pollRows(run.options, aggregate?.options), [run.options, aggregate]);
@@ -13,7 +14,7 @@ export function PollSinglePresenter({ run, aggregate, theme, mode }: PresenterPr
 	return (
 		<PresenterStage style={theme.cssVars as CSSProperties}>
 			<header className="flex items-start justify-between gap-[3cqw]">
-				<SlideTitle title={run.title} fallback="Your question" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("poll_single")} />
 				{aggregate ? <ResponseCount count={aggregate.total_votes} noun={["vote", "votes"]} className="shrink-0 pt-[0.8cqw]" /> : null}
 			</header>
 			<div className="flex min-h-0 flex-1 flex-col">

@@ -6,7 +6,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import type { RankingItemResult } from "@/features/deck/types";
 import type { PresenterProps } from "../types";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersReducedMotion } from "../shared";
-import { numberedLabel } from "../pollSingle/common";
+import { fallbackTitle, numberedLabel } from "../shared/labels";
 
 // ranking presenter (plan §6.3): the items in the aggregate's order (average
 // position ascending, ties share a rank), each with a bar for how close to
@@ -48,7 +48,7 @@ export function RankingPresenter({ run, aggregate, theme, mode }: PresenterProps
 	return (
 		<PresenterStage style={theme.cssVars as CSSProperties}>
 			<header className="flex items-start justify-between gap-[3cqw]">
-				<SlideTitle title={run.title} fallback="Your question" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("ranking")} />
 				{aggregate ? <ResponseCount count={aggregate.total_responses} className="shrink-0 pt-[0.8cqw]" /> : null}
 			</header>
 

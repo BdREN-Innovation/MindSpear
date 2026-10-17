@@ -24,6 +24,8 @@ import { useDeckEditor } from "./useDeckEditor";
 export interface EditorShellProps {
 	deckId: string;
 	product?: DeckProduct;
+	/** Slide to select once the deck loads (?slide=<id>); unknown ids fall back to the first slide. */
+	initialSlideId?: number | null;
 }
 
 const ROUTES: Record<DeckProduct, { present: (id: string) => string; library: string }> = {
@@ -44,9 +46,9 @@ function isTypingTarget(element: HTMLElement | null): boolean {
 	return element.getAttribute("role") === "textbox";
 }
 
-export function EditorShell({ deckId, product = "quest" }: EditorShellProps) {
+export function EditorShell({ deckId, product = "quest", initialSlideId = null }: EditorShellProps) {
 	const api = useMemo(() => (product === "quest" ? questAuthoringApi : createAuthoringApi(product)), [product]);
-	const editor = useDeckEditor(deckId, api);
+	const editor = useDeckEditor(deckId, api, { preferredSlideId: initialSlideId });
 	const {
 		deck,
 		selectedId,

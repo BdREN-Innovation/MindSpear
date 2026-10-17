@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { RunMedia, VideoConfig } from "@/features/deck/types";
 import type { EditorProps, ParticipantProps, PresenterProps } from "../types";
 import { MediaSlot } from "../shared";
-import { ContentPhone, ContentStage, ContentTitle, SlideTitleField, contentSize, type ContentVariant } from "../heading/contentKit";
+import { ContentPhone, ContentStage, ContentTitle, SlideTitleField, contentSize, type ContentVariant } from "../shared/contentKit";
 
 // `video`: EITHER a YouTube / Vimeo link OR an mp4 from My Files, never both
 // (VideoSlideType). The server derives a privacy-friendly embed_url

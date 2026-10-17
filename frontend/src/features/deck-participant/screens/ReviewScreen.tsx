@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion, type PanInfo } from "framer-motion";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, CircleDashed, MessageCircleQuestion } from "lucide-react";
@@ -11,20 +11,22 @@ import { getDeckTheme, type DeckTheme } from "@/features/deck/theme";
 import type { DeckQaEvent } from "@/features/deck/live/channelState";
 import { useParticipantQaFeed } from "@/features/deck/live/qaFeed";
 import { useParticipantSession, type StoredParticipantSession } from "@/features/deck/live/participantSession";
-import type { ReviewRun, ReviewState } from "@/features/deck/types";
+import type { OpenEndedAggregate, OpenEndedCard, ReviewRun, ReviewState, SlideAggregate } from "@/features/deck/types";
 import { CenteredLoading } from "../components/LiveStates";
 import { Notice } from "../components/Notice";
 import { SlideStage } from "../components/SlideStage";
 import { friendlyError } from "../lib/errors";
 import { PARTICIPANT_PRODUCT } from "../lib/joinCode";
-import { deckThemeKeyFrom, isContentRun, storedPayload } from "../lib/runs";
+import { deckThemeKeyFrom, isContentRun, runTitle, storedPayload } from "../lib/runs";
 import { AppShell, PlayButton, TapFeedback, TopBar, pulse } from "../shell";
 
 // /play/live/[publicChannelKey]/review — after the host ends the session
 // (plan §7.5). GET {session}/review with the token the end revoked (still
 // valid for reads). Two tabs: My Answers (my submission + results when the
-// slide shares them) and All Slides (read-only walkthrough). Q&A runs read
-// their questions from the feed GET.
+// slide shares them) and All Slides (read-only walkthrough, results too).
+// The type components get mode "review" ("Final results" wording). Q&A runs
+// read their questions from the feed GET; open_ended runs swap the review's
+// preview (10 newest cards, bodies cut) for full pages of the aggregate GET.
 
 const product = PARTICIPANT_PRODUCT;
 const NO_EVENTS: DeckQaEvent[] = [];
@@ -187,7 +189,7 @@ function ReviewContent({ stored }: { stored: StoredParticipantSession }) {
 						{tab === "mine" ? (
 							<MyAnswers runs={questionRuns} review={review} stored={stored} theme={theme} />
 						) : (
-							<AllSlides runs={runs} theme={theme} />
+							<AllSlides runs={runs} review={review} stored={stored} theme={theme} />
 						)}
 					</div>
 				</div>
@@ -233,7 +235,7 @@ function MyAnswers({
 								{run.position}
 							</span>
 							<span className="min-w-0 flex-1">
-								<span className="block truncate font-medium">{run.title || "Untitled slide"}</span>
+								<span className="block truncate font-medium">{runTitle(run)}</span>
 								<span className="mt-0.5 flex items-center gap-1 text-xs text-[var(--deck-text-muted)]">
 									{qa ? (
 										<>
@@ -258,18 +260,7 @@ function MyAnswers({
 						</TapFeedback>
 						{open && (
 							<div id={panelId} className="border-t border-[var(--deck-border)]">
-								{qa ? (
-									<ReviewQaStage run={run} sessionId={review.session_id} token={stored.participantToken} theme={theme} />
-								) : (
-									<SlideStage
-										run={run}
-										theme={theme}
-										mySubmission={mine}
-										disabled
-										aggregate={run.results_visibility === "public" ? run.aggregate : null}
-										mode="review"
-									/>
-								)}
+								<ReviewRunStage run={run} sessionId={review.session_id} token={stored.participantToken} theme={theme} />
 							</div>
 						)}
 					</li>
@@ -279,24 +270,132 @@ function MyAnswers({
 	);
 }
 
-function ReviewQaStage({
-	run,
-	sessionId,
-	token,
-	theme,
-}: {
+interface ReviewStageProps {
 	run: ReviewRun;
 	sessionId: number;
 	token: string;
 	theme: DeckTheme;
-}) {
+}
+
+/** One run in review: my answer, the final results when the slide shares them, Q&A from the feed. */
+function ReviewRunStage(props: ReviewStageProps) {
+	if (props.run.type === "qa_audience") return <ReviewQaStage {...props} />;
+	if (isContentRun(props.run)) {
+		return <SlideStage run={props.run} theme={props.theme} mySubmission={null} disabled mode="review" />;
+	}
+	return <ReviewAnswerStage {...props} />;
+}
+
+function ReviewAnswerStage({ run, sessionId, token, theme }: ReviewStageProps) {
+	const shared = run.results_visibility === "public" ? run.aggregate : null;
+	const openEnded = useOpenEndedPages(run, sessionId, token, shared);
+	return (
+		<>
+			<SlideStage
+				run={run}
+				theme={theme}
+				mySubmission={storedPayload(run.my_answer)}
+				disabled
+				aggregate={openEnded.aggregate ?? shared}
+				mode="review"
+			/>
+			{(openEnded.hasMore || openEnded.error) && (
+				<div className="flex flex-col items-center gap-2 px-4 pb-4">
+					{openEnded.error && <Notice tone="error">{openEnded.error}</Notice>}
+					<PlayButton variant="secondary" size="md" loading={openEnded.loading} onClick={openEnded.loadMore}>
+						{openEnded.error ? "Try again" : "Show more responses"}
+					</PlayButton>
+				</div>
+			)}
+		</>
+	);
+}
+
+/**
+ * open_ended in review: the review carries the broadcast preview (10 newest
+ * cards, bodies cut at 200 characters). Read the full-text pages (20 cards
+ * each) from GET .../aggregate?page=N instead, one more page per "Show more".
+ */
+function useOpenEndedPages(run: ReviewRun, sessionId: number, token: string, shared: SlideAggregate | null) {
+	const preview = run.type === "open_ended" ? (shared as OpenEndedAggregate | null) : null;
+	const needed = !!preview && (preview.truncated || preview.total_entries > preview.items.length);
+	const [cards, setCards] = useState<OpenEndedCard[] | null>(null);
+	const [page, setPage] = useState(0);
+	const [lastPage, setLastPage] = useState(1);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+
+	const load = useCallback(
+		async (next: number) => {
+			abortRef.current?.abort();
+			const controller = new AbortController();
+			abortRef.current = controller;
+			setLoading(true);
+			setError(null);
+			try {
+				const snapshot = await questParticipantApi.getAggregate<OpenEndedAggregate>(sessionId, run.id, token, {
+					page: next,
+					signal: controller.signal,
+				});
+				if (controller.signal.aborted) return;
+				const fresh = snapshot.aggregate.items ?? [];
+				setCards((previous) => {
+					const kept = next === 1 ? [] : (previous ?? []);
+					const seen = new Set(kept.map((card) => card.id));
+					return [...kept, ...fresh.filter((card) => !seen.has(card.id))];
+				});
+				setPage(next);
+				setLastPage(snapshot.aggregate.last_page ?? next);
+			} catch (reason) {
+				const deckError = toDeckApiError(reason);
+				if (deckError.code === "cancelled") return;
+				setError(friendlyError(deckError, "review"));
+			} finally {
+				if (!controller.signal.aborted) setLoading(false);
+			}
+		},
+		[run.id, sessionId, token]
+	);
+
+	useEffect(() => {
+		if (needed) void load(1);
+		return () => abortRef.current?.abort();
+	}, [needed, load]);
+
+	const hasMore = needed && cards !== null && page < lastPage;
+	const aggregate: OpenEndedAggregate | null =
+		needed && preview && cards
+			? { ...preview, items: cards, page: 1, per_page: cards.length, last_page: hasMore ? lastPage : 1, truncated: hasMore }
+			: null;
+
+	return {
+		aggregate,
+		hasMore: hasMore && !error,
+		error: needed ? error : null,
+		loading,
+		loadMore: () => void load(cards === null ? 1 : page + 1),
+	};
+}
+
+function ReviewQaStage({ run, sessionId, token, theme }: ReviewStageProps) {
 	const qa = useParticipantQaFeed({ product, sessionId, runId: run.id, token, qaEvents: NO_EVENTS });
 	return <SlideStage run={run} theme={theme} mySubmission={null} disabled qa={qa} mode="review" />;
 }
 
 const SWIPE_DISTANCE = 60;
 
-function AllSlides({ runs, theme }: { runs: ReviewRun[]; theme: DeckTheme }) {
+function AllSlides({
+	runs,
+	review,
+	stored,
+	theme,
+}: {
+	runs: ReviewRun[];
+	review: ReviewState;
+	stored: StoredParticipantSession;
+	theme: DeckTheme;
+}) {
 	const [index, setIndex] = useState(0);
 	const reduceMotion = useReducedMotion();
 	const direction = useRef(1);
@@ -306,16 +405,17 @@ function AllSlides({ runs, theme }: { runs: ReviewRun[]; theme: DeckTheme }) {
 		return <p className="px-6 py-10 text-center text-sm text-[var(--deck-text-muted)]">No slides to show.</p>;
 	}
 
-	const go = (next: number) => {
+	// The arrow buttons buzz through TapFeedback; swipes buzz here.
+	const go = (next: number, buzz = false) => {
 		if (next < 0 || next >= runs.length) return;
 		direction.current = next > index ? 1 : -1;
 		setIndex(next);
-		pulse("tap");
+		if (buzz) pulse("tap");
 	};
 
 	const onDragEnd = (_: unknown, info: PanInfo) => {
-		if (info.offset.x < -SWIPE_DISTANCE) go(index + 1);
-		else if (info.offset.x > SWIPE_DISTANCE) go(index - 1);
+		if (info.offset.x < -SWIPE_DISTANCE) go(index + 1, true);
+		else if (info.offset.x > SWIPE_DISTANCE) go(index - 1, true);
 	};
 
 	return (
@@ -358,7 +458,7 @@ function AllSlides({ runs, theme }: { runs: ReviewRun[]; theme: DeckTheme }) {
 				dragElastic={0.25}
 				onDragEnd={onDragEnd}
 			>
-				<SlideStage run={run} theme={theme} mySubmission={null} disabled mode="review" />
+				<ReviewRunStage run={run} sessionId={review.session_id} token={stored.participantToken} theme={theme} />
 			</motion.div>
 		</div>
 	);

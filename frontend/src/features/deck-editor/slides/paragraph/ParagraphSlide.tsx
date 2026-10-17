@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { ParagraphConfig, RichTextDoc } from "@/features/deck/types";
 import type { ParticipantProps, PresenterProps } from "../types";
-import { ContentPhone, ContentStage, ContentTitle, FitText, PreviewHint, contentSize, type ContentVariant } from "../heading/contentKit";
+import { ContentPhone, ContentStage, ContentTitle, FitText, PreviewHint, contentSize, type ContentVariant } from "../shared/contentKit";
 import { canonicalBody, isBodyEmpty, normaliseBody } from "./body";
 import { RichText } from "./RichText";
 

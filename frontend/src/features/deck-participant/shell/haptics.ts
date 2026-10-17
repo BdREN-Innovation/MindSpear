@@ -1,75 +1,42 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import {
+	hapticsEnabled,
+	hapticsSupported,
+	pulse,
+	setHapticsEnabled,
+	subscribeHaptics,
+	type HapticKind,
+} from "@/features/deck/lib/haptics";
 
-// Haptic pulses (plan §4.4): short on option tap, medium on submit, double on
-// success. A per-device setting, on by default. No-op where the Vibration API
-// is missing (iOS Safari) and whenever the user prefers reduced motion (§4.6).
+// The shell's view of the participant app's one haptics implementation
+// (features/deck/lib/haptics.ts, shared with the slide components): same
+// patterns, same per-device setting (localStorage mindspear:play:haptics),
+// same reduced-motion / no-Vibration-API no-op. This file only adds the
+// React hook the settings sheet uses.
 
-export type HapticKind = "tap" | "submit" | "success" | "warning";
+export { hapticsEnabled, hapticsSupported, pulse, setHapticsEnabled };
+export type { HapticKind };
 
-const PATTERNS: Record<HapticKind, number | number[]> = {
-	tap: 10,
-	submit: 20,
-	success: [12, 60, 12],
-	warning: [30, 60, 30],
-};
-
-const STORAGE_KEY = "mindspear:play:haptics";
-const listeners = new Set<() => void>();
-
-export function hapticsSupported(): boolean {
-	return typeof navigator !== "undefined" && typeof navigator.vibrate === "function";
-}
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 function prefersReducedMotion(): boolean {
 	try {
-		return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		return typeof window !== "undefined" && !!window.matchMedia?.(REDUCED_MOTION_QUERY).matches;
 	} catch {
 		return false;
 	}
 }
 
-/** The stored preference (default on). */
-export function getHapticsPreference(): boolean {
-	if (typeof window === "undefined") return true;
-	try {
-		return window.localStorage.getItem(STORAGE_KEY) !== "off";
-	} catch {
-		return true;
-	}
+function subscribeReducedMotion(listener: () => void): () => void {
+	if (typeof window === "undefined" || !window.matchMedia) return () => undefined;
+	const query = window.matchMedia(REDUCED_MOTION_QUERY);
+	query.addEventListener?.("change", listener);
+	return () => query.removeEventListener?.("change", listener);
 }
 
-export function setHapticsPreference(enabled: boolean): void {
-	try {
-		window.localStorage.setItem(STORAGE_KEY, enabled ? "on" : "off");
-	} catch {
-		// Storage disabled: the setting lasts for this page only.
-	}
-	listeners.forEach((listener) => listener());
-}
-
-/** Fire a pulse when supported, enabled and motion is welcome. Safe to call anywhere. */
-export function pulse(kind: HapticKind = "tap"): void {
-	if (!hapticsSupported() || !getHapticsPreference() || prefersReducedMotion()) return;
-	try {
-		navigator.vibrate(PATTERNS[kind]);
-	} catch {
-		// Some browsers throw before the first user gesture.
-	}
-}
-
-function subscribe(listener: () => void): () => void {
-	listeners.add(listener);
-	const onStorage = (event: StorageEvent) => {
-		if (event.key === STORAGE_KEY) listener();
-	};
-	window.addEventListener("storage", onStorage);
-	return () => {
-		listeners.delete(listener);
-		window.removeEventListener("storage", onStorage);
-	};
-}
+const noSubscription = () => () => undefined;
 
 export interface HapticsControls {
 	/** The device can vibrate at all. */
@@ -83,9 +50,9 @@ export interface HapticsControls {
 }
 
 export function useHaptics(): HapticsControls {
-	const enabled = useSyncExternalStore(subscribe, getHapticsPreference, () => true);
-	const supported = useSyncExternalStore(subscribe, hapticsSupported, () => false);
-	const reducedMotion = useSyncExternalStore(subscribe, prefersReducedMotion, () => false);
+	const enabled = useSyncExternalStore(subscribeHaptics, hapticsEnabled, () => true);
+	const supported = useSyncExternalStore(noSubscription, hapticsSupported, () => false);
+	const reducedMotion = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion, () => false);
 	const fire = useCallback((kind: HapticKind = "tap") => pulse(kind), []);
-	return { supported, reducedMotion, enabled, setEnabled: setHapticsPreference, pulse: fire };
+	return { supported, reducedMotion, enabled, setEnabled: setHapticsEnabled, pulse: fire };
 }

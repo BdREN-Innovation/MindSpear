@@ -2,7 +2,7 @@
 
 import type { EditorProps } from "../types";
 import { OptionListEditor, ToggleField } from "../shared";
-import { EditorGroup, QuestionField } from "../pollSingle/common";
+import { EditorGroup, QuestionField } from "../shared/editorKit";
 
 export function RankingEditor({ slide, onChange, onOptionsChange, errors, disabled }: EditorProps<"ranking">) {
 	return (

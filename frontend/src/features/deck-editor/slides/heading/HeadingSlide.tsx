@@ -12,7 +12,7 @@ import {
 	contentSize,
 	fieldError,
 	type ContentVariant,
-} from "./contentKit";
+} from "../shared/contentKit";
 
 // `heading`: the slide title as a big headline plus an optional subtitle
 // (config.subtitle ≤ 250). The headline is the slide's own `title`, so the

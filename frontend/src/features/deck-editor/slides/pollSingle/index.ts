@@ -1,7 +1,7 @@
 import { CircleDot } from "lucide-react";
 import type { PollSingleAggregate, SlideOf } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleCount } from "./common";
+import { sampleCount } from "../shared/samples";
 import { PollSingleEditor } from "./Editor";
 import { PollSingleParticipant } from "./Participant";
 import { PollSinglePresenter } from "./Presenter";

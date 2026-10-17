@@ -11,6 +11,7 @@ interface QuestionChartProps {
 	colors: string[];
 }
 
+/** Chart in the question editors' preview: drawn even before any responses exist. */
 const QuestionChart: React.FC<QuestionChartProps> = ({
 	chartType,
 	series,
@@ -24,6 +25,7 @@ const QuestionChart: React.FC<QuestionChartProps> = ({
 					data={series}
 					categories={labels}
 					colors={colors}
+					showEmptyChart
 				/>
 			</div>
 		);
@@ -37,6 +39,7 @@ const QuestionChart: React.FC<QuestionChartProps> = ({
 					series={series}
 					labels={labels}
 					colors={colors}
+					showEmptyChart
 				/>
 			</div>
 		);
@@ -48,6 +51,7 @@ const QuestionChart: React.FC<QuestionChartProps> = ({
 					series={series}
 					labels={labels}
 					colors={colors}
+					showEmptyChart
 				/>
 			</div>
 		);

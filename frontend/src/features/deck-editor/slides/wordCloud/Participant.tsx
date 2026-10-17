@@ -3,10 +3,13 @@
 import { useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { StoredAnswerMap } from "@/features/deck/types";
+import type { StoredAnswerMap, WordCloudAggregate } from "@/features/deck/types";
 import type { ParticipantProps } from "../types";
-import { SubmitBar, SubmittedState, haptic, useSubmit } from "../shared";
-import { AnswerSummary, ParticipantLayout, ParticipantNotice, notVotingMessage, useAnswerHistory } from "../pollSingle/common";
+import { SubmitBar, SubmittedState, haptic } from "../shared";
+import { useAnswer } from "../shared/answer";
+import { displayTitle } from "../shared/labels";
+import { AnswerSummary, ParticipantLayout, ParticipantNotice, ResultsSection, countLabel, isReadOnlyView, notVotingMessage, resultsTitle } from "../shared/participantKit";
+import { cleanWord } from "../shared/text";
 
 // word_cloud on the phone (plan §7.3): a text field that turns each word or
 // phrase into a chip, up to max_entries_per_participant, then Submit.
@@ -14,15 +17,15 @@ import { AnswerSummary, ParticipantLayout, ParticipantNotice, notVotingMessage, 
 // (trim, collapse spaces, case-insensitive). With allow_multiple_submissions
 // the server appends, so later rounds send only the new words and the
 // remaining allowance counts what was already sent; otherwise a new submit
-// replaces the earlier words.
+// replaces the earlier words. An entry of only invisible characters is
+// refused here the way the backend would (cleanWord). Public results show the
+// top words in every view.
 
 type Stored = StoredAnswerMap["word_cloud"];
 
 const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]";
 
-function cleanEntry(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
-}
+const cleanEntry = cleanWord;
 
 function entryKey(text: string): string {
 	return cleanEntry(text).normalize("NFC").toLowerCase();
@@ -44,13 +47,13 @@ function storedEntries(answer: Stored | null | undefined): string[] {
 
 export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, theme, aggregate, mode }: ParticipantProps<"word_cloud">) {
 	const review = mode === "review";
+	const readOnly = isReadOnlyView(mode, run.state);
 	const maxEntries = Math.max(1, run.config.max_entries_per_participant ?? 3);
 	const maxLength = Math.max(1, run.config.max_entry_length ?? 25);
 	const multiple = run.config.allow_multiple_submissions === true;
 
-	const { submit, busy, errorMessage, reset } = useSubmit(onSubmit);
-	const { latest, sent, record } = useAnswerHistory<Stored>(run.id, mySubmission);
-	const [editing, setEditing] = useState(false);
+	const answer = useAnswer(run.id, mySubmission, onSubmit);
+	const { latest, sent, busy } = answer;
 	const [chips, setChips] = useState<string[]>([]);
 	const [draft, setDraft] = useState("");
 	const [notice, setNotice] = useState<string | null>(null);
@@ -60,56 +63,63 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 
 	// What the server holds: appended rounds when multiple, else the latest round.
 	const submitted = useMemo(
-		() => (multiple ? dedupe([...storedEntries(mySubmission), ...sent.flatMap((answer) => storedEntries(answer))]) : storedEntries(latest)),
+		() => (multiple ? dedupe([...storedEntries(mySubmission), ...sent.flatMap((entry) => storedEntries(entry))]) : storedEntries(latest)),
 		[latest, multiple, mySubmission, sent]
 	);
 	const capacity = multiple ? Math.max(0, maxEntries - submitted.length) : maxEntries;
-	const locked = disabled || review;
-	const title = run.title;
+	const locked = disabled || readOnly;
+	const title = displayTitle(run.title, "word_cloud");
+	const results = aggregate ? <WordResults aggregate={aggregate} mine={submitted} title={resultsTitle(mode, run.state)} /> : null;
 
-	if (review || (submitted.length > 0 && !editing)) {
+	if (readOnly) {
+		return (
+			<ParticipantLayout theme={theme} title={title}>
+				{submitted.length > 0 ? (
+					<AnswerSummary label={submitted.length === 1 ? "Your word" : "Your words"}>
+						<ChipList entries={submitted} />
+					</AnswerSummary>
+				) : review ? (
+					<ParticipantNotice>You didn&apos;t send any words on this slide.</ParticipantNotice>
+				) : null}
+				{results}
+			</ParticipantLayout>
+		);
+	}
+
+	if (submitted.length > 0 && !answer.editing) {
 		const canAddMore = multiple && capacity > 0;
 		return (
-			<ParticipantLayout theme={theme} title={title} fallbackTitle="Word cloud">
-				{submitted.length === 0 ? (
-					<ParticipantNotice>You didn&apos;t send any words on this slide.</ParticipantNotice>
-				) : (
-					<SubmittedState
-						title="Thanks, your words are in"
-						message={review ? null : "Watch them appear on the big screen."}
-						editHint={
-							!locked && canAddMore
-								? `You can add ${capacity} more ${capacity === 1 ? "word" : "words"}.`
-								: !locked && multiple
-									? "You've sent all your words."
-									: undefined
-						}
-						onEdit={
-							locked || (multiple && !canAddMore)
-								? undefined
-								: () => {
-										reset();
-										setNotice(null);
-										setDraft("");
-										setChips(multiple ? [] : submitted);
-										setEditing(true);
-									}
-						}
-						editLabel={multiple ? "Add more words" : "Change words"}
-						className="px-0 py-6"
-					>
-						<div className="flex flex-col gap-4">
-							<AnswerSummary label={submitted.length === 1 ? "Your word" : "Your words"}>
-								<ChipList entries={submitted} />
-							</AnswerSummary>
-							{aggregate && aggregate.words.length > 0 ? (
-								<AnswerSummary label="Top words so far">
-									<ChipList entries={aggregate.words.slice(0, 12).map((word) => word.word)} muted />
-								</AnswerSummary>
-							) : null}
-						</div>
-					</SubmittedState>
-				)}
+			<ParticipantLayout theme={theme} title={title}>
+				<SubmittedState
+					title="Thanks, your words are in"
+					message="Watch them appear on the big screen."
+					editHint={
+						!disabled && canAddMore
+							? `You can add ${capacity} more ${capacity === 1 ? "word" : "words"}.`
+							: !disabled && multiple
+								? "You've sent all your words."
+								: undefined
+					}
+					onEdit={
+						disabled || (multiple && !canAddMore)
+							? undefined
+							: () => {
+									setNotice(null);
+									setDraft("");
+									setChips(multiple ? [] : submitted);
+									answer.edit();
+								}
+					}
+					editLabel={multiple ? "Add more words" : "Change words"}
+					className="px-0 py-6"
+				>
+					<div className="flex flex-col gap-4">
+						<AnswerSummary label={submitted.length === 1 ? "Your word" : "Your words"}>
+							<ChipList entries={submitted} />
+						</AnswerSummary>
+						{results}
+					</div>
+				</SubmittedState>
 			</ParticipantLayout>
 		);
 	}
@@ -123,12 +133,12 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 		if (!entry) return false;
 		if (taken.has(entryKey(entry))) {
 			setNotice(`You already added “${entry}”.`);
-			haptic([10, 40, 10]);
+			haptic("error");
 			return false;
 		}
 		if (full) {
 			setNotice(`You can send up to ${capacity} ${capacity === 1 ? "word" : "words"}.`);
-			haptic([10, 40, 10]);
+			haptic("error");
 			return false;
 		}
 		setChips([...chips, entry.slice(0, maxLength)]);
@@ -147,13 +157,11 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 			inputRef.current?.focus();
 			return;
 		}
-		void submit({ entries }).then((ok) => {
+		void answer.submit({ entries }, { entries, entry_times: entries.map(() => null) }).then((ok) => {
 			if (!ok) return;
-			record({ entries, entry_times: entries.map(() => null) });
 			setChips([]);
 			setDraft("");
 			setNotice(null);
-			setEditing(false);
 		});
 	};
 
@@ -168,7 +176,6 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 		<ParticipantLayout
 			theme={theme}
 			title={title}
-			fallbackTitle="Word cloud"
 			subtitle={instruction}
 			footer={
 				<SubmitBar
@@ -178,7 +185,7 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 					loading={busy}
 					disabled={disabled || pendingCount === 0}
 					hint={notice ?? `${chips.length} of ${capacity} added`}
-					error={errorMessage}
+					error={answer.fieldError}
 				/>
 			}
 		>
@@ -278,13 +285,10 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 				) : null}
 			</form>
 
-			{editing ? (
+			{answer.editing ? (
 				<button
 					type="button"
-					onClick={() => {
-						reset();
-						setEditing(false);
-					}}
+					onClick={answer.cancelEdit}
 					disabled={busy}
 					className={cn("min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 hover:underline", FOCUS_RING)}
 					style={{ color: "var(--deck-text-muted, #4B5563)" }}
@@ -292,7 +296,53 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 					Cancel
 				</button>
 			) : null}
+
+			{results}
 		</ParticipantLayout>
+	);
+}
+
+/** Top words with their counts; the participant's own words are highlighted. */
+function WordResults({ aggregate, mine, title }: { aggregate: WordCloudAggregate; mine: string[]; title: string }) {
+	const own = new Set(mine.map(entryKey));
+	const words = aggregate.words.slice(0, 15);
+	return (
+		<ResultsSection title={title} summary={countLabel(aggregate.total_responses, "response", "responses")}>
+			{words.length === 0 ? (
+				<p className="m-0 text-sm" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+					No words yet.
+				</p>
+			) : (
+				<ol aria-label="Top words" className="m-0 flex list-none flex-wrap gap-2 p-0">
+					{words.map((word) => {
+						const yours = own.has(entryKey(word.word));
+						return (
+							<li
+								key={word.word}
+								className="flex items-center gap-1.5 break-all rounded-full px-3 py-1 text-sm font-semibold"
+								style={{
+									background: yours
+										? "color-mix(in srgb, var(--deck-primary, #F79945) 18%, var(--deck-surface, #fff))"
+										: "var(--deck-surface-muted, #F3F4F6)",
+									color: "var(--deck-text, #111928)",
+								}}
+							>
+								{word.word}
+								<span className="text-xs font-bold tabular-nums" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+									{word.count}
+								</span>
+								<span className="sr-only">{word.count === 1 ? " mention" : " mentions"}</span>
+							</li>
+						);
+					})}
+				</ol>
+			)}
+			{aggregate.distinct_words > words.length ? (
+				<p className="m-0 text-xs" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
+					Top {words.length} of {aggregate.distinct_words} words
+				</p>
+			) : null}
+		</ResultsSection>
 	);
 }
 

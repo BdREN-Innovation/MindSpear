@@ -3,8 +3,9 @@
 import type { QaSlideSort } from "@/features/deck/types";
 import type { EditorProps } from "../types";
 import { NumberField, SegmentedField, ToggleField } from "../shared";
+import { QuestionField } from "../shared/editorKit";
 
-// qa_audience editor (plan §5.4): starting sort, whether participants see
+// qa_audience editor (plan §5.4): the slide title, starting sort, whether participants see
 // each other's questions, the question length cap (10..1000) and the
 // profanity filter (QaAudienceSlideType config).
 
@@ -18,9 +19,18 @@ export function QaAudienceEditor({ slide, onChange, errors, disabled }: EditorPr
 
 	return (
 		<div className="flex flex-col gap-5">
+			<QuestionField<"qa_audience">
+				label="Title"
+				title={slide.title}
+				onChange={onChange}
+				errors={errors}
+				disabled={disabled}
+				placeholder="Ask me anything about the roadmap"
+			/>
+
 			<p className="m-0 text-sm text-dark-5 dark:text-dark-6">
 				Participants ask questions from their phones and upvote the ones they want answered. You star, hide or mark questions as answered
-				while presenting.
+				while presenting; a starred question is the one shown big on the screen.
 			</p>
 
 			<SegmentedField<QaSlideSort>

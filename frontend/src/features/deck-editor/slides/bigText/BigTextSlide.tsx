@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { EditorProps, ParticipantProps, PresenterProps } from "../types";
 import { TextField } from "../shared";
-import { ContentPhone, ContentStage, FitText, PreviewHint, contentSize, fieldError, type ContentVariant } from "../heading/contentKit";
+import { ContentPhone, ContentStage, FitText, PreviewHint, contentSize, fieldError, type ContentVariant } from "../shared/contentKit";
 
 // `big_text`: one big phrase for section breaks (config.text, single line ≤ 80).
 // The slide title is not shown; the phrase is the slide.

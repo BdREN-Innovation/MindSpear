@@ -7,7 +7,7 @@ import { loadRememberedIdentity } from "@/features/deck/live/participantSession"
 import { JoinStepStatus } from "../components/JoinStepStatus";
 import { Notice } from "../components/Notice";
 import { useJoinDraft } from "../lib/useJoinDraft";
-import { AppShell, KeyboardAwareView, PlayButton, TopBar } from "../shell";
+import { AppShell, KeyboardAwareView, PlayButton, TopBar, markNavigation } from "../shell";
 
 // /play/[code] — step 2 (plan §7.1): the display name, 1..40 characters
 // (counted like the backend's mb_strlen: code points). Prefilled from the
@@ -29,7 +29,10 @@ export function NameScreen({ code }: { code: string }) {
 				<TopBar
 					title="Your name"
 					subtitle={join.draft?.deckTitle ?? undefined}
-					onBack={() => router.push("/play")}
+					onBack={() => {
+						markNavigation(-1);
+						router.push("/play");
+					}}
 					backLabel="Back to the code"
 				/>
 			}
@@ -73,6 +76,7 @@ function NameForm({ join }: { join: ReturnType<typeof useJoinDraft> }) {
 			return;
 		}
 		join.update({ displayName: trimmed });
+		markNavigation(1);
 		router.push(`/play/${encodeURIComponent(join.code)}/avatar`);
 	};
 
@@ -85,7 +89,10 @@ function NameForm({ join }: { join: ReturnType<typeof useJoinDraft> }) {
 						<PlayButton
 							variant="secondary"
 							size="md"
-							onClick={() => router.replace(`/play/live/${encodeURIComponent(join.existing!.publicChannelKey)}`)}
+							onClick={() => {
+								markNavigation(1);
+								router.replace(`/play/live/${encodeURIComponent(join.existing!.publicChannelKey)}`);
+							}}
 						>
 							Continue as {join.existing.emojiAvatar} {join.existing.displayName}
 						</PlayButton>

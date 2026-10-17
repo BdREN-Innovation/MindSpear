@@ -1,5 +1,5 @@
 import type { Matrix2x2Aggregate, SlideOf } from "@/features/deck/types";
-import { densityOf, gaussianCluster, seededRandom } from "../pinOnImage/pointMath";
+import { densityOf, gaussianCluster, seededRandom } from "../shared/pointMath";
 
 /** Fake results for the editor canvas: a main cluster top-right and a smaller one bottom-left (y 100 = top). */
 export function sampleMatrixAggregate(slide: SlideOf<"matrix_2x2">): Matrix2x2Aggregate {

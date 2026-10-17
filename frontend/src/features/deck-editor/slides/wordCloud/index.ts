@@ -1,7 +1,7 @@
 import { Cloud } from "lucide-react";
 import type { WordCloudAggregate } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleTime } from "../pollSingle/common";
+import { sampleTime } from "../shared/samples";
 import { WordCloudEditor } from "./Editor";
 import { WordCloudParticipant } from "./Participant";
 import { WordCloudPresenter } from "./Presenter";

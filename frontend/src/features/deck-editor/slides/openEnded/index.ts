@@ -1,7 +1,7 @@
 import { MessageSquareText } from "lucide-react";
 import type { OpenEndedAggregate } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleTime } from "../pollSingle/common";
+import { sampleTime } from "../shared/samples";
 import { OpenEndedEditor } from "./Editor";
 import { OpenEndedParticipant } from "./Participant";
 import { OpenEndedPresenter } from "./Presenter";

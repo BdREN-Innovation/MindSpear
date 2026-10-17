@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { CheckCircle2 } from "lucide-react";
 import type { EditorProps, ParticipantProps, PresenterProps } from "../types";
 import { ToggleField } from "../shared";
-import { ContentPhone, ContentStage, SlideTitleField, contentSize, fieldError } from "../heading/contentKit";
+import { ContentPhone, ContentStage, SlideTitleField, contentSize, fieldError } from "../shared/contentKit";
 
 // `qr_code`: the session's join QR code, plus the code and address when
 // config.show_join_code. The code is session data (PresenterProps.session),

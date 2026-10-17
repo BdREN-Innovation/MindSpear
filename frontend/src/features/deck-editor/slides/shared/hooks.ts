@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { pulse, type HapticKind } from "@/features/deck/lib/haptics";
+
+export type { HapticKind };
 
 // Small hooks the shared slide widgets build on.
 
@@ -23,17 +26,13 @@ export function usePrefersReducedMotion(): boolean {
 }
 
 /**
- * A short vibration (plan §4.4: 10 ms tap, 20 ms submit). No-op where
- * unsupported (iOS Safari) and when the user prefers reduced motion.
+ * A haptic pulse through the participant app's one implementation
+ * (features/deck/lib/haptics): honours the per-device haptics setting, is a
+ * no-op where unsupported (iOS Safari) and when the user prefers reduced
+ * motion. Kinds, not raw patterns, so every surface vibrates the same way.
  */
-export function haptic(pattern: number | number[] = 10): void {
-	if (typeof window === "undefined" || typeof navigator === "undefined") return;
-	if (window.matchMedia?.(REDUCED_MOTION_QUERY).matches) return;
-	try {
-		navigator.vibrate?.(pattern);
-	} catch {
-		// Some browsers throw without a user gesture.
-	}
+export function haptic(kind: HapticKind = "tap"): void {
+	pulse(kind);
 }
 
 /**

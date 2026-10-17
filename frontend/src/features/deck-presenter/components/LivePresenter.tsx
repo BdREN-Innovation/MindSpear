@@ -13,11 +13,11 @@ import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/s
 import { useFullscreen } from "../hooks/useFullscreen";
 import { useHostControls } from "../hooks/useHostControls";
 import { usePresenterKeyboard } from "../hooks/usePresenterKeyboard";
-import { aggregateResponses } from "../lib/format";
+import { aggregateEntries, aggregateResponses } from "../lib/format";
 import { isActiveState, primaryActionFor, runKindOf, stateLabel } from "../lib/runKind";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ConnectionBanner } from "./ConnectionBanner";
-import { ControlBar } from "./ControlBar";
+import { ControlBar, type ResponseTally } from "./ControlBar";
 import { JoinBanner } from "./JoinBanner";
 import { QaModerationSheet } from "./QaModerationSheet";
 import { QrSidebar } from "./QrSidebar";
@@ -109,10 +109,16 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 		enabled: kind === "qa" && !ended,
 	});
 
-	const responses =
-		kind === "poll" && runId !== null
-			? Math.max(aggregateResponses(aggregate) ?? 0, hostChannel.responseCounts[runId] ?? 0)
-			: null;
+	// Same definition as the stage: open_ended counts entries ("4 responses"),
+	// and the bar adds the people behind them when that differs ("· 3 people").
+	// answer.submitted counts answer rows (people) and often lands before the aggregate.
+	const responses = useMemo<ResponseTally | null>(() => {
+		if (kind !== "poll" || runId === null) return null;
+		const people = Math.max(aggregateResponses(aggregate) ?? 0, hostChannel.responseCounts[runId] ?? 0);
+		const entries = aggregateEntries(aggregate);
+		if (entries === null) return { count: people, people: null };
+		return { count: Math.max(entries, people), people };
+	}, [kind, runId, aggregate, hostChannel.responseCounts]);
 
 	const hostActions = useMemo<HostActions>(
 		() => ({
@@ -299,10 +305,9 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 						theme={theme}
 						host={hostActions}
 						session={sessionInfo}
+						// Inside the scaled slide, so the Presenters' fixed clearance for it fits at any screen size.
+						cornerOverlay={<RunTimerChip kind={kind} runState={runState} />}
 					/>
-					<div className="pointer-events-none absolute right-4 top-4 z-10">
-						<RunTimerChip kind={kind} runState={runState} />
-					</div>
 					<GetReadyOverlay runState={runState} />
 					{kind === "qa" && moderationOpen && (
 						<QaModerationSheet feed={qaFeed} onClose={() => setModerationOpen(false)} />

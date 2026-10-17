@@ -5,11 +5,12 @@ import { useMemo } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import { AnimatePresence, motion } from "framer-motion";
-import { cn } from "@/lib/utils";
 import { chartColor, type DeckTheme } from "@/features/deck/theme";
 import type { PollOptionCount, ResultLayout, RunOption } from "@/features/deck/types";
-import { BarChart, usePrefersReducedMotion } from "../shared";
-import { formatPercent, optionLabel } from "./common";
+import { BarChart } from "./BarChart";
+import { usePrefersReducedMotion } from "./hooks";
+import { formatPercent, optionLabel } from "./labels";
+import { ResultBar, ResultsSection } from "./participantKit";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -45,6 +46,26 @@ export const RESULT_LAYOUT_CHOICES: { value: ResultLayout; label: string }[] = [
 	{ value: "pie", label: "Pie" },
 	{ value: "dots", label: "Dots" },
 ];
+
+/**
+ * Inspector hint for the chosen layout. poll_single percentages are of votes;
+ * poll_multi ones are of participants (they can add up to more than 100%).
+ */
+export function resultLayoutHint(layout: ResultLayout | undefined, kind: "single" | "multi"): string {
+	const share = kind === "multi" ? "the share of participants who picked each option" : "each option's share of the votes";
+	switch (layout) {
+		case "donut":
+			return kind === "multi"
+				? `A ring sized by picks; labels show ${share}, with the vote total in the middle.`
+				: `A ring of ${share}, with the vote total in the middle.`;
+		case "pie":
+			return kind === "multi" ? `Slices sized by picks; labels show ${share}.` : `Slices show ${share}.`;
+		case "dots":
+			return `One dot per vote for each option, with ${share}.`;
+		default:
+			return `Bars show ${share}.`;
+	}
+}
 
 export function PollResultsChart({
 	rows,
@@ -130,7 +151,10 @@ function PieResults({ rows, donut, theme, ariaLabel }: { rows: PollResultRow[]; 
 			},
 			dataLabels: {
 				enabled: true,
-				formatter: (value: number) => formatPercent(value),
+				// The backend's percentage, not Apex's share of the slices: for
+				// poll_multi it is of participants, so labels may add up past 100%.
+				formatter: (_value: number, context?: { seriesIndex?: number }) =>
+					formatPercent(rows[context?.seriesIndex ?? -1]?.percentage ?? 0),
 				style: { fontSize: "18px", fontWeight: 700 },
 				dropShadow: { enabled: false },
 			},
@@ -238,44 +262,40 @@ function DotResults({ rows, theme, ariaLabel }: { rows: PollResultRow[]; theme: 
 export function ParticipantPollResults({
 	rows,
 	highlight,
+	title,
+	summary,
 	className,
 }: {
 	rows: PollResultRow[];
 	/** Option ids the participant picked. */
 	highlight: number[];
+	/** resultsTitle(mode, state): "Live results" / "Results" / "Final results". */
+	title: string;
+	/** E.g. "12 votes". */
+	summary?: string;
 	className?: string;
 }) {
 	return (
-		<section aria-label="Live results" className={cn("flex w-full flex-col gap-2 text-left", className)}>
-			<p className="m-0 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
-				Live results
-			</p>
+		<ResultsSection title={title} summary={summary} className={className}>
 			<ul className="m-0 flex list-none flex-col gap-2 p-0">
 				{rows.map((row) => {
 					const mine = highlight.includes(row.id);
-					const width = Math.max(0, Math.min(100, row.percentage));
 					return (
-						<li key={row.id} className="flex flex-col gap-1">
-							<div className="flex items-baseline justify-between gap-2 text-sm">
-								<span className={cn("min-w-0 break-words", mine && "font-semibold")}>
+						<ResultBar
+							key={row.id}
+							label={
+								<>
 									{row.label}
 									{mine ? <span className="sr-only"> (your choice)</span> : null}
-								</span>
-								<span className="shrink-0 font-semibold tabular-nums">{formatPercent(row.percentage)}</span>
-							</div>
-							<div className="h-2.5 w-full overflow-hidden rounded-full" style={{ background: "var(--deck-surface-muted, #F3F4F6)" }} aria-hidden>
-								<div
-									className="h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500"
-									style={{
-										width: `${width}%`,
-										background: mine ? "var(--deck-primary, #F79945)" : "var(--deck-text-muted, #9CA3AF)",
-									}}
-								/>
-							</div>
-						</li>
+								</>
+							}
+							value={row.percentage}
+							display={formatPercent(row.percentage)}
+							highlight={mine}
+						/>
 					);
 				})}
 			</ul>
-		</section>
+		</ResultsSection>
 	);
 }

@@ -21,6 +21,11 @@ import type { DeckQaEvent } from "./channelState";
 // - participants never see hidden questions (the author neither);
 // - `top` = upvote_count desc, then oldest first; `new` = newest first;
 // - the host feed lists starred questions first and keeps hidden ones.
+//
+// Races (both hooks): every refresh aborts the one before and a sequence
+// number drops late answers (also any for a previous run); events that land
+// while a read is in flight are re-applied on top of its result, so nothing
+// that arrived meanwhile is lost.
 
 type MetaKey = "event" | "module" | "session_id" | "broadcasted_at";
 
@@ -42,29 +47,71 @@ export function sortQaItems<T extends QaItemBase>(items: T[], sort: QaFeedSort, 
 	});
 }
 
+/** The participant-only fields events never carry (kept across hide → unhide). */
+export type QaViewerFlags = Pick<QaParticipantItem, "is_mine" | "has_upvoted">;
+
+export interface ParticipantFeedOptions {
+	/**
+	 * Viewer flags remembered by question_id — my own submissions, and any
+	 * question the host hid — read back when an event (re)creates the item, so
+	 * my question stays "mine" and my upvote stays across hide → unhide.
+	 */
+	viewerFlags?: Map<number, QaViewerFlags>;
+	/** The feed is hidden from participants: only my own questions may (re)appear. */
+	ownOnly?: boolean;
+}
+
 /** Apply one event to a participant feed. Unknown upvote targets are ignored (the next read heals). */
 export function applyQaEventToParticipantFeed(
 	items: QaParticipantItem[],
 	event: DeckQaEventPayload,
-	runId: number
+	runId: number,
+	options: ParticipantFeedOptions = {}
 ): QaParticipantItem[] {
 	if (event.slide_run_id !== runId) return items;
 	const index = items.findIndex((item) => item.question_id === event.question_id);
+	const { viewerFlags, ownOnly = false } = options;
+	const remembered = viewerFlags?.get(event.question_id);
 
 	switch (event.event) {
 		case "qa.question.submitted": {
-			if (index >= 0) return items;
+			// With the feed hidden, other people's questions must not appear.
+			if (index >= 0 || (ownOnly && !remembered?.is_mine)) return items;
 			const fields = eventFields(event);
-			return [...items, { ...fields, is_hidden: false, has_upvoted: false, is_mine: false }];
+			return [
+				...items,
+				{
+					...fields,
+					is_hidden: false,
+					has_upvoted: remembered?.has_upvoted ?? false,
+					is_mine: remembered?.is_mine ?? false,
+				},
+			];
 		}
 		case "qa.question.upvoted":
 			if (index < 0) return items;
 			return items.map((item, i) => (i === index ? { ...item, upvote_count: event.upvote_count } : item));
 		case "qa.question.moderated": {
-			if (event.is_hidden) return index < 0 ? items : items.filter((_, i) => i !== index);
+			if (event.is_hidden) {
+				if (index < 0) return items;
+				viewerFlags?.set(event.question_id, { is_mine: items[index].is_mine, has_upvoted: items[index].has_upvoted });
+				return items.filter((_, i) => i !== index);
+			}
 			const fields = eventFields(event);
 			const visible = fields as QaItemBase;
-			if (index < 0) return [...items, { ...visible, is_hidden: false, has_upvoted: false, is_mine: false }];
+			if (!("body" in visible)) return items;
+			if (index < 0) {
+				if (ownOnly && !remembered?.is_mine) return items;
+				return [
+					...items,
+					{
+						...visible,
+						is_hidden: false,
+						has_upvoted: remembered?.has_upvoted ?? false,
+						is_mine: remembered?.is_mine ?? false,
+					},
+				];
+			}
 			return items.map((item, i) => (i === index ? { ...item, ...visible, is_hidden: false } : item));
 		}
 		default:
@@ -153,6 +200,76 @@ export interface UseParticipantQaFeedOptions {
 	enabled?: boolean;
 }
 
+/**
+ * Sequenced feed reads + events buffered while a read is in flight. `apply`
+ * folds one event into a list; the returned `refresh` drops any answer that
+ * is not the latest request (or is for another run) and replays the buffered
+ * events on top of the one it keeps.
+ */
+function useSequencedFeed<T>(options: {
+	ready: boolean;
+	runId: number | null | undefined;
+	load: (signal: AbortSignal) => Promise<{ items: T[]; apply: () => void }>;
+	setItems: (update: (items: T[]) => T[]) => void;
+	replay: (items: T[], events: DeckQaEventPayload[]) => T[];
+	setLoading: (loading: boolean) => void;
+	setError: (error: DeckApiError | null) => void;
+}) {
+	const { ready, runId, load } = options;
+	const seqRef = useRef(0);
+	const abortRef = useRef<AbortController | null>(null);
+	const duringRead = useRef<DeckQaEventPayload[] | null>(null);
+	const latest = useRef(options);
+	latest.current = options;
+
+	const refresh = useCallback(async () => {
+		if (!ready) return;
+		abortRef.current?.abort();
+		const controller = new AbortController();
+		abortRef.current = controller;
+		const seq = ++seqRef.current;
+		duringRead.current = [];
+		latest.current.setLoading(true);
+		try {
+			const result = await load(controller.signal);
+			if (seq !== seqRef.current) return; // a newer read (or another run) took over
+			const buffered = duringRead.current ?? [];
+			duringRead.current = null;
+			latest.current.setItems(() => latest.current.replay(result.items, buffered));
+			result.apply();
+			latest.current.setError(null);
+		} catch (reason) {
+			if (seq !== seqRef.current) return;
+			duringRead.current = null;
+			const deckError = toDeckApiError(reason);
+			if (deckError.code !== "cancelled") latest.current.setError(deckError);
+		} finally {
+			if (seq === seqRef.current) latest.current.setLoading(false);
+		}
+	}, [ready, load]);
+
+	// A new run (or unmount): forget the old run's list and cancel its read.
+	useEffect(() => {
+		latest.current.setItems(() => []);
+		return () => {
+			seqRef.current += 1;
+			abortRef.current?.abort();
+			duringRead.current = null;
+		};
+	}, [runId]);
+
+	useEffect(() => {
+		void refresh();
+	}, [refresh]);
+
+	/** Record an event that arrived while a read is in flight (it is applied now and replayed later). */
+	const noteEvent = useCallback((event: DeckQaEventPayload) => {
+		duringRead.current?.push(event);
+	}, []);
+
+	return { refresh, noteEvent };
+}
+
 /** Participant Q&A feed with submit / upvote actions (optimistic upvotes, absolute counts from the server). */
 export function useParticipantQaFeed(options: UseParticipantQaFeedOptions): ParticipantQaFeed {
 	const { product, sessionId, runId, token, qaEvents, enabled = true } = options;
@@ -163,38 +280,64 @@ export function useParticipantQaFeed(options: UseParticipantQaFeedOptions): Part
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<DeckApiError | null>(null);
 	const ready = enabled && !!sessionId && !!runId && !!token;
-
-	const refresh = useCallback(async () => {
-		if (!ready) return;
-		setLoading(true);
-		try {
-			const feed = await api.getQaFeed(sessionId!, runId!, token!, { sort });
-			setItems(feed.questions);
-			setMeta({
-				total: feed.total,
-				ownOnly: feed.own_only,
-				showFeedToParticipants: feed.show_feed_to_participants,
-				sort: feed.sort,
-			});
-			setError(null);
-		} catch (reason) {
-			setError(toDeckApiError(reason));
-		} finally {
-			setLoading(false);
-		}
-	}, [api, ready, sessionId, runId, token, sort]);
+	const viewerFlags = useRef(new Map<number, QaViewerFlags>());
+	const ownOnlyRef = useRef(meta.ownOnly);
+	ownOnlyRef.current = meta.ownOnly;
 
 	useEffect(() => {
-		void refresh();
-	}, [refresh]);
+		viewerFlags.current = new Map();
+	}, [runId]);
+
+	const load = useCallback(
+		async (signal: AbortSignal) => {
+			const feed = await api.getQaFeed(sessionId!, runId!, token!, { sort }, signal);
+			return {
+				items: feed.questions,
+				apply: () => {
+					ownOnlyRef.current = feed.own_only;
+					setMeta({
+						total: feed.total,
+						ownOnly: feed.own_only,
+						showFeedToParticipants: feed.show_feed_to_participants,
+						sort: feed.sort,
+					});
+				},
+			};
+		},
+		[api, sessionId, runId, token, sort]
+	);
+
+	const { refresh, noteEvent } = useSequencedFeed<QaParticipantItem>({
+		ready,
+		runId,
+		load,
+		setItems,
+		replay: (list, events) =>
+			runId
+				? events.reduce(
+						(acc, event) =>
+							applyQaEventToParticipantFeed(acc, event, runId, {
+								viewerFlags: viewerFlags.current,
+								ownOnly: ownOnlyRef.current,
+							}),
+						list
+					)
+				: list,
+		setLoading,
+		setError,
+	});
 
 	useQaEventStream(
 		qaEvents,
 		(event) => {
 			if (!runId) return;
-			// With the feed hidden, other people's questions must not appear.
-			if (meta.ownOnly && event.event === "qa.question.submitted") return;
-			setItems((list) => applyQaEventToParticipantFeed(list, event, runId));
+			noteEvent(event);
+			setItems((list) =>
+				applyQaEventToParticipantFeed(list, event, runId, {
+					viewerFlags: viewerFlags.current,
+					ownOnly: ownOnlyRef.current,
+				})
+			);
 		},
 		`${runId}:${sort}`
 	);
@@ -220,6 +363,9 @@ export function useParticipantQaFeed(options: UseParticipantQaFeedOptions): Part
 							: item
 					)
 				);
+				// Remembered (mine / hidden meanwhile): keep the vote for a later re-create.
+				const remembered = viewerFlags.current.get(questionId);
+				if (remembered) viewerFlags.current.set(questionId, { ...remembered, has_upvoted: result.has_upvoted });
 			} catch (reason) {
 				const deckError = toDeckApiError(reason);
 				// 404: hidden meanwhile; drop it. Otherwise roll back.
@@ -242,6 +388,8 @@ export function useParticipantQaFeed(options: UseParticipantQaFeedOptions): Part
 		async (body: string) => {
 			if (!ready) throw toDeckApiError(new Error("Not joined."));
 			const question = await api.submitQuestion(sessionId!, runId!, token!, body);
+			// Its broadcast copy (or a replay after a read) must still read as mine.
+			viewerFlags.current.set(question.question_id, { is_mine: true, has_upvoted: question.has_upvoted });
 			setItems((list) =>
 				list.some((item) => item.question_id === question.question_id)
 					? list.map((item) => (item.question_id === question.question_id ? { ...item, ...question } : item))
@@ -301,47 +449,64 @@ export function useHostQaFeed(options: UseHostQaFeedOptions): HostQaFeed {
 	const [error, setError] = useState<DeckApiError | null>(null);
 	const ready = enabled && !!sessionId && !!runId;
 
-	const refresh = useCallback(async () => {
-		if (!ready) return;
-		setLoading(true);
-		try {
-			const feed = await api.getQaFeed(sessionId!, runId!, { sort, limit: 500 });
-			setItems(feed.questions);
-			setMeta({ total: feed.total, showFeedToParticipants: feed.show_feed_to_participants, sort: feed.sort });
-			setError(null);
-		} catch (reason) {
-			setError(toDeckApiError(reason));
-		} finally {
-			setLoading(false);
-		}
-	}, [api, ready, sessionId, runId, sort]);
+	const load = useCallback(
+		async (signal: AbortSignal) => {
+			const feed = await api.getQaFeed(sessionId!, runId!, { sort, limit: 500 }, signal);
+			return {
+				items: feed.questions,
+				apply: () =>
+					setMeta({ total: feed.total, showFeedToParticipants: feed.show_feed_to_participants, sort: feed.sort }),
+			};
+		},
+		[api, sessionId, runId, sort]
+	);
 
-	useEffect(() => {
-		void refresh();
-	}, [refresh]);
+	const { refresh, noteEvent } = useSequencedFeed<QaHostItem>({
+		ready,
+		runId,
+		load,
+		setItems,
+		replay: (list, events) =>
+			runId ? events.reduce((acc, event) => applyQaEventToHostFeed(acc, event, runId), list) : list,
+		setLoading,
+		setError,
+	});
 
 	useQaEventStream(
 		qaEvents,
 		(event) => {
-			if (runId) setItems((list) => applyQaEventToHostFeed(list, event, runId));
+			if (!runId) return;
+			noteEvent(event);
+			setItems((list) => applyQaEventToHostFeed(list, event, runId));
 		},
 		`${runId}:${sort}`
 	);
 
+	const itemsRef = useRef(items);
+	itemsRef.current = items;
+
 	const moderate = useCallback(
 		async (questionId: number, flags: QaModerationFlags) => {
-			const previous = items;
+			// Roll back only the flags this call changed, on this one question:
+			// other questions (and anything that arrived meanwhile) are kept.
+			const current = itemsRef.current.find((item) => item.question_id === questionId);
+			const before: QaModerationFlags = {};
+			for (const key of Object.keys(flags) as (keyof QaModerationFlags)[]) {
+				if (current) before[key] = current[key];
+			}
 			setItems((list) => list.map((item) => (item.question_id === questionId ? { ...item, ...flags } : item)));
 			try {
 				const question = await api.moderateQuestion(sessionId!, questionId, flags);
-				setItems((list) => list.map((item) => (item.question_id === questionId ? question : item)));
+				setItems((list) => list.map((item) => (item.question_id === questionId ? { ...item, ...question } : item)));
 				return question;
 			} catch (reason) {
-				setItems(previous);
+				if (current) {
+					setItems((list) => list.map((item) => (item.question_id === questionId ? { ...item, ...before } : item)));
+				}
 				throw toDeckApiError(reason);
 			}
 		},
-		[api, items, sessionId]
+		[api, sessionId]
 	);
 
 	const effectiveSort = sort ?? meta.sort;

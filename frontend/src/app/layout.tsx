@@ -3,8 +3,8 @@ import "@/styles/style.css";
 import "flatpickr/dist/flatpickr.min.css";
 import "jsvectormap/dist/jsvectormap.css";
 import ToastProvider from '@/components/ToastProvider';
-import { GoogleTagManager } from '@next/third-parties/google'
-import { GoogleAnalytics } from '@next/third-parties/google'
+// GTM + GA everywhere except the participant app (/play): see SiteAnalytics.
+import { SiteAnalytics } from "@/features/deck-participant/lib/SiteAnalytics";
 
 import type { Metadata } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
@@ -39,14 +39,13 @@ export default function RootLayout({
 }>) {
 	return (
 		<html lang="en" suppressHydrationWarning>
-			<GoogleTagManager gtmId="GTM-KZQCJTWJ" />
 			<body className={plexMono.variable} suppressHydrationWarning>
 				<ClientProviders>
 					{children}
 					<ToastProvider />
 				</ClientProviders>
+				<SiteAnalytics />
 			</body>
-			<GoogleAnalytics gaId="G-XYZ" />
 		</html>
 	);
 }

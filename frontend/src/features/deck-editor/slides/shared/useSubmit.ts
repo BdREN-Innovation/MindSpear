@@ -7,6 +7,11 @@ import { haptic } from "./hooks";
 // Participant answer submission: busy flag, one request at a time, and a
 // readable message for every DeckApiError the answers endpoint can return
 // (409 reasons, 422 answer_payload.*, 413, 429, offline, expired token).
+//
+// Who shows what (contract): the participant shell shows every non-422
+// failure itself, so components render only `fieldError` (422 answer
+// validation, next to the form). `errorMessage` stays for callers outside the
+// shell. The one submit haptic fires here (the shell doesn't pulse on submit).
 
 /** A participant-facing sentence for a failed submit. */
 export function submitErrorMessage(error: DeckApiError): string {
@@ -59,12 +64,14 @@ export interface UseSubmitResult<P> {
 	/** The last failure (cleared by the next submit or reset()). */
 	error: DeckApiError | null;
 	errorMessage: string | null;
+	/** The 422 validation message only (what components render; the shell shows the rest). */
+	fieldError: string | null;
 	/** True after a successful submit in this component's life (reset() clears it, e.g. "Change answer"). */
 	submitted: boolean;
 	reset: () => void;
 }
 
-/** Wraps ParticipantProps.onSubmit: one request at a time, haptic on success, errors mapped to messages. */
+/** Wraps ParticipantProps.onSubmit: one request at a time, the submit haptic on success, errors mapped to messages. */
 export function useSubmit<P>(onSubmit: (payload: P) => Promise<void>): UseSubmitResult<P> {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<DeckApiError | null>(null);
@@ -88,7 +95,7 @@ export function useSubmit<P>(onSubmit: (payload: P) => Promise<void>): UseSubmit
 		setError(null);
 		try {
 			await onSubmitRef.current(payload);
-			haptic(20);
+			haptic("submit");
 			if (mounted.current) setSubmitted(true);
 			return true;
 		} catch (reason) {
@@ -105,5 +112,7 @@ export function useSubmit<P>(onSubmit: (payload: P) => Promise<void>): UseSubmit
 		setSubmitted(false);
 	}, []);
 
-	return { submit, busy, error, errorMessage: error ? submitErrorMessage(error) : null, submitted, reset };
+	const errorMessage = error ? submitErrorMessage(error) : null;
+	const fieldError = error && (error.status === 422 || error.code === "validation") ? errorMessage : null;
+	return { submit, busy, error, errorMessage, fieldError, submitted, reset };
 }

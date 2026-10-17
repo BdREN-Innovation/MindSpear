@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Metadata, Viewport } from "next";
 import { PwaRegistrar } from "@/features/deck-participant/pwa/PwaRegistrar";
 
@@ -40,10 +42,23 @@ export const viewport: Viewport = {
 	themeColor: "#FFFFFF",
 };
 
+/**
+ * The Next build id (written to .next/BUILD_ID before pages are generated),
+ * so the service worker's caches roll over with every deploy. "dev" under
+ * `next dev`, where no BUILD_ID is written.
+ */
+const BUILD_VERSION = (() => {
+	try {
+		return readFileSync(join(process.cwd(), ".next", "BUILD_ID"), "utf8").trim() || "dev";
+	} catch {
+		return "dev";
+	}
+})();
+
 export default function PlayLayout({ children }: { children: React.ReactNode }) {
 	return (
 		<>
-			<PwaRegistrar />
+			<PwaRegistrar version={BUILD_VERSION} />
 			{children}
 		</>
 	);

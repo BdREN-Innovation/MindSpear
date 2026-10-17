@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { toast } from "react-toastify";
-import { CheckCircle2, ChevronUp, Eye, EyeOff, Loader2, RefreshCw, Star, X } from "lucide-react";
+import { CheckCircle2, ChevronUp, Eye, EyeOff, Loader2, Monitor, RefreshCw, Star, X } from "lucide-react";
 import type { HostQaFeed } from "@/features/deck/live/qaFeed";
 import type { QaFeedSort, QaHostItem, QaModerationFlags } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,11 @@ import { timeAgo } from "../lib/format";
 // shared with the slide's own Presenter through host.qa, so both stay in
 // step. Moderation is optimistic inside the feed; failures roll back there
 // and surface here as a toast.
+//
+// The projected slide has no controls, so every host action lives here:
+// star (starred questions go on screen first), mark answered (the next one
+// comes up), hide. The row the big screen is showing is marked "On screen",
+// using the Presenter's rule: first starred open question, else the top open one.
 
 type Filter = "all" | "starred" | "answered" | "hidden";
 
@@ -23,6 +28,18 @@ const FILTERS: { key: Filter; label: string }[] = [
 	{ key: "answered", label: "Answered" },
 	{ key: "hidden", label: "Hidden" },
 ];
+
+/** The question the qa_audience Presenter features: first starred open one, else the first open one (feed order). */
+export function onScreenQuestionId(questions: readonly QaHostItem[]): number | null {
+	const open = questions.filter((item) => !item.is_hidden && !item.is_answered);
+	return (open.find((item) => item.is_starred) ?? open[0])?.question_id ?? null;
+}
+
+/** Question text for accessible names, kept short enough to be read out. */
+function shortBody(body: string): string {
+	const text = body.replace(/\s+/g, " ").trim();
+	return text.length > 80 ? `${text.slice(0, 79)}…` : text;
+}
 
 function matches(item: QaHostItem, filter: Filter): boolean {
 	switch (filter) {
@@ -68,6 +85,7 @@ export function QaModerationSheet({ feed, onClose }: QaModerationSheetProps) {
 	}, [feed.questions]);
 
 	const visible = useMemo(() => feed.questions.filter((item) => matches(item, filter)), [feed.questions, filter]);
+	const onScreenId = useMemo(() => onScreenQuestionId(feed.questions), [feed.questions]);
 
 	const moderate = async (item: QaHostItem, flags: QaModerationFlags) => {
 		if (busy.has(item.question_id)) return;
@@ -149,6 +167,9 @@ export function QaModerationSheet({ feed, onClose }: QaModerationSheetProps) {
 			</header>
 
 			<div className="border-b border-[var(--deck-border)] px-3 py-2">
+				<p className="mb-1.5 text-xs text-[var(--deck-text-muted)]">
+					Starred questions go on screen first. Mark the one on screen answered to show the next.
+				</p>
 				<div role="tablist" aria-label="Filter questions" className="flex flex-wrap gap-1">
 					{FILTERS.map(({ key, label }) => (
 						<button
@@ -202,12 +223,14 @@ export function QaModerationSheet({ feed, onClose }: QaModerationSheetProps) {
 									className={cn(
 										"rounded-xl border border-[var(--deck-border)] bg-[var(--deck-bg)] p-3",
 										item.is_starred && !item.is_hidden && "border-[var(--deck-primary)]",
+										item.question_id === onScreenId && "border-2 border-[var(--deck-primary)]",
 										item.is_hidden && "opacity-70"
 									)}
 								>
 									<QuestionRow
 										item={item}
 										now={now}
+										onScreen={item.question_id === onScreenId}
 										busy={busy.has(item.question_id)}
 										onModerate={(flags) => void moderate(item, flags)}
 									/>
@@ -221,14 +244,23 @@ export function QaModerationSheet({ feed, onClose }: QaModerationSheetProps) {
 	);
 }
 
+/** Accessible names stay the same when toggled (aria-pressed carries the state). */
+const ACTION_NAMES: Record<keyof QaModerationFlags, string> = {
+	is_starred: "Star",
+	is_answered: "Mark answered",
+	is_hidden: "Hide",
+};
+
 function QuestionRow({
 	item,
 	now,
+	onScreen,
 	busy,
 	onModerate,
 }: {
 	item: QaHostItem;
 	now: number;
+	onScreen: boolean;
 	busy: boolean;
 	onModerate: (flags: QaModerationFlags) => void;
 }) {
@@ -240,10 +272,17 @@ function QuestionRow({
 		Icon: typeof Star;
 		OffIcon?: typeof Star;
 	}[] = [
-		{ key: "is_starred", on: item.is_starred, onLabel: "Unstar", offLabel: "Star", Icon: Star },
-		{ key: "is_answered", on: item.is_answered, onLabel: "Mark not answered", offLabel: "Mark answered", Icon: CheckCircle2 },
-		{ key: "is_hidden", on: item.is_hidden, onLabel: "Unhide", offLabel: "Hide", Icon: Eye, OffIcon: EyeOff },
+		{ key: "is_starred", on: item.is_starred, onLabel: "Unstar", offLabel: "Star (goes on screen first)", Icon: Star },
+		{
+			key: "is_answered",
+			on: item.is_answered,
+			onLabel: "Mark not answered",
+			offLabel: onScreen ? "Mark answered and show the next question" : "Mark answered",
+			Icon: CheckCircle2,
+		},
+		{ key: "is_hidden", on: item.is_hidden, onLabel: "Unhide", offLabel: "Hide from audience", Icon: Eye, OffIcon: EyeOff },
 	];
+	const question = shortBody(item.body);
 
 	return (
 		<div className="flex gap-3">
@@ -267,6 +306,12 @@ function QuestionRow({
 					{item.body}
 				</p>
 				<p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-[var(--deck-text-muted)]">
+					{onScreen && (
+						<span className="inline-flex items-center gap-1 rounded-full bg-[var(--deck-primary)] px-2 py-0.5 font-semibold text-[var(--deck-on-primary)]">
+							<Monitor className="h-3 w-3" aria-hidden />
+							On screen
+						</span>
+					)}
 					<span>{timeAgo(item.submitted_at, now)}</span>
 					{item.is_starred && <span className="font-semibold text-[var(--deck-primary)]">Starred</span>}
 					{item.is_answered && <span className="font-semibold text-[var(--deck-success)]">Answered</span>}
@@ -280,9 +325,9 @@ function QuestionRow({
 							<button
 								key={key}
 								type="button"
-								// Stable name + aria-pressed; the tooltip says what a click does.
+								// Stable name (action + question) + aria-pressed; the tooltip says what a click does.
 								aria-pressed={on}
-								aria-label={offLabel}
+								aria-label={`${ACTION_NAMES[key]}: ${question}`}
 								title={label}
 								disabled={busy}
 								onClick={() => onModerate({ [key]: !on })}

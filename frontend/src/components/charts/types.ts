@@ -23,6 +23,11 @@ export type NormalizedChartProps = {
 	showLegend?: boolean;
 	isLoading?: boolean;
 	className?: string;
+	/**
+	 * Editor previews have no responses yet: draw the chart anyway (zero bars,
+	 * faded equal slices) instead of the "Waiting for responses..." box.
+	 */
+	showEmptyChart?: boolean;
 };
 
 export type LegacyCategoricalProps = {

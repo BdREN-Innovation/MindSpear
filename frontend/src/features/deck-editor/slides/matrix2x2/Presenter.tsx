@@ -3,10 +3,11 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import type { PresenterProps } from "../types";
-import { TIMER_CHIP_CLEARANCE } from "../pinOnImage/stageLayout";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersReducedMotion } from "../shared";
-import { HeatmapCanvas } from "../pinOnImage/HeatmapCanvas";
-import { describePoint, pointKeys } from "../pinOnImage/pointMath";
+import { HeatmapCanvas } from "../shared/HeatmapCanvas";
+import { fallbackTitle } from "../shared/labels";
+import { describePoint, pointKeys } from "../shared/pointMath";
+import { TIMER_CHIP_CLEARANCE } from "../shared/stageLayout";
 import { describeAxes, MatrixPlane } from "./MatrixPlane";
 
 // matrix_2x2 presenter (plan §6.3): cartesian scatter on the 2×2 plane with
@@ -28,7 +29,7 @@ export function Matrix2x2Presenter({ run, aggregate, theme }: PresenterProps<"ma
 		<PresenterStage>
 			{/* Right padding keeps the shell's timer chip area (top-right ~220×56 px) clear. */}
 			<div className="flex items-start justify-between gap-[2cqw]" style={TIMER_CHIP_CLEARANCE}>
-				<SlideTitle title={run.title} fallback="Place your dot on the grid" size="md" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("matrix_2x2")} size="md" />
 				<ResponseCount count={aggregate?.total_responses ?? 0} className="shrink-0" />
 			</div>
 

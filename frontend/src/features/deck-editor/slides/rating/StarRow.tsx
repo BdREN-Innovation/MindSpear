@@ -51,7 +51,7 @@ export function StarInput({ label, value, scale, onChange, disabled = false }: S
 
 	const select = (next: number) => {
 		onChange(next);
-		haptic(10);
+		haptic("select");
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {

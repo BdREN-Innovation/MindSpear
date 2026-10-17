@@ -40,6 +40,13 @@ import { msUntil, noteServerTime } from "./useServerClock";
 // events (lower state_version for the current run) are ignored; see
 // channelState.ts for the merge rules.
 //
+// A room of phones receives every broadcast at the same instant, so the
+// participant view (no hostSessionId) spreads its event-driven reads: a
+// random 0–2 s delay before a resync caused by a (re)subscription, a slim
+// slide.changed, a revisited run or a version gap, and a jittered exponential
+// backoff (honouring 429 retry_after) while polling with the socket down.
+// The presenter reads at once.
+//
 // The caller passes the fetcher, so the same hook serves both views:
 //   participant: fetchState: (signal) => questParticipantApi.getState(sessionId, token, signal)
 //   host:        fetchState: (signal) => questSessionApi.getState(sessionId, signal), hostSessionId: sessionId
@@ -68,6 +75,21 @@ const HOST_STATE_EVENTS: DeckHostEvent["event"][] = [
 
 /** After a deadline, wait this long for the server's own transition event before reading state. */
 const EXPIRY_GRACE_MS = 1500;
+/** Participants: spread event-driven resyncs over this window. */
+const RESYNC_JITTER_MS = 2000;
+/** Participants: disconnected polling backs off up to this interval (±20 % jitter). */
+const POLL_MAX_MS = 60_000;
+
+/** Delay before the next disconnected poll: jittered exponential backoff for participants, fixed for the host. */
+export function nextPollDelay(baseMs: number, attempt: number, backoff: boolean, retryAfterSeconds?: number | null): number {
+	let delay = backoff ? Math.min(POLL_MAX_MS, baseMs * 2 ** Math.min(attempt, 10)) : baseMs;
+	// ±20 % jitter, so phones that lost the socket together never poll together.
+	if (backoff) delay *= 0.8 + Math.random() * 0.4;
+	if (retryAfterSeconds && Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+		delay = Math.max(delay, retryAfterSeconds * 1000 + (backoff ? Math.random() * RESYNC_JITTER_MS : 0));
+	}
+	return Math.round(delay);
+}
 
 export interface UseDeckSessionChannelOptions<S extends DeckSessionState> {
 	product: DeckProduct;
@@ -84,7 +106,10 @@ export interface UseDeckSessionChannelOptions<S extends DeckSessionState> {
 	 * revisited run). Off by default: slide.changed carries the full run.
 	 */
 	resyncOnSlideChange?: boolean;
-	/** Poll the state endpoint while the socket is down (ms; 0 = off, the default). */
+	/**
+	 * Poll the state endpoint while the socket is down (ms; 0 = off, the default).
+	 * The participant view backs off from this up to 60 s; a 429 waits for retry_after.
+	 */
 	pollWhileDisconnectedMs?: number;
 	/** Every channel event, after it was applied. */
 	onEvent?: (event: DeckChannelEvent) => void;
@@ -166,14 +191,19 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 	const resyncOnSlideChangeRef = useRef(resyncOnSlideChange);
 	resyncOnSlideChangeRef.current = resyncOnSlideChange;
 
-	const inflightRef = useRef<Promise<void> | null>(null);
+	const inflightRef = useRef<Promise<DeckApiError | null> | null>(null);
 	const pendingRef = useRef(false);
 	const abortRef = useRef<AbortController | null>(null);
 	const mountedRef = useRef(true);
 
 	const active = enabled && !!publicChannelKey;
+	// Only the participant view spreads its reads (see the header).
+	const jitter = !hostSessionId;
+	const jitterRef = useRef(jitter);
+	jitterRef.current = jitter;
 
-	const resync = useCallback((): Promise<void> => {
+	/** Reads state; resolves with the failure (null on success / cancel). Coalesced with one in flight. */
+	const read = useCallback((): Promise<DeckApiError | null> => {
 		if (inflightRef.current) {
 			// Coalesce: one more read after the current one, never a pile-up.
 			pendingRef.current = true;
@@ -185,23 +215,25 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		const requestEpoch = stateRef.current.epoch;
 		dispatch({ type: "resync_started" });
 
-		const run = (async () => {
+		const run = (async (): Promise<DeckApiError | null> => {
 			try {
 				const snapshot = await fetchRef.current(controller.signal);
-				if (!mountedRef.current || controller.signal.aborted) return;
+				if (!mountedRef.current || controller.signal.aborted) return null;
 				noteServerTime(snapshot.server_time);
 				dispatch({ type: "snapshot", snapshot, requestEpoch });
 				onStateLoadedRef.current?.(snapshot);
+				return null;
 			} catch (error) {
 				const deckError = toDeckApiError(error);
-				if (deckError.code === "cancelled" || !mountedRef.current) return;
+				if (deckError.code === "cancelled" || !mountedRef.current) return null;
 				dispatch({ type: "resync_failed", error: deckError });
+				return deckError;
 			}
 		})().finally(() => {
 			inflightRef.current = null;
 			if (pendingRef.current && mountedRef.current) {
 				pendingRef.current = false;
-				void resync();
+				void read();
 			}
 		});
 
@@ -209,11 +241,29 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		return run;
 	}, []);
 
+	const resync = useCallback((): Promise<void> => read().then(() => undefined), [read]);
+
+	// Event-driven reads: at once for the host, after a random 0–2 s for participants.
+	const jitterTimerRef = useRef<number | null>(null);
+	const resyncSoon = useCallback(() => {
+		if (!jitterRef.current) {
+			void read();
+			return;
+		}
+		if (jitterTimerRef.current !== null) return; // one delayed read covers every request in the window
+		jitterTimerRef.current = window.setTimeout(() => {
+			jitterTimerRef.current = null;
+			if (mountedRef.current) void read();
+		}, Math.random() * RESYNC_JITTER_MS);
+	}, [read]);
+
 	useEffect(() => {
 		mountedRef.current = true;
 		return () => {
 			mountedRef.current = false;
 			abortRef.current?.abort();
+			if (jitterTimerRef.current !== null) window.clearTimeout(jitterTimerRef.current);
+			jitterTimerRef.current = null;
 		};
 	}, []);
 
@@ -226,11 +276,11 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		dispatch({ type: "snapshot", snapshot: initialState, requestEpoch: stateRef.current.epoch });
 	}, [initialState]);
 
-	// Reducer-requested resyncs (gap, slim slide.changed, unknown run).
+	// Reducer-requested resyncs (gap, slim slide.changed, revisited run, unknown run).
 	const resyncRequests = state.resyncRequests;
 	useEffect(() => {
-		if (active && resyncRequests > 0) void resync();
-	}, [active, resyncRequests, resync]);
+		if (active && resyncRequests > 0) resyncSoon();
+	}, [active, resyncRequests, resyncSoon]);
 
 	// Public channel + socket status.
 	useEffect(() => {
@@ -242,7 +292,7 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		const unbinds: (() => void)[] = [];
 
 		// Read state on mount unless one was handed in: the socket may be slow or blocked.
-		if (!seededRef.current) void resync();
+		if (!seededRef.current) void read();
 		else if (stateRef.current.latestState) noteServerTime(stateRef.current.latestState.server_time);
 
 		try {
@@ -262,22 +312,24 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 			acquired = acquireChannel("public", publicChannelName(product, publicChannelKey));
 			const channel = acquired;
 
+			// The first subscription right after the mount read adds nothing; every
+			// later one follows a reconnect and may have missed events.
+			const justRead = () =>
+				inflightRef.current !== null ||
+				(stateRef.current.lastSyncedAt !== null && Date.now() - stateRef.current.lastSyncedAt < 2000);
 			channel.onSubscribed(() => {
-				// The first subscription right after the mount read adds nothing; every
-				// later one follows a reconnect and may have missed events.
-				const fresh =
-					firstSubscription &&
-					(inflightRef.current !== null ||
-						(stateRef.current.lastSyncedAt !== null && Date.now() - stateRef.current.lastSyncedAt < 2000));
+				const fresh = firstSubscription && justRead();
 				firstSubscription = false;
-				if (!fresh) void resync();
+				// A reconnect: the whole room resubscribes at once (Reverb restart, Wi-Fi blip).
+				if (!fresh) resyncSoon();
 			});
 			channel.onError((error) => {
 				console.error(`Deck ${product} channel subscription failed`, { channel: publicChannelKey, error });
 			});
 			if (channel.isSubscribed()) {
+				// Another holder already subscribed: no subscription event will come for us.
 				firstSubscription = false;
-				void resync();
+				if (!justRead()) void read();
 			}
 
 			for (const name of PUBLIC_EVENTS) {
@@ -297,7 +349,7 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 			unbinds.forEach((unbind) => unbind());
 			acquired?.release();
 		};
-	}, [active, product, publicChannelKey, resync]);
+	}, [active, product, publicChannelKey, read, resyncSoon]);
 
 	// Private host channel (presenter): host-only aggregates and full Q&A payloads.
 	useEffect(() => {
@@ -339,20 +391,37 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		const timer = window.setTimeout(
 			() => {
 				const current = stateRef.current.runState;
-				if (current && current.slide_run_id === runId && current.state_version === runVersion) void resync();
+				if (current && current.slide_run_id === runId && current.state_version === runVersion) void read();
 			},
 			Math.max(0, until) + EXPIRY_GRACE_MS + jitter
 		);
 		return () => window.clearTimeout(timer);
-	}, [active, endsAt, runId, runVersion, hostSessionId, resync]);
+	}, [active, endsAt, runId, runVersion, hostSessionId, read]);
 
-	// Optional polling while the socket is down.
+	// Optional polling while the socket is down: backoff for participants
+	// (5 s → 60 s, jittered), fixed for the host; a 429 waits for retry_after.
 	const disconnected = state.status === "disconnected";
 	useEffect(() => {
 		if (!active || !disconnected || pollWhileDisconnectedMs <= 0) return;
-		const timer = window.setInterval(() => void resync(), pollWhileDisconnectedMs);
-		return () => window.clearInterval(timer);
-	}, [active, disconnected, pollWhileDisconnectedMs, resync]);
+		let cancelled = false;
+		let timer: number | undefined;
+		let attempt = 0;
+		const schedule = (delay: number) => {
+			timer = window.setTimeout(async () => {
+				const failure = await read();
+				if (cancelled) return;
+				// The longer the socket stays down, the slower the room polls.
+				attempt += 1;
+				const retryAfter = failure?.code === "too_many_requests" ? Number(failure.data.retry_after) : null;
+				schedule(nextPollDelay(pollWhileDisconnectedMs, attempt, jitterRef.current, retryAfter));
+			}, delay);
+		};
+		schedule(nextPollDelay(pollWhileDisconnectedMs, 0, jitterRef.current));
+		return () => {
+			cancelled = true;
+			window.clearTimeout(timer);
+		};
+	}, [active, disconnected, pollWhileDisconnectedMs, read]);
 
 	return {
 		status: active ? state.status : "idle",

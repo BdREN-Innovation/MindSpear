@@ -97,7 +97,16 @@ export interface DeckEditor {
 	reload(): void;
 }
 
-export function useDeckEditor(deckId: string | number, api: AuthoringApi = questAuthoringApi): DeckEditor {
+export interface UseDeckEditorOptions {
+	/** Select this slide once the deck has loaded (and again whenever it changes); ignored when the deck has no such slide. */
+	preferredSlideId?: number | null;
+}
+
+export function useDeckEditor(
+	deckId: string | number,
+	api: AuthoringApi = questAuthoringApi,
+	{ preferredSlideId = null }: UseDeckEditorOptions = {}
+): DeckEditor {
 	const [loadState, setLoadState] = useState<DeckEditor["loadState"]>("loading");
 	const [loadError, setLoadError] = useState<DeckApiError | null>(null);
 	const [blocked, setBlocked] = useState<DeckApiError | null>(null);
@@ -125,6 +134,10 @@ export function useDeckEditor(deckId: string | number, api: AuthoringApi = quest
 	const busyRef = useRef(0);
 	const failedRef = useRef(false);
 	const seqRef = useRef(0);
+	// The preferred slide is applied once per value, so later clicks in the rail win.
+	const preferredRef = useRef(preferredSlideId);
+	preferredRef.current = preferredSlideId;
+	const appliedPreferredRef = useRef<number | null>(null);
 
 	const editor = useMemo(() => {
 		const nextKey = (prefix: string) => `${prefix}:${++seqRef.current}`;
@@ -873,8 +886,18 @@ export function useDeckEditor(deckId: string | number, api: AuthoringApi = quest
 			.then((deck) => {
 				if (controller.signal.aborted) return;
 				editor.init(deck);
+				const preferred = preferredRef.current;
+				const usePreferred =
+					preferred !== null &&
+					appliedPreferredRef.current !== preferred &&
+					deck.slides.some((s) => s.id === preferred);
+				if (preferred !== null) appliedPreferredRef.current = preferred;
 				setSelectedId((current) =>
-					current !== null && deck.slides.some((s) => s.id === current) ? current : (deck.slides[0]?.id ?? null)
+					usePreferred
+						? preferred
+						: current !== null && deck.slides.some((s) => s.id === current)
+							? current
+							: (deck.slides[0]?.id ?? null)
 				);
 				setLoadState("ready");
 			})
@@ -916,6 +939,13 @@ export function useDeckEditor(deckId: string | number, api: AuthoringApi = quest
 			.filter((slide): slide is Slide => !!slide);
 		return { ...meta, slideCount: slides.length, slides };
 	}, [version]);
+
+	// ?slide changed while the editor is open (same deck): select it if it exists.
+	useEffect(() => {
+		if (!deck || preferredSlideId === null || appliedPreferredRef.current === preferredSlideId) return;
+		appliedPreferredRef.current = preferredSlideId;
+		if (deck.slides.some((s) => s.id === preferredSlideId)) setSelectedId(preferredSlideId);
+	}, [deck, preferredSlideId]);
 
 	// The selected slide vanished (deleted elsewhere, reload): pick a neighbour.
 	useEffect(() => {

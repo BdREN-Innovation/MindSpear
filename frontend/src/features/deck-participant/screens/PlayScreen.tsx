@@ -12,14 +12,7 @@ import {
 	type StoredParticipantSession,
 } from "@/features/deck/live/participantSession";
 import { useDeckSessionChannel } from "@/features/deck/live/useDeckSessionChannel";
-import { useServerClock } from "@/features/deck/live/useServerClock";
-import type {
-	AnswerPayload,
-	MySubmission,
-	ParticipantRunView,
-	ParticipantSessionState,
-	RunState,
-} from "@/features/deck/types";
+import type { AnswerPayload, MySubmission, ParticipantRunView, ParticipantSessionState } from "@/features/deck/types";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import {
 	CenteredLoading,
@@ -37,7 +30,7 @@ import { SlideStage } from "../components/SlideStage";
 import { friendlyError } from "../lib/errors";
 import { useBackGuard, useOnlineStatus, usePrevious } from "../lib/hooks";
 import { PARTICIPANT_PRODUCT } from "../lib/joinCode";
-import { deckThemeKeyFrom, isAnswerRun, isContentRun, provisionalSubmission, storedPayload } from "../lib/runs";
+import { deckThemeKeyFrom, isContentRun, provisionalSubmission, runTitle, storedPayload } from "../lib/runs";
 import { InstallBanner } from "../pwa/InstallBanner";
 import { AppShell, TapFeedback, TopBar, pulse, useAnnounce } from "../shell";
 
@@ -50,6 +43,11 @@ import { AppShell, TapFeedback, TopBar, pulse, useAnnounce } from "../shell";
 // → closed (results only when the state says they are public). Content
 // slides render the Participant read-only. session.ended (or a revoked
 // token) goes to the review screen.
+//
+// Traffic: one GET state on load / reconnect / slim or revisited slides
+// (spread over 0–2 s by useDeckSessionChannel), one POST per answer — the
+// stored answer is rebuilt locally (provisionalSubmission) instead of being
+// read back, so a 500-phone room behind one NAT stays under the rate limit.
 
 const product = PARTICIPANT_PRODUCT;
 
@@ -87,7 +85,8 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		product,
 		publicChannelKey,
 		fetchState,
-		pollWhileDisconnectedMs: 10_000,
+		// Backs off 5 s → 60 s (jittered) while the socket is down.
+		pollWhileDisconnectedMs: 5_000,
 	});
 	const { currentRun, slimRun, runState, latestState, sessionStatus, status, error, isResyncing, resync } = channel;
 
@@ -107,18 +106,21 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		router.replace("/play?reason=expired");
 	}, [sessionGone, sessionId, router]);
 
-	// First load failed (network): retry with backoff while showing the reconnect screen.
+	// First load failed (network): retry with jittered backoff (honouring a
+	// 429's retry_after) while showing the reconnect screen.
 	const [retryCount, setRetryCount] = useState(0);
 	const loadFailed = !latestState && !!error && !tokenRejected && !sessionGone;
 	useEffect(() => {
 		if (!loadFailed || isResyncing) return;
-		const delay = Math.min(15_000, 2_000 * 2 ** Math.min(retryCount, 3));
+		const base = Math.min(15_000, 2_000 * 2 ** Math.min(retryCount, 3));
+		const retryAfter = error?.code === "too_many_requests" ? Number(error.data.retry_after) * 1000 : 0;
+		const delay = Math.max(base / 2 + Math.random() * (base / 2), Number.isFinite(retryAfter) ? retryAfter : 0);
 		const timer = window.setTimeout(() => {
 			setRetryCount((n) => n + 1);
 			void resync();
 		}, delay);
 		return () => window.clearTimeout(timer);
-	}, [loadFailed, isResyncing, retryCount, resync]);
+	}, [loadFailed, isResyncing, retryCount, resync, error]);
 	useEffect(() => {
 		if (latestState) setRetryCount(0);
 	}, [latestState]);
@@ -137,7 +139,9 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 	const submissionsRef = useRef(submissions);
 	submissionsRef.current = submissions;
 
-	// The state snapshot is the server's word for its current run.
+	// The state snapshot is the server's word for its current run. A run the
+	// host went back to is re-read by the channel (slide.changed past
+	// `waiting`), so an earlier answer arrives here too — no my-answer GET.
 	useEffect(() => {
 		const run = latestState?.current_run;
 		if (!run) return;
@@ -148,28 +152,6 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 			return run.id in previous ? previous : { ...previous, [run.id]: null };
 		});
 	}, [latestState]);
-
-	// A run first seen already past `waiting` (the host went back to it) may
-	// hold an earlier answer: ask once. Runs seen from `waiting` on need no
-	// read, so opening voting never sends the whole room to my-answer.
-	const firstSeen = useRef(new Map<number, RunState>());
-	useEffect(() => {
-		if (!currentRun) return;
-		if (!firstSeen.current.has(currentRun.id)) firstSeen.current.set(currentRun.id, currentRun.state);
-		if (!isAnswerRun(currentRun) || firstSeen.current.get(currentRun.id) === "waiting") return;
-		if (currentRun.id in submissionsRef.current) return;
-		if (latestState?.current_run?.id === currentRun.id) return;
-		const runId = currentRun.id;
-		const controller = new AbortController();
-		questParticipantApi
-			.getMyAnswer(sessionId, runId, token, controller.signal)
-			.then((submission) =>
-				setSubmissions((previous) => (previous[runId] ? previous : { ...previous, [runId]: submission }))
-			)
-			.catch(() => undefined);
-		return () => controller.abort();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [currentRun?.id, currentRun?.state]);
 
 	const mySubmission = currentRun ? (submissions[currentRun.id] ?? null) : null;
 
@@ -182,7 +164,8 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 	currentRunRef.current = currentRun;
 
 	// The type component gets the DeckApiError back (it shows 422 field errors
-	// inline); the shell shows everything else in the bottom strip.
+	// inline); the shell shows everything else in the bottom strip. The submit
+	// haptic belongs to the component (useSubmit); the shell only buzzes errors.
 	const onSubmit = useCallback(
 		async (payload: unknown) => {
 			const run = currentRunRef.current;
@@ -191,19 +174,13 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 			setSubmitError(null);
 			try {
 				await questParticipantApi.submitAnswer(sessionId, run.id, token, payload as AnswerPayload);
+				// The POST answers 204: rebuild what the server stored with the same
+				// merge rules. A later state read (reconnect / revisit) replaces it.
 				const provisional = provisionalSubmission(run, payload, submissionsRef.current[run.id]);
 				setSubmissions((previous) => ({ ...previous, [run.id]: provisional }));
-				pulse("submit");
-				// Swap the guess for the stored (normalised) answer.
-				questParticipantApi
-					.getMyAnswer(sessionId, run.id, token)
-					.then((submission) => {
-						if (submission) setSubmissions((previous) => ({ ...previous, [run.id]: submission }));
-					})
-					.catch(() => undefined);
 			} catch (reason) {
 				const deckError = toDeckApiError(reason);
-				pulse("warning");
+				pulse("error");
 				if (deckError.status !== 422) setSubmitError({ runId: run.id, message: friendlyError(deckError, "answer") });
 				// The run moved on / closed / the token died: catch up with the server.
 				if (deckError.code === "invalid_state" || deckError.status === 401) void resync();
@@ -227,14 +204,11 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		enabled: isQa,
 	});
 
-	/* --------------------------- timer + a11y --------------------------- */
+	/* ------------------------------- a11y ------------------------------- */
 
+	// The countdown clocks live in TimerBar / GetReadyOverlay (they tick 4×/s;
+	// this screen and the answer component only render on state changes).
 	const state = runState?.state ?? currentRun?.state ?? null;
-	const timed = state === "get_ready" || state === "voting";
-	const clock = useServerClock({
-		endsAt: timed ? runState?.ends_at : null,
-		durationSeconds: timed ? runState?.duration_seconds : null,
-	});
 
 	const previousRunId = usePrevious(currentRun?.id);
 	const previousState = usePrevious(state);
@@ -242,7 +216,7 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		if (!currentRun || !state) return;
 		if (previousRunId !== currentRun.id) {
 			const position = `Slide ${currentRun.position}${channel.totalSlides ? ` of ${channel.totalSlides}` : ""}`;
-			announce(`${position}: ${currentRun.title || "new slide"}.${state === "voting" ? " Voting is open." : ""}`);
+			announce(`${position}: ${runTitle(currentRun)}.${state === "voting" ? " Voting is open." : ""}`);
 			return;
 		}
 		if (previousState === state) return;
@@ -256,16 +230,22 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [currentRun?.id, state]);
 
-	const tenSecondsFor = useRef<string | null>(null);
-	const seconds = clock.secondsRemaining;
-	useEffect(() => {
-		if (state !== "voting" || seconds === null || !currentRun) return;
-		const key = `${currentRun.id}:${runState?.ends_at}`;
-		if (seconds <= 10 && seconds > 0 && tenSecondsFor.current !== key) {
-			tenSecondsFor.current = key;
-			announce(`${seconds} seconds left.`);
-		}
-	}, [seconds, state, currentRun, runState?.ends_at, announce]);
+	// Slides slide in from the right going forward, from the left going back (plan §4.3).
+	// (Adjusted while rendering — React's "previous props" pattern — so the new
+	// run mounts with the right direction on its first frame.)
+	const [slideMove, setSlideMove] = useState<{ runId: number | null; position: number | null; direction: 1 | -1 | 0 }>({
+		runId: null,
+		position: null,
+		direction: 0,
+	});
+	if (currentRun && slideMove.runId !== currentRun.id) {
+		const before = slideMove.position;
+		setSlideMove({
+			runId: currentRun.id,
+			position: currentRun.position,
+			direction: before === null ? 0 : currentRun.position >= before ? 1 : -1,
+		});
+	}
 
 	const previousStatus = usePrevious(status);
 	useEffect(() => {
@@ -299,7 +279,10 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 	const total = channel.totalSlides;
 	const position = currentRun?.position ?? slimRun?.position ?? null;
 	const progressLabel = position ? `Slide ${position}${total ? ` of ${total}` : ""}` : undefined;
-	const visibleAggregate = channel.resultsVisibility === "public" ? channel.aggregate : null;
+	// Public results go to the type component in every state (voting, closed):
+	// it shows them whether or not this participant answered.
+	const resultsPublic = channel.resultsVisibility === "public";
+	const visibleAggregate = resultsPublic ? channel.aggregate : null;
 	const answering = state === "voting" || state === "open" || state === "get_ready";
 	const answered = !!storedPayload(mySubmission);
 
@@ -319,11 +302,13 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 	} else if (isContentRun(currentRun)) {
 		body = <SlideStage run={currentRun} theme={theme} mySubmission={null} disabled mode="live" />;
 	} else if (state === "get_ready") {
-		body = <GetReadyOverlay run={currentRun} seconds={clock.secondsRemaining} />;
+		body = (
+			<GetReadyOverlay run={currentRun} endsAt={runState?.ends_at} durationSeconds={runState?.duration_seconds} />
+		);
 	} else if (state === "voting" || state === "open") {
 		body = (
 			<>
-				{state === "voting" && <TimerBar seconds={clock.secondsRemaining} progress={clock.progress} />}
+				{state === "voting" && <TimerBar endsAt={runState?.ends_at} durationSeconds={runState?.duration_seconds} />}
 				<SlideStage
 					run={currentRun}
 					theme={theme}
@@ -338,7 +323,7 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 		);
 	} else if (state === "closed") {
 		body = (
-			<VotingClosedView run={currentRun} answered={answered} resultsVisible={!!visibleAggregate}>
+			<VotingClosedView run={currentRun} answered={answered} resultsVisible={resultsPublic}>
 				<SlideStage
 					run={currentRun}
 					theme={theme}
@@ -368,6 +353,7 @@ function LiveSession({ stored }: { stored: StoredParticipantSession }) {
 			<AppShell
 				theme={theme}
 				transitionKey={currentRun?.id ?? (latestState ? "lobby" : "loading")}
+				transitionDirection={slideMove.direction}
 				topBar={
 					<TopBar
 						title={deckTitle}

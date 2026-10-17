@@ -2,7 +2,7 @@
 
 import type { EditorProps } from "../types";
 import { NumberField, ToggleField } from "../shared";
-import { EditorGroup, QuestionField } from "../pollSingle/common";
+import { EditorGroup, QuestionField } from "../shared/editorKit";
 
 export function WordCloudEditor({ slide, onChange, errors, disabled }: EditorProps<"word_cloud">) {
 	const config = slide.config;

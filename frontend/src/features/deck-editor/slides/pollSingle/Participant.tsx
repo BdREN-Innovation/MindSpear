@@ -3,72 +3,83 @@
 
 import { useState } from "react";
 import type { ParticipantProps } from "../types";
-import { OptionCard, OptionCardGroup, SubmitBar, SubmittedState, useSubmit } from "../shared";
-import { AnswerSummary, ParticipantLayout, ParticipantNotice, notVotingMessage, optionLabel, useAnswerHistory } from "./common";
-import { ParticipantPollResults, pollRows } from "./PollResults";
+import { OptionCard, OptionCardGroup, SubmitBar, SubmittedState } from "../shared";
+import { useAnswer } from "../shared/answer";
+import { displayTitle, optionLabel } from "../shared/labels";
+import { AnswerSummary, ParticipantLayout, ParticipantNotice, countLabel, isReadOnlyView, notVotingMessage, resultsTitle } from "../shared/participantKit";
+import { ParticipantPollResults, pollRows } from "../shared/PollResults";
 
 // poll_single on the phone (plan §7.3): full-width option cards. Default
 // submit_mode 'instant' sends on tap; 'confirm' selects and waits for the
 // Submit bar. The stored answer is replaced on every submit, so the vote can
-// be changed while voting is open.
+// be changed while voting is open. Public results (aggregate passed) show
+// under the cards, the submitted view and the read-only views alike.
 
 export function PollSingleParticipant({ run, mySubmission, onSubmit, disabled, theme, aggregate, mode }: ParticipantProps<"poll_single">) {
 	const review = mode === "review";
+	const readOnly = isReadOnlyView(mode, run.state);
 	const confirm = run.config.submit_mode === "confirm";
-	const { submit, busy, errorMessage, reset } = useSubmit(onSubmit);
-	const { latest, record } = useAnswerHistory(run.id, mySubmission);
-	const [editing, setEditing] = useState(false);
+	const answer = useAnswer(run.id, mySubmission, onSubmit);
 	const [selected, setSelected] = useState<number | null>(null);
 
 	// A stored payload can be `{}` (empty), so check the field rather than the object.
-	const answeredId = typeof latest?.option_id === "number" ? latest.option_id : null;
-	const title = run.title;
-	const locked = disabled || review;
+	const answeredId = typeof answer.latest?.option_id === "number" ? answer.latest.option_id : null;
+	const title = displayTitle(run.title, "poll_single");
 
-	const send = async (optionId: number) => {
-		const ok = await submit({ option_id: optionId });
-		if (ok) {
-			record({ option_id: optionId });
-			setEditing(false);
-		}
-	};
+	const results = aggregate ? (
+		<ParticipantPollResults
+			rows={pollRows(run.options, aggregate.options)}
+			highlight={answeredId !== null ? [answeredId] : []}
+			title={resultsTitle(mode, run.state)}
+			summary={countLabel(aggregate.total_votes, "vote", "votes")}
+		/>
+	) : null;
 
-	if (review || (answeredId !== null && !editing)) {
+	const send = (optionId: number) => void answer.submit({ option_id: optionId }, { option_id: optionId });
+
+	const summary = () => {
 		const index = run.options.findIndex((option) => option.id === answeredId);
 		const chosen = index >= 0 ? run.options[index] : undefined;
 		return (
-			<ParticipantLayout theme={theme} title={title} fallbackTitle="Multiple choice">
-				{answeredId === null ? (
-					<ParticipantNotice>You didn&apos;t vote on this slide.</ParticipantNotice>
-				) : (
-					<SubmittedState
-						title={confirm ? "Thanks, your answer is in" : "Thanks for voting!"}
-						message={review ? null : "Waiting for the host to continue."}
-						onEdit={
-							locked
-								? undefined
-								: () => {
-										reset();
-										setSelected(answeredId);
-										setEditing(true);
-									}
-						}
-						editLabel="Change vote"
-						className="px-0 py-6"
-					>
-						<div className="flex flex-col gap-4">
-							<AnswerSummary label="Your vote">
-								<div className="flex items-center gap-3">
-									{chosen?.image_url ? (
-										<img src={chosen.image_url} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" draggable={false} />
-									) : null}
-									<span className="break-words text-base font-semibold">{chosen ? optionLabel(chosen, index) : "An option that was removed"}</span>
-								</div>
-							</AnswerSummary>
-							{aggregate ? <ParticipantPollResults rows={pollRows(run.options, aggregate.options)} highlight={[answeredId]} /> : null}
-						</div>
-					</SubmittedState>
-				)}
+			<AnswerSummary label="Your vote">
+				<div className="flex items-center gap-3">
+					{chosen?.image_url ? <img src={chosen.image_url} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" draggable={false} /> : null}
+					<span className="break-words text-base font-semibold">{chosen ? optionLabel(chosen, index) : "An option that was removed"}</span>
+				</div>
+			</AnswerSummary>
+		);
+	};
+
+	if (readOnly) {
+		return (
+			<ParticipantLayout theme={theme} title={title}>
+				{answeredId !== null ? summary() : review ? <ParticipantNotice>You didn&apos;t vote on this slide.</ParticipantNotice> : null}
+				{results}
+			</ParticipantLayout>
+		);
+	}
+
+	if (answeredId !== null && !answer.editing) {
+		return (
+			<ParticipantLayout theme={theme} title={title}>
+				<SubmittedState
+					title={confirm ? "Thanks, your answer is in" : "Thanks for voting!"}
+					onEdit={
+						disabled
+							? undefined
+							: () => {
+									setSelected(answeredId);
+									answer.edit();
+								}
+					}
+					editLabel="Change vote"
+					className="px-0 py-6"
+				>
+					<div className="flex flex-col gap-4">
+						{summary()}
+						{results}
+					</div>
+				</SubmittedState>
 			</ParticipantLayout>
 		);
 	}
@@ -79,26 +90,25 @@ export function PollSingleParticipant({ run, mySubmission, onSubmit, disabled, t
 		<ParticipantLayout
 			theme={theme}
 			title={title}
-			fallbackTitle="Multiple choice"
 			subtitle={confirm ? "Pick one option, then tap Submit." : "Tap an option to vote."}
 			footer={
 				confirm ? (
 					<SubmitBar
 						label={answeredId !== null ? "Update vote" : "Submit"}
 						onClick={() => {
-							if (selected !== null) void send(selected);
+							if (selected !== null) send(selected);
 						}}
-						loading={busy}
+						loading={answer.busy}
 						disabled={disabled || selected === null}
-						error={errorMessage}
+						error={answer.fieldError}
 					/>
 				) : null
 			}
 		>
 			{lockedMessage ? <ParticipantNotice>{lockedMessage}</ParticipantNotice> : null}
-			{!confirm && errorMessage ? <ParticipantNotice tone="danger">{errorMessage}</ParticipantNotice> : null}
+			{!confirm && answer.fieldError ? <ParticipantNotice tone="danger">{answer.fieldError}</ParticipantNotice> : null}
 
-			<OptionCardGroup label={title?.trim() || "Options"}>
+			<OptionCardGroup label={title}>
 				{run.options.map((option, index) => (
 					<OptionCard
 						key={option.id}
@@ -106,30 +116,31 @@ export function PollSingleParticipant({ run, mySubmission, onSubmit, disabled, t
 						imageUrl={option.image_url}
 						index={index}
 						selected={selected === option.id}
-						disabled={disabled || busy}
-						description={!confirm && busy && selected === option.id ? "Sending…" : undefined}
+						disabled={disabled || answer.busy}
+						// Instant mode: the tap is the submit, so only the submit pulse fires.
+						hapticFeedback={confirm}
+						description={!confirm && answer.busy && selected === option.id ? "Sending…" : undefined}
 						onSelect={() => {
 							setSelected(option.id);
-							if (!confirm) void send(option.id);
+							if (!confirm) send(option.id);
 						}}
 					/>
 				))}
 			</OptionCardGroup>
 
-			{editing ? (
+			{answer.editing ? (
 				<button
 					type="button"
-					onClick={() => {
-						reset();
-						setEditing(false);
-					}}
-					disabled={busy}
+					onClick={answer.cancelEdit}
+					disabled={answer.busy}
 					className="min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]"
 					style={{ color: "var(--deck-text-muted, #4B5563)" }}
 				>
 					Keep my vote
 				</button>
 			) : null}
+
+			{results}
 		</ParticipantLayout>
 	);
 }

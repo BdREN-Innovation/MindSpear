@@ -20,7 +20,7 @@ import { friendlyError } from "../lib/errors";
 import { PARTICIPANT_PRODUCT } from "../lib/joinCode";
 import { useJoinDraft, type JoinDraftResult } from "../lib/useJoinDraft";
 import { markInstallEligible } from "../pwa/installPrompt";
-import { AppShell, LoadingDots, PlayButton, SheetModal, TapFeedback, TopBar, pulse, useAnnounce } from "../shell";
+import { AppShell, LoadingDots, PlayButton, SheetModal, TapFeedback, TopBar, markNavigation, pulse, useAnnounce } from "../shell";
 
 // /play/[code]/avatar — step 3 (plan §4.5 / §7.1): pick an emoji in a bottom
 // sheet (opens by itself), then join: POST .../participants/join, store the
@@ -45,7 +45,10 @@ export function AvatarScreen({ code }: { code: string }) {
 				<TopBar
 					title="Pick an avatar"
 					subtitle={join.draft?.deckTitle ?? undefined}
-					onBack={() => router.push(`/play/${encodeURIComponent(join.code)}`)}
+					onBack={() => {
+						markNavigation(-1);
+						router.push(`/play/${encodeURIComponent(join.code)}`);
+					}}
 					backLabel="Back to your name"
 				/>
 			}
@@ -111,6 +114,7 @@ function AvatarForm({ join }: { join: JoinDraftResult }) {
 			pulse("success");
 			announce("You're in!");
 			setSheetOpen(false);
+			markNavigation(1);
 			router.replace(`/play/live/${encodeURIComponent(result.public_channel_key)}`);
 		} catch (reason) {
 			const error = toDeckApiError(reason);
@@ -123,7 +127,7 @@ function AvatarForm({ join }: { join: JoinDraftResult }) {
 						? "gone"
 						: "other";
 			setFailure({ message, kind });
-			pulse("warning");
+			pulse("error");
 			setJoining(false);
 			if (kind === "emoji") {
 				reload();
@@ -156,7 +160,14 @@ function AvatarForm({ join }: { join: JoinDraftResult }) {
 
 	const failureAction =
 		failure?.kind === "name" ? (
-			<PlayButton variant="secondary" size="md" onClick={() => router.push(`/play/${encodeURIComponent(join.code)}`)}>
+			<PlayButton
+				variant="secondary"
+				size="md"
+				onClick={() => {
+					markNavigation(-1);
+					router.push(`/play/${encodeURIComponent(join.code)}`);
+				}}
+			>
 				Change name
 			</PlayButton>
 		) : failure?.kind === "gone" ? (

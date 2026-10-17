@@ -48,7 +48,9 @@ function JoinPage() {
           deckTitle: session.deck_title,
           publicChannelKey: session.public_channel_key,
         });
-        router.push(`/play/${v2Code}`);
+        // A full page load, not router.push: the participant app must start
+        // without the site's analytics scripts loaded on this page.
+        window.location.assign(`/play/${encodeURIComponent(v2Code)}`);
         return;
       } catch (error) {
         const deckError = toDeckApiError(error);
@@ -56,7 +58,13 @@ function JoinPage() {
           toast.error(friendlyError(deckError, "lookup"));
           return;
         }
-        // 404 (not a live v2 session) or a transport error: try the legacy codes.
+        // No answer at all: the server is unreachable, so the legacy lookup
+        // would fail too ("Invalid code prefix" would only mislead).
+        if (deckError.status === 0) {
+          toast.error("Couldn't reach the server. Check your connection and try again.");
+          return;
+        }
+        // 404 (not a live v2 session): try the legacy codes.
       }
     }
 
@@ -104,7 +112,11 @@ function JoinPage() {
         return;
       }
 
-      toast.error("Invalid code prefix. Use Q..., T..., or S...");
+      toast.error(
+        isV2JoinCode(trimmed)
+          ? "We couldn't find a live session with that code. Check the code and try again."
+          : "Invalid code. Check the code on the host's screen and try again."
+      );
     } catch (error) {
       const axiosError = error as AxiosError<{ message?: string }>;
       if (axiosError.response) {
@@ -128,7 +140,7 @@ function JoinPage() {
               className="mb-3 font-bold text-[#333]"
               type="text"
               label=""
-              placeholder="Enter code starting with Q / T / S"
+              placeholder="Enter the code on the host's screen"
               iconPosition="left"
               height="sm"
               value={currentJoinCode}

@@ -33,6 +33,7 @@ export function BarChart({
 	horizontal = false,
 	rounded = 8,
 	valueSuffix = "",
+	showEmptyChart = false,
 }: BarChartProps) {
 	const chartData = useMemo(
 		() => normalizeCategoricalData({ data, categories, labels, series, colors }),
@@ -45,11 +46,15 @@ export function BarChart({
 	const rawLabels = chartData.map((item) => item.label);
 	const values = chartData.map((item) => item.value);
 	const maxValue = Math.max(...values.map((value) => Number(value) || 0), 0);
+	const hasRenderableData = values.some((value) => Number(value) > 0);
+	// An empty preview still needs an axis range, or the bars have no scale.
+	const emptyAxisMax = !hasRenderableData && showEmptyChart ? (valueSuffix === "%" ? 100 : 10) : undefined;
 	const horizontalAxisMax =
 		horizontal && maxValue > 0
 			? Math.ceil(maxValue + Math.max(maxValue * 0.32, 14))
-			: undefined;
-	const hasRenderableData = values.some((value) => Number(value) > 0);
+			: horizontal
+				? emptyAxisMax
+				: undefined;
 
 	const options: ApexOptions = useMemo(
 		() => ({
@@ -103,6 +108,7 @@ export function BarChart({
 				axisBorder: { show: false },
 			},
 			yaxis: {
+				max: horizontal ? undefined : emptyAxisMax,
 				labels: {
 					show: horizontal,
 					style: {
@@ -138,6 +144,7 @@ export function BarChart({
 			horizontalAxisMax,
 			rawLabels,
 			rounded,
+			emptyAxisMax,
 			showLegend,
 			title,
 			valueSuffix,
@@ -146,7 +153,7 @@ export function BarChart({
 
 	return (
 		<ChartContainer className={className} isLoading={isLoading} minHeight={height}>
-			{hasRenderableData ? (
+			{hasRenderableData || showEmptyChart ? (
 				<ReactApexChart
 					options={options}
 					series={[{ name: title || "Responses", data: values }]}

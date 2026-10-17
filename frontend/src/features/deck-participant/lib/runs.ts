@@ -1,3 +1,4 @@
+import { getSlideType } from "@/features/deck-editor/slideRegistry";
 import type {
 	AnswerPayloadMap,
 	IsoDateTime,
@@ -9,6 +10,11 @@ import type {
 } from "@/features/deck/types";
 
 // Run helpers shared by the play and review screens.
+
+/** The slide's title, else its type's label (e.g. "Rating"), so lists never read "Untitled". */
+export function runTitle(run: Pick<ParticipantRunView, "title" | "type">): string {
+	return run.title?.trim() || getSlideType(run.type)?.label || "Untitled slide";
+}
 
 /** Content slides (and unknown types) render read-only and never enter voting. */
 export function isContentRun(run: Pick<ParticipantRunView, "category" | "type" | "accepts_answers">): boolean {
@@ -43,10 +49,19 @@ export function storedPayload(submission: MySubmission | null | undefined): Stor
 	return payload as StoredAnswer;
 }
 
+/** Word cloud display form, like the backend: invisible characters removed, trimmed, inner whitespace collapsed. */
+function displayEntry(raw: string): string {
+	return raw
+		.replace(/[\u200B-\u200D\u2060\uFEFF\u00AD]/g, "")
+		.trim()
+		.replace(/\s+/g, " ");
+}
+
 /**
- * What the server will store for a just-accepted POST (StoredAnswerMap
- * shape), shown until GET my-answer returns the authoritative copy. Mirrors
- * the merge rules: word_cloud appends with allow_multiple_submissions,
+ * What the server stored for a just-accepted POST (StoredAnswerMap shape).
+ * The POST answers 204, so this local copy stands in until the next state read
+ * (reconnect / revisit) brings the server's own. Mirrors the merge rules:
+ * word_cloud appends with allow_multiple_submissions,
  * open_ended appends while max_submissions_per_participant > 1, pin_on_image
  * {x, y} shorthand becomes {pins: [...]}, everything else replaces.
  */
@@ -67,9 +82,9 @@ export function provisionalSubmission(
 			const prevTimes = config.allow_multiple_submissions
 				? ((before?.entry_times as (string | null)[]) ?? prevEntries.map(() => null))
 				: [];
-			const seen = new Set(prevEntries.map((entry) => entry.toLowerCase()));
-			const added = entries.filter((entry) => {
-				const key = entry.trim().toLowerCase();
+			const seen = new Set(prevEntries.map((entry) => displayEntry(entry).toLowerCase()));
+			const added = entries.map(displayEntry).filter((entry) => {
+				const key = entry.toLowerCase();
 				if (!key || seen.has(key)) return false;
 				seen.add(key);
 				return true;

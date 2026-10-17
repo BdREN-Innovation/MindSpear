@@ -1,7 +1,7 @@
 import { SlidersHorizontal } from "lucide-react";
 import type { ScalesAggregate, SlideOf } from "@/features/deck/types";
 import { defineSlideType } from "../types";
-import { sampleCount } from "../pollSingle/common";
+import { sampleCount } from "../shared/samples";
 import { ScalesEditor } from "./Editor";
 import { ScalesParticipant } from "./Participant";
 import { ScalesPresenter } from "./Presenter";

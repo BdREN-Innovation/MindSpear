@@ -3,8 +3,9 @@
 import type { RatingScale } from "@/features/deck/types";
 import type { EditorProps } from "../types";
 import { OptionListEditor, SegmentedField, ToggleField } from "../shared";
+import { QuestionField } from "../shared/editorKit";
 
-// rating editor (plan §5.4): the items to rate, the star scale (3 / 5 / 7 /
+// rating editor (plan §5.4): the question, the items to rate, the star scale (3 / 5 / 7 /
 // 10, RatingSlideType::SCALES) and whether every item must be rated.
 
 const SCALES: RatingScale[] = [3, 5, 7, 10];
@@ -14,6 +15,14 @@ export function RatingEditor({ slide, onChange, onOptionsChange, errors, disable
 
 	return (
 		<div className="flex flex-col gap-5">
+			<QuestionField<"rating">
+				title={slide.title}
+				onChange={onChange}
+				errors={errors}
+				disabled={disabled}
+				placeholder="How would you rate these?"
+			/>
+
 			<OptionListEditor
 				slide={slide}
 				options={onOptionsChange}

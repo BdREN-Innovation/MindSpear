@@ -8,20 +8,30 @@
  * What it caches: the app shell only.
  *   - /_next/static/*        cache-first (content-hashed, immutable)
  *   - icons, logo, fonts, manifest   stale-while-revalidate
- *   - /play page navigations network-first; the cached copy (or a tiny
- *                            offline page) is only used when the network fails
+ *   - /play page navigations network-first with a 3.5 s budget: past it (or
+ *                            on a network error) the cached copy of that page
+ *                            is shown while the network answer refreshes the
+ *                            cache; with no cached copy it keeps waiting, then
+ *                            falls back to a tiny offline page
  * What it never caches: anything cross-origin (the Laravel API, Reverb,
  * uploaded media), any /api/ path, RSC/prefetch requests, non-GET requests.
  * Session data must always come fresh from the server.
  *
- * Bump VERSION to drop every old cache on the next activation.
+ * VERSION is the Next build id, passed as /sw.js?v=<build id> at
+ * registration: every deploy registers a new script URL, so a new worker
+ * installs and its activation drops every older cache.
+ *
+ * Eviction is least-recently-used: a cache hit re-stores its entry once per
+ * worker lifetime (moving it to the end of keys()), and trim() drops from the
+ * front.
  */
-const VERSION = "v1";
+const VERSION = new URL(self.location.href).searchParams.get("v") || "v1";
 const PREFIX = "mindspear-play-";
 const SHELL_CACHE = `${PREFIX}shell-${VERSION}`;
 const STATIC_CACHE = `${PREFIX}static-${VERSION}`;
 const SHELL_LIMIT = 30;
 const STATIC_LIMIT = 150;
+const NAVIGATION_TIMEOUT_MS = 3500;
 
 const PRECACHE = [
 	"/play",
@@ -89,19 +99,42 @@ function neverCache(request, url) {
 	return false;
 }
 
+/** Drops the oldest entries (front of keys()) beyond `limit`. */
 async function trim(cacheName, limit) {
 	const cache = await caches.open(cacheName);
 	const keys = await cache.keys();
 	for (let i = 0; i < keys.length - limit; i++) await cache.delete(keys[i]);
 }
 
-async function cacheFirst(request) {
+// Entries re-stored by this worker instance (it is short-lived, so this stays small).
+const touched = new Set();
+
+/** LRU bookkeeping for a hit: re-store it once per worker lifetime so trim() keeps it longest. */
+function touch(cache, key, hit) {
+	const id = typeof key === "string" ? key : key.url;
+	if (touched.has(id)) return Promise.resolve();
+	touched.add(id);
+	return cache.put(key, hit.clone()).catch(() => undefined);
+}
+
+function store(cache, key, response, limit, name) {
+	return cache
+		.put(key, response)
+		.then(() => trim(name, limit))
+		.catch(() => undefined);
+}
+
+async function cacheFirst(event) {
+	const request = event.request;
 	const cache = await caches.open(STATIC_CACHE);
 	const hit = await cache.match(request);
-	if (hit) return hit;
+	if (hit) {
+		event.waitUntil(touch(cache, request, hit));
+		return hit;
+	}
 	const response = await fetch(request);
 	if (response.ok && response.type === "basic") {
-		cache.put(request, response.clone()).then(() => trim(STATIC_CACHE, STATIC_LIMIT));
+		event.waitUntil(store(cache, request, response.clone(), STATIC_LIMIT, STATIC_CACHE));
 	}
 	return response;
 }
@@ -111,7 +144,9 @@ async function staleWhileRevalidate(event) {
 	const hit = (await cache.match(event.request)) || (await caches.match(event.request));
 	const network = fetch(event.request)
 		.then((response) => {
-			if (response.ok && response.type === "basic") cache.put(event.request, response.clone());
+			if (response.ok && response.type === "basic") {
+				return store(cache, event.request, response.clone(), STATIC_LIMIT, STATIC_CACHE).then(() => response);
+			}
 			return response;
 		})
 		.catch(() => undefined);
@@ -122,20 +157,59 @@ async function staleWhileRevalidate(event) {
 	return (await network) || Response.error();
 }
 
-async function networkFirstPage(request, url) {
-	const cache = await caches.open(SHELL_CACHE);
+const TIMED_OUT = Symbol("timed-out");
+const FAILED = Symbol("failed");
+
+function offlinePage() {
+	return new Response(OFFLINE_HTML, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function networkFirstPage(event, url) {
 	// Query strings (?code=, ?reason=) do not change the shell HTML.
 	const key = url.origin + url.pathname;
-	try {
-		const response = await fetch(request);
-		if (response.ok && response.type === "basic") {
-			cache.put(key, response.clone()).then(() => trim(SHELL_CACHE, SHELL_LIMIT));
+	const cachePromise = caches.open(SHELL_CACHE);
+
+	// Keep the worker alive until the network answer is stored, even when the
+	// cached copy was shown first.
+	let settle;
+	event.waitUntil(new Promise((resolve) => (settle = resolve)));
+	const network = fetch(event.request).then(
+		(response) => {
+			if (response.ok && response.type === "basic") {
+				const copy = response.clone();
+				cachePromise.then((cache) => store(cache, key, copy, SHELL_LIMIT, SHELL_CACHE)).finally(settle);
+			} else {
+				settle();
+			}
+			return response;
+		},
+		(error) => {
+			settle();
+			throw error;
 		}
-		return response;
-	} catch (error) {
-		const hit = await cache.match(key);
-		if (hit) return hit;
-		return new Response(OFFLINE_HTML, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8" } });
+	);
+
+	let timer;
+	const first = await Promise.race([
+		network.catch(() => FAILED),
+		new Promise((resolve) => (timer = setTimeout(() => resolve(TIMED_OUT), NAVIGATION_TIMEOUT_MS))),
+	]);
+	clearTimeout(timer);
+	if (first !== TIMED_OUT && first !== FAILED) return first;
+
+	// Slow (past the budget) or failed: the cached copy of this page, if any.
+	const cache = await cachePromise;
+	const hit = await cache.match(key);
+	if (hit) {
+		event.waitUntil(touch(cache, key, hit));
+		return hit;
+	}
+	if (first === FAILED) return offlinePage();
+	// Only slow and nothing cached: the network is still the best bet.
+	try {
+		return await network;
+	} catch {
+		return offlinePage();
 	}
 }
 
@@ -151,13 +225,13 @@ self.addEventListener("fetch", (event) => {
 
 	if (request.mode === "navigate") {
 		if (url.pathname === "/play" || url.pathname.startsWith("/play/")) {
-			event.respondWith(networkFirstPage(request, url));
+			event.respondWith(networkFirstPage(event, url));
 		}
 		return;
 	}
 
 	if (url.pathname.startsWith("/_next/static/")) {
-		event.respondWith(cacheFirst(request));
+		event.respondWith(cacheFirst(event));
 		return;
 	}
 

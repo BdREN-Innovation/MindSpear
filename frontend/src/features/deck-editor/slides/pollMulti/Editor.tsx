@@ -2,8 +2,8 @@
 
 import type { EditorProps } from "../types";
 import { NumberField, OptionListEditor, SelectField } from "../shared";
-import { EditorGroup, QuestionField } from "../pollSingle/common";
-import { RESULT_LAYOUT_CHOICES } from "../pollSingle/PollResults";
+import { EditorGroup, QuestionField } from "../shared/editorKit";
+import { RESULT_LAYOUT_CHOICES, resultLayoutHint } from "../shared/PollResults";
 import { MAX_SELECTIONS } from "./limits";
 
 export function PollMultiEditor({ slide, onChange, onOptionsChange, errors, disabled }: EditorProps<"poll_multi">) {
@@ -71,7 +71,7 @@ export function PollMultiEditor({ slide, onChange, onOptionsChange, errors, disa
 					value={config.result_layout ?? "bars"}
 					options={RESULT_LAYOUT_CHOICES}
 					onChange={(result_layout) => onChange({ config: { result_layout } })}
-					hint="Bars show the share of participants who picked each option."
+					hint={resultLayoutHint(config.result_layout, "multi")}
 					error={errors?.["config.result_layout"]}
 					disabled={disabled}
 				/>

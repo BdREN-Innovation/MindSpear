@@ -5,6 +5,7 @@ import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { chartColor } from "@/features/deck/theme";
 import type { WordCloudWord } from "@/features/deck/types";
 import type { PresenterProps } from "../types";
+import { fallbackTitle } from "../shared/labels";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersReducedMotion } from "../shared";
 
 // Word cloud presenter (plan §6.3), drawn with flex instead of a chart
@@ -73,7 +74,7 @@ export function WordCloudPresenter({ run, aggregate, theme, mode }: PresenterPro
 	return (
 		<PresenterStage style={theme.cssVars as CSSProperties}>
 			<header className="flex items-start justify-between gap-[3cqw]">
-				<SlideTitle title={run.title} fallback="Your question" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("word_cloud")} />
 				{aggregate ? <ResponseCount count={aggregate.total_responses} className="shrink-0 pt-[0.8cqw]" /> : null}
 			</header>
 

@@ -1,26 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { toast } from "react-toastify";
-import { CheckCircle2, Heart, MessagesSquare, SkipForward, Star } from "lucide-react";
-import { toDeckApiError } from "@/features/deck/api/errors";
+import { CheckCircle2, Heart, MessagesSquare, Star } from "lucide-react";
 import { sortQaItems } from "@/features/deck/live/qaFeed";
 import type { QaHostItem } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
 import type { PresenterProps } from "../types";
-import { TIMER_CHIP_CLEARANCE } from "../pinOnImage/stageLayout";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle, usePrefersReducedMotion } from "../shared";
+import { fallbackTitle } from "../shared/labels";
+import { TIMER_CHIP_CLEARANCE } from "../shared/stageLayout";
 import { sampleHostQuestions } from "./sample";
 
 // qa_audience presenter (plan §6.3 / §6.4): the featured question in big
 // text, the next ones and the answered ones (struck through) beside it.
-// Hidden questions are never shown. Featured = the one the host picked, else
-// the first starred open question, else the top open one (the host feed is
-// already "starred first, then the sort"). The moderation sheet belongs to
-// the presenter shell; this view only offers quick actions on the featured
-// question through host.qa (revealed on hover / keyboard focus so the
-// audience sees a clean slide).
+// Hidden questions are never shown. Featured = the first starred open
+// question, else the top open one (the host feed is already "starred first,
+// then the sort"), so starring a question in the moderation sheet puts it on
+// screen. This is the projected stage: it renders no controls at all (a
+// host's cursor or a touch screen would reveal them to the audience); every
+// action lives in the presenter shell's moderation sheet (host.qa).
 
 const UP_NEXT_MAX = 5;
 const ANSWERED_MAX = 3;
@@ -45,8 +44,6 @@ function Votes({ count, size }: { count: number; size: string }) {
 export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"qa_audience">) {
 	const reduceMotion = usePrefersReducedMotion();
 	const qa = host?.qa;
-	const [pickedId, setPickedId] = useState<number | null>(null);
-	const [busy, setBusy] = useState(false);
 
 	const questions = useMemo<QaHostItem[]>(() => {
 		const source = qa ? qa.questions : mode === "preview" ? sortQaItems(sampleHostQuestions(), "top", true) : [];
@@ -55,27 +52,8 @@ export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"
 
 	const open = questions.filter((question) => !question.is_answered);
 	const answered = questions.filter((question) => question.is_answered);
-	const featured = open.find((question) => question.question_id === pickedId) ?? open.find((question) => question.is_starred) ?? open[0] ?? null;
+	const featured = open.find((question) => question.is_starred) ?? open[0] ?? null;
 	const upNext = open.filter((question) => question !== featured).slice(0, UP_NEXT_MAX);
-	const canModerate = !!qa && mode === "live";
-
-	const moderate = async (question: QaHostItem, flags: Parameters<NonNullable<typeof qa>["moderate"]>[1]) => {
-		if (!qa || busy) return;
-		setBusy(true);
-		try {
-			await qa.moderate(question.question_id, flags);
-		} catch (reason) {
-			toast.error(toDeckApiError(reason).message || "Could not update the question.");
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	const next = () => {
-		if (!featured || open.length < 2) return;
-		const index = open.indexOf(featured);
-		setPickedId(open[(index + 1) % open.length].question_id);
-	};
 
 	const fade = reduceMotion ? { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 0, transition: { duration: 0 } } } : { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -12 } };
 
@@ -83,7 +61,7 @@ export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"
 		<PresenterStage>
 			{/* Right padding keeps the shell's timer chip area (top-right ~220×56 px) clear. */}
 			<div className="flex items-start justify-between gap-[2cqw]" style={TIMER_CHIP_CLEARANCE}>
-				<SlideTitle title={run.title} fallback="Ask me anything" size="md" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("qa_audience")} size="md" />
 				<div className="flex shrink-0 items-center gap-[1.5cqw]">
 					{state === "closed" ? (
 						<span className="rounded-full px-[1cqw] py-[0.3cqw] font-semibold" style={{ fontSize: "clamp(0.75rem, 1.2cqw, 1rem)", background: "var(--deck-surface-muted)", color: "var(--deck-text-muted)" }}>
@@ -103,7 +81,7 @@ export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"
 				<div className="flex min-h-0 flex-1 gap-[3cqw]">
 					{/* Featured question */}
 					<div
-						className="group relative flex min-w-0 flex-[3] flex-col justify-center gap-[2cqw] rounded-[1.5cqw] p-[3cqw]"
+						className="relative flex min-w-0 flex-[3] flex-col justify-center gap-[2cqw] rounded-[1.5cqw] p-[3cqw]"
 						style={{ background: "var(--deck-surface)", border: "1px solid var(--deck-border)" }}
 					>
 						<AnimatePresence mode="wait" initial={false}>
@@ -138,33 +116,6 @@ export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"
 							)}
 						</AnimatePresence>
 
-						{canModerate && featured ? (
-							<div className="flex flex-wrap gap-[1cqw] opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 motion-reduce:transition-none">
-								{(
-									[
-										{ label: "Mark answered", icon: CheckCircle2, onClick: () => moderate(featured, { is_answered: true }) },
-										{
-											label: featured.is_starred ? "Unstar" : "Star",
-											icon: Star,
-											onClick: () => moderate(featured, { is_starred: !featured.is_starred }),
-										},
-										...(open.length > 1 ? [{ label: "Next question", icon: SkipForward, onClick: next }] : []),
-									] as const
-								).map(({ label, icon: Icon, onClick }) => (
-									<button
-										key={label}
-										type="button"
-										onClick={() => void onClick()}
-										disabled={busy}
-										className="inline-flex min-h-11 items-center gap-[0.5cqw] rounded-full px-[1.4cqw] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus)] disabled:opacity-50"
-										style={{ fontSize: "clamp(0.75rem, 1.2cqw, 1rem)", background: "var(--deck-surface-muted)", color: "var(--deck-text)" }}
-									>
-										<Icon className="h-[1.1em] w-[1.1em]" aria-hidden />
-										{label}
-									</button>
-								))}
-							</div>
-						) : null}
 					</div>
 
 					{/* Up next + answered */}
@@ -189,24 +140,12 @@ export function QaAudiencePresenter({ run, mode, host, state }: PresenterProps<"
 												);
 												return (
 													<motion.li key={question.question_id} layout={!reduceMotion} initial={reduceMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-														{canModerate ? (
-															<button
-																type="button"
-																onClick={() => setPickedId(question.question_id)}
-																aria-label={`Show this question: ${question.body}`}
-																className="flex w-full items-start gap-[0.8cqw] rounded-[0.8cqw] p-[1cqw] text-left outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus)]"
-																style={{ fontSize: "clamp(0.8rem, 1.45cqw, 1.3rem)", background: "var(--deck-surface)", border: "1px solid var(--deck-border)", color: "var(--deck-text)" }}
-															>
-																{content}
-															</button>
-														) : (
-															<div
-																className="flex items-start gap-[0.8cqw] rounded-[0.8cqw] p-[1cqw]"
-																style={{ fontSize: "clamp(0.8rem, 1.45cqw, 1.3rem)", background: "var(--deck-surface)", border: "1px solid var(--deck-border)" }}
-															>
-																{content}
-															</div>
-														)}
+														<div
+															className="flex items-start gap-[0.8cqw] rounded-[0.8cqw] p-[1cqw]"
+															style={{ fontSize: "clamp(0.8rem, 1.45cqw, 1.3rem)", background: "var(--deck-surface)", border: "1px solid var(--deck-border)" }}
+														>
+															{content}
+														</div>
 													</motion.li>
 												);
 											})}

@@ -4,11 +4,11 @@ import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "rea
 import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
 import { DECK_LIMITS, type SlidePatch, type SlideTypeKey } from "@/features/deck/types";
-import { PresenterStage, TextField } from "../shared";
+import { TextField } from "./fields";
+import { PresenterStage } from "./presenter";
 
 // Building blocks shared by the nine content slide folders (heading,
-// paragraph, bullets, numbered, quote, image, video, bigText, qrCode). It
-// lives in heading/ because the content types own only their own folders.
+// paragraph, bullets, numbered, quote, image, video, bigText, qrCode).
 //
 // Plan §6.3: "presenter layout = participant layout for content". Each type
 // renders ONE view component with a `variant`:
@@ -76,28 +76,26 @@ export function ContentStage({
 }
 
 /**
- * Participant frame for content slides (plan §7.3): read-only, a consistent
- * "Slide N" header, the deck theme, and the same view the big screen shows.
+ * Participant frame for content slides (plan §7.3): read-only, the deck
+ * theme, and the same view the big screen shows. No visible "Slide N": the
+ * shell's TopBar already shows "Slide N of M"; the region keeps it as its
+ * accessible name.
  */
 export function ContentPhone({
 	theme,
 	position,
-	totalSlides,
 	children,
 	className,
 }: {
 	theme: DeckTheme;
 	position: number;
-	/** Not in ParticipantProps yet; shown as "Slide x of y" when a shell passes it. */
-	totalSlides?: number | null;
 	children: ReactNode;
 	className?: string;
 }) {
-	const progress = totalSlides ? `Slide ${position} of ${totalSlides}` : `Slide ${position}`;
 	return (
 		<section
-			aria-label={progress}
-			className={cn("flex min-h-full w-full flex-col gap-5 px-5 pb-8 pt-4", className)}
+			aria-label={`Slide ${position}`}
+			className={cn("flex min-h-full w-full flex-col gap-5 px-5 pb-8 pt-5", className)}
 			style={{
 				...(theme.cssVars as CSSProperties),
 				background: "var(--deck-bg)",
@@ -105,9 +103,6 @@ export function ContentPhone({
 				fontSize: BASE_SIZE.phone,
 			}}
 		>
-			<p className="m-0 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--deck-text-muted)" }}>
-				{progress}
-			</p>
 			{children}
 		</section>
 	);

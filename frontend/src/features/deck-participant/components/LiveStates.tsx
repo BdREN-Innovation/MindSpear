@@ -1,16 +1,21 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Lock, MessageCircleQuestion } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ParticipantRunView } from "@/features/deck/types";
+import { useServerClock } from "@/features/deck/live/useServerClock";
+import type { IsoDateTime, ParticipantRunView } from "@/features/deck/types";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
-import { LoadingDots } from "../shell";
+import { runTitle } from "../lib/runs";
+import { LoadingDots, useAnnounce } from "../shell";
 
 // The run-state screens around the type's Participant component (plan §7.2):
 // lobby (no slide yet), waiting for the host, the get-ready countdown,
 // voting closed, the timer bar and the "answer sent" strip (§7.4).
+//
+// The countdowns own their 250 ms clock (useServerClock), so only these small
+// components re-render while time runs — never the slide's answer UI.
 
 export function CenteredLoading({ label }: { label: string }) {
 	return (
@@ -57,7 +62,7 @@ export function WaitingForHost({ run }: { run: ParticipantRunView }) {
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
 			<TypeChip run={run} />
-			<h2 className="mt-4 text-2xl font-bold leading-snug tracking-tight">{run.title || "Get ready"}</h2>
+			<h2 className="mt-4 text-2xl font-bold leading-snug tracking-tight">{runTitle(run)}</h2>
 			<p className="mt-6 inline-flex items-center gap-2 text-sm text-[var(--deck-text-muted)]">
 				<LoadingDots label={null} size="sm" />
 				{qa ? "Questions will open soon" : "Waiting for the host to open voting"}
@@ -66,8 +71,15 @@ export function WaitingForHost({ run }: { run: ParticipantRunView }) {
 	);
 }
 
-export function GetReadyOverlay({ run, seconds }: { run: ParticipantRunView; seconds: number | null }) {
+export interface CountdownProps {
+	/** The state's deadline (run state ends_at); null = untimed. */
+	endsAt: IsoDateTime | null | undefined;
+	durationSeconds?: number | null;
+}
+
+export function GetReadyOverlay({ run, endsAt, durationSeconds }: CountdownProps & { run: ParticipantRunView }) {
 	const reduceMotion = useReducedMotion();
+	const { secondsRemaining: seconds } = useServerClock({ endsAt, durationSeconds });
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
 			<p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--deck-text-muted)]">Get ready</p>
@@ -86,7 +98,7 @@ export function GetReadyOverlay({ run, seconds }: { run: ParticipantRunView; sec
 					</motion.span>
 				</AnimatePresence>
 			</div>
-			<h2 className="mt-8 text-xl font-semibold leading-snug">{run.title}</h2>
+			<h2 className="mt-8 text-xl font-semibold leading-snug">{runTitle(run)}</h2>
 		</div>
 	);
 }
@@ -128,7 +140,19 @@ export function VotingClosedView({
 	);
 }
 
-export function TimerBar({ seconds, progress }: { seconds: number | null; progress: number | null }) {
+/** Voting countdown bar; announces "N seconds left" once at ten seconds. */
+export function TimerBar({ endsAt, durationSeconds }: CountdownProps) {
+	const { secondsRemaining: seconds, progress } = useServerClock({ endsAt, durationSeconds });
+	const announce = useAnnounce();
+	const announcedFor = useRef<string | null>(null);
+	useEffect(() => {
+		if (seconds === null || !endsAt) return;
+		if (seconds <= 10 && seconds > 0 && announcedFor.current !== endsAt) {
+			announcedFor.current = endsAt;
+			announce(`${seconds} seconds left.`);
+		}
+	}, [seconds, endsAt, announce]);
+
 	if (seconds === null) return null;
 	const urgent = seconds <= 5;
 	return (

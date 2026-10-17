@@ -1,5 +1,7 @@
 // Participant PWA shell primitives (plan §4.2). Shared with Quiz v2 later.
 export { AppShell, useAnnounce, useParticipantShell } from "./AppShell";
+export { markNavigation } from "./navDirection";
+export type { NavDirection } from "./navDirection";
 export type { AppShellProps, ParticipantShellContextValue } from "./AppShell";
 export { TopBar } from "./TopBar";
 export type { TopBarProps } from "./TopBar";
@@ -13,5 +15,5 @@ export { LoadingDots } from "./LoadingDots";
 export { PullIndicator } from "./PullIndicator";
 export { PlayButton } from "./PlayButton";
 export type { PlayButtonProps } from "./PlayButton";
-export { pulse, useHaptics, hapticsSupported, getHapticsPreference, setHapticsPreference } from "./haptics";
+export { pulse, useHaptics, hapticsSupported, hapticsEnabled, setHapticsEnabled } from "./haptics";
 export type { HapticKind, HapticsControls } from "./haptics";

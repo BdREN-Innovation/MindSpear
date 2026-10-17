@@ -3,9 +3,10 @@
 import type { AxisLabels } from "@/features/deck/types";
 import type { EditorProps } from "../types";
 import { TextField } from "../shared";
+import { QuestionField } from "../shared/editorKit";
 import { MatrixPlane } from "./MatrixPlane";
 
-// matrix_2x2 editor (plan §5.4): the four axis labels (≤ 80 chars each,
+// matrix_2x2 editor (plan §5.4): the question, the four axis labels (≤ 80 chars each,
 // config x_axis / y_axis merge per key) and a small live preview of the
 // plane; the canvas shows the full Presenter with sample dots.
 
@@ -39,6 +40,14 @@ export function Matrix2x2Editor({ slide, onChange, errors, disabled }: EditorPro
 
 	return (
 		<div className="flex flex-col gap-5">
+			<QuestionField<"matrix_2x2">
+				title={slide.title}
+				onChange={onChange}
+				errors={errors}
+				disabled={disabled}
+				placeholder="Where does each idea sit on effort vs impact?"
+			/>
+
 			<fieldset className="m-0 flex flex-col gap-3 border-0 p-0">
 				<legend className="mb-2 text-sm font-semibold text-dark dark:text-white">Horizontal axis (X)</legend>
 				<div className="grid gap-3 sm:grid-cols-2">

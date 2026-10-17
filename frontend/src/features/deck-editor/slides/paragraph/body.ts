@@ -54,7 +54,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function cleanText(text: string, multiline: boolean): string {
 	let value = text.replace(/\r\n?/g, "\n").replace(/\t/g, " ");
 	if (!multiline) value = value.replace(/\n/g, " ");
-	return value.replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F‪-‮⁦-⁩]/g, "");
+	return value.replace(/[\u0000-\u0009\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g, "");
 }
 
 /** An http(s) URL with a host and no credentials, or a mailto: address (ParagraphSlideType::bodyHref). */

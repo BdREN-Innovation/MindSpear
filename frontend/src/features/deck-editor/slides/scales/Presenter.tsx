@@ -4,7 +4,7 @@ import { useMemo, type CSSProperties } from "react";
 import type { ScaleStatementResult } from "@/features/deck/types";
 import type { PresenterProps } from "../types";
 import { PresenterStage, ResponseCount, ResultsEmpty, SlideTitle } from "../shared";
-import { numberedLabel } from "../pollSingle/common";
+import { fallbackTitle, numberedLabel } from "../shared/labels";
 import { clampPoints, fitLabels, scaleColor, scaleTextColor } from "./scale";
 
 // scales presenter (plan §6.3): one row per statement with a stacked bar of
@@ -37,7 +37,7 @@ export function ScalesPresenter({ run, aggregate, theme, mode }: PresenterProps<
 	return (
 		<PresenterStage style={theme.cssVars as CSSProperties}>
 			<header className="flex items-start justify-between gap-[3cqw]">
-				<SlideTitle title={run.title} fallback="Your question" />
+				<SlideTitle title={run.title} fallback={fallbackTitle("scales")} />
 				{aggregate ? <ResponseCount count={aggregate.total_responses} className="shrink-0 pt-[0.8cqw]" /> : null}
 			</header>
 

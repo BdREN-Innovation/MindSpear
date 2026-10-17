@@ -3,6 +3,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { ScaledSlide } from "@/features/deck-editor/components/SlidePreview";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
 import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/slides/types";
 import type { DeckTheme } from "@/features/deck/theme";
@@ -13,11 +14,11 @@ import type { ParticipantRunView, RunState, SlideAggregate, SlimRunView } from "
 // registry knows renders, and an unknown key or a Presenter that throws gets
 // a fallback instead of taking the session controls down with it.
 //
-// The slide is letterboxed to 16:9 at real size (not transform-scaled like
-// the editor's SlidePreview, so text stays sharp and charts measure their
-// true box) and the frame is the inline-size container, so a type's cqw
-// units mean the same fraction of the slide on the projector as in the
-// editor canvas.
+// The slide is laid out at the same 1280×720 design size as the editor's
+// canvas (ScaledSlide) and scaled to fit, letterboxed to 16:9. Inside, a
+// wrapper is the inline-size container, so every cqw unit (PresenterStage's
+// own padding included) and every rem cap in a clamp() lands on the same
+// fraction of the slide on a 1280 or 1920 projector as in the editor.
 
 interface BoundaryProps {
 	resetKey: string;
@@ -78,9 +79,11 @@ export interface SlideStageProps {
 	theme: DeckTheme;
 	host: HostActions;
 	session: PresenterSessionInfo;
+	/** Shell chrome drawn on the slide's top-right corner (the timer chip), scaled with the slide. */
+	cornerOverlay?: ReactNode;
 }
 
-export function SlideStage({ run, slimRun, state, aggregate, theme, host, session }: SlideStageProps) {
+export function SlideStage({ run, slimRun, state, aggregate, theme, host, session, cornerOverlay }: SlideStageProps) {
 	const reduceMotion = useReducedMotion();
 
 	if (!run) {
@@ -101,11 +104,8 @@ export function SlideStage({ run, slimRun, state, aggregate, theme, host, sessio
 	const Presenter = entry?.Presenter;
 
 	return (
-		<div className="flex h-full w-full items-center justify-center overflow-hidden" style={{ containerType: "size" }}>
-			<div
-				className="relative aspect-video overflow-hidden"
-				style={{ width: "min(100cqw, calc(100cqh * 16 / 9))", containerType: "inline-size" }}
-			>
+		<ScaledSlide fit="contain" className="overflow-hidden">
+			<div className="relative h-full w-full overflow-hidden" style={{ containerType: "inline-size" }}>
 				<AnimatePresence mode="wait" initial={false}>
 					<motion.div
 						key={run.id}
@@ -136,7 +136,8 @@ export function SlideStage({ run, slimRun, state, aggregate, theme, host, sessio
 						)}
 					</motion.div>
 				</AnimatePresence>
+				{cornerOverlay ? <div className="pointer-events-none absolute right-4 top-4 z-10">{cornerOverlay}</div> : null}
 			</div>
-		</div>
+		</ScaledSlide>
 	);
 }

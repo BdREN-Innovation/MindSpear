@@ -2,8 +2,9 @@
 
 import type { EditorProps } from "../types";
 import { OptionListEditor, SegmentedField } from "../shared";
+import { QuestionField } from "../shared/editorKit";
 
-// points_allocation editor (plan §5.4): the options points go to, and the
+// points_allocation editor (plan §5.4): the question, the options points go to, and the
 // budget (preset 50 / 100 / 200; the backend accepts 1..1000, so a value set
 // elsewhere, e.g. by bulk import, stays selectable).
 
@@ -15,6 +16,14 @@ export function PointsAllocationEditor({ slide, onChange, onOptionsChange, error
 
 	return (
 		<div className="flex flex-col gap-5">
+			<QuestionField<"points_allocation">
+				title={slide.title}
+				onChange={onChange}
+				errors={errors}
+				disabled={disabled}
+				placeholder="Where should we spend our budget?"
+			/>
+
 			<OptionListEditor
 				slide={slide}
 				options={onOptionsChange}

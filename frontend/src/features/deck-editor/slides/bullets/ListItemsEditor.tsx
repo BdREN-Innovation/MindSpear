@@ -15,7 +15,7 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { cn } from "@/lib/utils";
 import { CharCount } from "../shared";
-import { fieldError } from "../heading/contentKit";
+import { fieldError } from "../shared/contentKit";
 
 // Editor for config.items of bullets / numbered slides. These items are a
 // plain string list in config (BulletsSlideType: 1..20 entries, single line

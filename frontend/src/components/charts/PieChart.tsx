@@ -30,6 +30,7 @@ export function PieChart({
 	isLoading,
 	className,
 	type = "pie",
+	showEmptyChart = false,
 }: PieChartProps) {
 	const chartData = useMemo(
 		() => normalizeCategoricalData({ data, labels, categories, series, colors }),
@@ -41,6 +42,9 @@ export function PieChart({
 	);
 	const values = chartData.map((item) => item.value);
 	const hasRenderableData = values.some((value) => Number(value) > 0);
+	// Editor preview without responses: equal, faded slices so the layout and legend still show.
+	const emptyPreview = !hasRenderableData && showEmptyChart && chartData.length > 0;
+	const seriesValues = emptyPreview ? chartData.map(() => 1) : values;
 
 	const options: ApexOptions = useMemo(
 		() => ({
@@ -60,8 +64,11 @@ export function PieChart({
 					colors: chartNeutrals.chartLegend,
 				},
 			},
+			fill: { opacity: emptyPreview ? 0.5 : 1 },
+			tooltip: { enabled: !emptyPreview },
+			states: emptyPreview ? { hover: { filter: { type: "none" } }, active: { filter: { type: "none" } } } : undefined,
 			dataLabels: {
-				enabled: true,
+				enabled: !emptyPreview,
 				dropShadow: { enabled: false },
 				style: {
 					fontSize: "13px",
@@ -82,15 +89,15 @@ export function PieChart({
 				align: "center",
 			},
 		}),
-		[chartColors, chartData, height, showLegend, title, type, width]
+		[chartColors, chartData, emptyPreview, height, showLegend, title, type, width]
 	);
 
 	return (
 		<ChartContainer className={className} isLoading={isLoading} minHeight={height}>
-			{hasRenderableData ? (
+			{hasRenderableData || emptyPreview ? (
 				<ReactApexChart
 					options={options}
-					series={values}
+					series={seriesValues}
 					type={type}
 					width={width}
 					height={height}

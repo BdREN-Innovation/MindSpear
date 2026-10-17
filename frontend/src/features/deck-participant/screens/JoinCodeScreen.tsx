@@ -9,18 +9,20 @@ import { CodeInput } from "../components/CodeInput";
 import { Notice } from "../components/Notice";
 import { friendlyError } from "../lib/errors";
 import { JOIN_CODE_LENGTH, PARTICIPANT_PRODUCT, rejectedCharactersHint, sanitizeJoinCode } from "../lib/joinCode";
-import { AppShell, LoadingDots, PlayButton, pulse, useAnnounce } from "../shell";
+import { AppShell, LoadingDots, PlayButton, markNavigation, pulse, useAnnounce } from "../shell";
 
 // /play — step 1 of joining (plan §7.1): the 6-character code. Auto-submits
 // at 6 characters: GET by-code, keep the lookup as a join draft (so the next
 // step needs no second lookup) and go to /play/[code].
 
-const REASONS: Record<string, string> = {
-	"no-session": "We couldn't find your place in that session on this device. Enter the code to join again.",
-	expired: "Your place in that session has ended or expired. Enter a code to join a session.",
-	left: "You left the session. Enter a code to join again.",
-	ended: "That session has ended. Enter a code to join another one.",
-};
+// A Map, not an object literal: ?reason= is user input, and a plain lookup
+// would hand back Object.prototype members for "__proto__" / "constructor".
+const REASONS = new Map<string, string>([
+	["no-session", "We couldn't find your place in that session on this device. Enter the code to join again."],
+	["expired", "Your place in that session has ended or expired. Enter a code to join a session."],
+	["left", "You left the session. Enter a code to join again."],
+	["ended", "That session has ended. Enter a code to join another one."],
+]);
 
 export interface JoinCodeScreenProps {
 	initialCode?: string | null;
@@ -46,7 +48,7 @@ function JoinCodeForm({ initialCode, reason }: JoinCodeScreenProps) {
 	const [error, setError] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const abortRef = useRef<AbortController | null>(null);
-	const reasonText = reason ? (REASONS[reason] ?? null) : null;
+	const reasonText = typeof reason === "string" ? (REASONS.get(reason) ?? null) : null;
 
 	const lookup = useCallback(
 		async (value: string) => {
@@ -66,13 +68,14 @@ function JoinCodeForm({ initialCode, reason }: JoinCodeScreenProps) {
 				});
 				pulse("success");
 				announce(session.deck_title ? `Found ${session.deck_title}` : "Session found");
+				markNavigation(1);
 				router.push(`/play/${encodeURIComponent(value)}`);
 			} catch (reasonError) {
 				const deckError = toDeckApiError(reasonError);
 				if (deckError.code === "cancelled" || controller.signal.aborted) return;
 				const message = friendlyError(deckError, "lookup");
 				setError(message);
-				pulse("warning");
+				pulse("error");
 				setLoading(false);
 				// Keep the keyboard up so the code can be fixed straight away.
 				requestAnimationFrame(() => inputRef.current?.focus());

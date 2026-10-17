@@ -8,6 +8,8 @@ import type { QaFeedSort, QaParticipantItem } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
 import type { ParticipantProps } from "../types";
 import { haptic, submitErrorMessage, usePrefersReducedMotion } from "../shared";
+import { displayTitle } from "../shared/labels";
+import { cleanQuestion } from "../shared/text";
 import { sampleParticipantQuestions } from "./sample";
 
 // qa_audience participant (plan §7.3 / §7.4): "Ask a question…" box on top
@@ -15,7 +17,9 @@ import { sampleParticipantQuestions } from "./sample";
 // Top / Newest toggle and tap-to-upvote hearts, answered questions in their
 // own struck-through section. Everything goes through the `qa` helper
 // (useParticipantQaFeed: REST read + qa.question.* events, optimistic
-// upvotes). Questions are taken while the run is `open`.
+// upvotes). Questions are taken while the run is `open`. Q&A doesn't go
+// through ParticipantProps.onSubmit, so the shell never sees these failures:
+// this screen shows its own errors (unlike the answer types).
 
 const FOCUS_RING =
 	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
@@ -133,7 +137,8 @@ export function QaAudienceParticipant({ run, qa, disabled, mode }: ParticipantPr
 	}, [qa, sort]);
 	const open = questions.filter((question) => !question.is_answered);
 	const answered = questions.filter((question) => question.is_answered);
-	const trimmed = text.trim();
+	// Like LiveQaService: a question of only spaces / invisible characters is blank.
+	const trimmed = cleanQuestion(text);
 
 	const send = async (event?: FormEvent) => {
 		event?.preventDefault();
@@ -143,7 +148,7 @@ export function QaAudienceParticipant({ run, qa, disabled, mode }: ParticipantPr
 		try {
 			await qa.submit(trimmed);
 			setText("");
-			haptic(20);
+			haptic("submit");
 			setSentNote("Question sent. Ask another anytime.");
 			if (noteTimer.current !== null) window.clearTimeout(noteTimer.current);
 			noteTimer.current = window.setTimeout(() => setSentNote(null), 4000);
@@ -156,7 +161,7 @@ export function QaAudienceParticipant({ run, qa, disabled, mode }: ParticipantPr
 
 	const vote = (question: QaParticipantItem) => {
 		if (!qa || !canVote) return;
-		haptic(10);
+		haptic("tap");
 		qa.toggleUpvote(question.question_id).catch((reason) => {
 			const deckError = toDeckApiError(reason);
 			// 404: the host hid it meanwhile; the feed already dropped it.
@@ -175,7 +180,7 @@ export function QaAudienceParticipant({ run, qa, disabled, mode }: ParticipantPr
 
 	return (
 		<div className="flex min-h-full w-full flex-col gap-5 px-4 pb-8 pt-5" style={{ color: "var(--deck-text, #111928)" }}>
-			<h2 className="m-0 break-words text-xl font-bold leading-snug">{run.title || "Ask a question"}</h2>
+			<h2 className="m-0 break-words text-xl font-bold leading-snug">{displayTitle(run.title, "qa_audience")}</h2>
 
 			{review ? null : isOpen || !qa ? (
 				<form onSubmit={send} className="flex flex-col gap-2" aria-describedby={`${ids}-count`}>

@@ -1160,6 +1160,26 @@ Client hydrates state from this. If user previously submitted, their Participant
 
 **Phase 7 exit criteria:** real-device test (iPhone + Android + desktop browser) across every Quest type. Install-to-home-screen works. Answers submit. Connection drops + recovers cleanly. Review screen shows correct data.
 
+### Implementation notes (Phases 4–7, done 2026-10-17)
+
+**Where things live (frontend/src):**
+- `features/deck/` — shared data layer for Quest v2 and (later) Quiz v2: `types.ts` (every API/state/event/aggregate shape), `api/{authoringApi,sessionApi,participantApi,metaApi,errors,routes}.ts` (product-parameterised; all throw `DeckApiError` with `code`), `live/` (`useDeckSessionChannel`, `useDeckHostChannel`, `channelState` reducer, `qaFeed`, `useServerClock`, `participantSession`), `theme.ts` (presets default|dark|ocean|sunset|forest|midnight|mono → `--deck-*` CSS vars), `lib/haptics.ts` (one haptics preference, key `mindspear:play:haptics`).
+- `features/deck-editor/` — `slideRegistry.ts` + `slides/<type>/` (Editor, Presenter, Participant, sampleAggregate per type for all 20 types) + `slides/shared/` (OptionListEditor, MediaSlot/ImageSlot on My Files, fields, BarChart, PresenterStage, SubmitBar, OptionCard, useSubmit, useAnswer, content kit, poll results, heatmap) + `components/` (editor shell).
+- `features/deck-presenter/` — presenter shell; `features/deck-participant/` — PWA shell, screens, service-worker registration.
+- Routes: editor `/quests/[id]/edit` (honours `?slide=<id>`), presenter `/quests/[id]/present` (both full-screen inside `(protected)`); participant `/play`, `/play/[code]`, `/play/[code]/avatar`, `/play/live/[publicChannelKey]`, `/play/live/[publicChannelKey]/review` in the `(play)` route group (no site header, no GTM/GA). Legacy `/join` asks the v2 by-code lookup first for 6-character v2 codes, then falls back to the Q/T/S logic. Backend `join_url` is `{FRONTEND_URL}/play/{CODE}`.
+- Entry points: dashboard New Quest / "Or generate from a file" and the My Library v2 section appear only when `profile.quest_v2_enabled` is true; otherwise the legacy v1 flows run unchanged. AI generation uses a separate `quest_v2` target (`toQuestSlides` → `slides/bulk`); the legacy `quest` target is untouched.
+
+**Decisions and deviations:**
+- Editor canvas and Present both render the slide at a 1280×720 base scaled to fit, with the size container on a wrapper, so proportions match exactly (§5 exit criterion).
+- Results on phones: visibility is derived from the run on every `slide.changed` (`live_aggregate` + `show_results_to_participants`) and from aggregate/closed events; every live type shows a compact results block whenever results are public — while voting (answered or not), after close, on revisit, and in review ("Final results").
+- Q&A on the projector has no buttons; actions live in the moderation sheet (M). The featured question is the first starred open question, else the first open one.
+- Large rooms: participants wait a random 0–2 s before resyncing (re-subscribe, slim `slide.changed`, revisits); disconnected polling backs off 5→60 s and honours 429 `retry_after`; no extra my-answer GET after submit. CORS `max_age` 7200 and `Retry-After` exposed (backend `config/cors.php`).
+- Service worker scope `/play`, never caches `/api/` or cross-origin; navigations fall back to cache after 3.5 s; cache version = Next build id. Dev: off unless `NEXT_PUBLIC_PWA_DEV=true`; `NEXT_PUBLIC_PWA_DISABLED` unregisters it.
+- Not built (accepted): `BottomNav` (would duplicate the review tabs), iOS splash images, View Transitions API (framer-motion directional transitions instead). iOS status bar uses `default` (white text on the default white theme would be unreadable with `black-translucent`).
+- open_ended wall pages itself every 10 s on the projector, with Pause/Resume and manual paging.
+
+**Verified:** real headless-Chrome E2E against the real backend (one host + three 390×844 phones): authoring of all 20 types incl. My Files media, live voting with correct aggregates (host updates in ~0.1–0.5 s), get-ready and timed auto-close, Q&A ask/upvote/moderate/hide, reconnect of phone and host, Reverb restart mid-vote, end → review, and legacy flows with the flag off. Still open for Phase 7 exit: **real devices** (iPhone + Android install-to-home-screen, safe areas, haptics) and a Lighthouse PWA audit.
+
 ---
 
 ## Phase 8 — Polish, load test, cutover, docs
