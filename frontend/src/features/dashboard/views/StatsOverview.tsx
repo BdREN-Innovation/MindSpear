@@ -1,5 +1,7 @@
 import { FaRegListAlt, FaPoll, FaTasks } from "react-icons/fa";
+import { ChevronRight } from "lucide-react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import axiosInstance from "@/utils/axiosInstance";
 
@@ -275,6 +277,7 @@ const StatsOverview = () => {
 		{
 			label: "Total Quizzes",
 			value: stats.total_quiz_count,
+			href: "/my-library/quiz-page",
 			icon: <FaRegListAlt size={32} />,
 			gradient: "#ed3a76",
 			color: "text-[#ed3a76]",
@@ -283,6 +286,7 @@ const StatsOverview = () => {
 		{
 			label: "Total Surveys",
 			value: stats.total_survey_count,
+			href: "/my-library/survey-page",
 			icon: <FaPoll size={32} />,
 			gradient: "#fda148",
 			color: "text-[#fda148]",
@@ -291,6 +295,7 @@ const StatsOverview = () => {
 		{
 			label: "Total Quests",
 			value: stats.total_quest_count,
+			href: "/my-library/quest-page",
 			icon: <FaTasks size={32} />,
 			gradient: "#BC5EB3",
 			color: "text-[#BC5EB3]",
@@ -306,15 +311,19 @@ const StatsOverview = () => {
 				Dashboard Overview
 			</h4>
 			<div className="grid grid-cols-1 mb-3 sm:grid-cols-3 gap-6 w-full ">
+				{/* Each card opens its list in My Library. */}
 				{statsData.map((item) => (
-					<div
+					<Link
 						key={item.label}
+						href={item.href}
+						aria-label={`${item.label}: ${item.value}. Open the list`}
 						className={`
-              flex items-center gap-4
+              group flex items-center gap-4
               bg-gradient-to-br from-white/80 via-white/90 to-white/80 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900
               rounded-2xl border ${item.border}
-              p-6 transition-transform duration-200
-              hover:scale-[1.03]
+              p-6 transition duration-200
+              hover:scale-[1.03] hover:shadow-md
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-primary
               backdrop-blur-sm
             `}
 					>
@@ -346,7 +355,11 @@ const StatsOverview = () => {
 								{item.label}
 							</div>
 						</div>
-					</div>
+						<ChevronRight
+							className={`ml-auto h-5 w-5 opacity-40 transition group-hover:translate-x-1 group-hover:opacity-100 ${item.color}`}
+							aria-hidden
+						/>
+					</Link>
 				))}
 			</div>
 

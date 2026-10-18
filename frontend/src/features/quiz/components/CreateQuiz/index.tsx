@@ -5,7 +5,6 @@ import { FaPlus } from "react-icons/fa6";
 import { ImFilesEmpty } from "react-icons/im";
 import classNames from "classnames";
 import {
-	addNewItem,
 	clearHoveredItem,
 	clearMultipleSelectedItems,
 	clearSelectedItem,
@@ -93,7 +92,7 @@ function CreateQuiz() {
 		setCreatingV2(true);
 		let opening = false;
 		try {
-			opening = (await quizV2.resolve()) ? await createV2Quiz() : await handleItemClick("blank", "false");
+			opening = (await quizV2.resolve()) ? await createV2Quiz() : await handleItemClick("blank");
 		} finally {
 			if (!opening) {
 				blankBusyRef.current = false;
@@ -116,11 +115,11 @@ function CreateQuiz() {
 			setAiV2Open(true);
 			return;
 		}
-		await handleItemClick("pdf", "true");
+		await handleItemClick("pdf");
 	};
 
 	/** Legacy (v1) quiz; true once its creator is opening. */
-	const handleItemClick = async (quiztypename: string, status: string): Promise<boolean> => {
+	const handleItemClick = async (quiztypename: string): Promise<boolean> => {
 		try {
 			setIsSubmitting(true);
 
@@ -145,70 +144,8 @@ function CreateQuiz() {
 				throw new Error("Quiz creation failed: missing quiz ID.");
 			}
 
-			if (quiztypename !== "pdf") {
-				const questionResponse = await axiosInstance.post(
-					`/quiz/questions/store`,
-					{
-						quiz_id: quizId,
-						question_text: ".",
-						visibility: "public",
-					}
-				);
-
-				const questionId = questionResponse?.data?.data?.question?.id;
-				if (!questionId) {
-					throw new Error(
-						"Question creation failed: missing question ID."
-					);
-				}
-
-				dispatch(
-					addNewItem({
-						key: "quiz",
-						id: `${questionId}`,
-						quiz_id: `${quizId}`,
-						title: "",
-						options: [
-							{
-								id: "1",
-								text: "",
-								placeholder: "Add answer 1",
-								color: "#F79945",
-								isSelected: false,
-							},
-							{
-								id: "2",
-								text: "",
-								placeholder: "Add answer 2",
-								color: "#BC5EB3",
-								isSelected: false,
-							},
-							{
-								id: "3",
-								text: "",
-								placeholder: "Add answer 3 (optional)",
-								color: "#5769e7",
-								isSelected: false,
-							},
-							{
-								id: "4",
-								text: "",
-								placeholder: "Add answer 4 (optional)",
-								color: "#89c6c7",
-								isSelected: false,
-							},
-						],
-						maxOptions: 0,
-						minOptions: 0,
-						allowDuplicates: false,
-						isMultipleSelection: false,
-						timeLimit: "",
-						quizTypeName: quiztypename,
-						quizTypeModalStatus: status,
-					})
-				);
-			}
-
+			// A blank quiz opens on the question-type picker (it used to start with a multiple-choice
+			// question, which had to be deleted when another type was wanted).
 			router.push(`/quiz-creator/${quizId}`);
 			return true;
 		} catch (error) {

@@ -45,7 +45,14 @@ export default function QuizEmptyState({ quizId }: { quizId: string }) {
 								)}
 							</span>
 							<span>
-								<span className="block font-semibold text-[#222]">{type.label}</span>
+								<span className="flex items-center gap-2 font-semibold text-[#222]">
+									{type.label}
+									{type.key === "quiz" && (
+										<span className="rounded-full bg-[#fff3e8] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+											Most used
+										</span>
+									)}
+								</span>
 								<span className="block text-xs text-[#777]">{type.description}</span>
 							</span>
 						</button>
