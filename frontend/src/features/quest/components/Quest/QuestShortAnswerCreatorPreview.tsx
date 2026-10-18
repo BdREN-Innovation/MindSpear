@@ -86,6 +86,10 @@ const QuestShortAnswerCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 					</div>
 					<div className="flex-grow flex flex-col justify-center">
 						<GlobalGridMapChart seriesData={seriesData} />
+						{/* The preview was blank, with nothing saying what players would see. */}
+						<p className="mt-4 text-center text-sm text-[#888]">
+							Players type their answer. During the live session each answer appears here as a card.
+						</p>
 					</div>
 				</div>
 			</div>

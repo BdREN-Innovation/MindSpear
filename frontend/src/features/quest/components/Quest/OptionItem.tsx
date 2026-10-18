@@ -46,7 +46,7 @@ const OptionItem: React.FC<OptionItemProps> = ({
 	);
 	const currentItem = multypleselectedItem.find((item) => item.id === quizId);
 	const placeholderText =
-		currentItem?.key === "wordcloud" ? "Add Word" : option.placeholder;
+		currentItem?.key === "wordcloud" ? "Suggested word" : option.placeholder;
 
 	const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
 		const text = e.clipboardData.getData("text");
@@ -227,7 +227,7 @@ const OptionItem: React.FC<OptionItemProps> = ({
 							className="w-[20px] h-[20px] rounded-full flex-shrink-0"
 						/>
 						<p className="flex-grow text-[14px]">
-							{option.text.trim() || option.placeholder}
+							{option.text.trim() || placeholderText}
 						</p>
 					</div>
 				)}

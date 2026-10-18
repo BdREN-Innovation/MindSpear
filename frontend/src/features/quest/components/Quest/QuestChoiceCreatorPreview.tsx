@@ -51,12 +51,9 @@ const QuestChoiceCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 			);
 			setLabels(newLabels);
 
-			const randomValues = allOptions.map(() =>
-				Math.floor(Math.random() * 100)
-			);
-			setLabels(newLabels);
-			setSeries(randomValues);
-			setTimeout(() => setSeries(allOptions.map(() => 0)), 1500);
+			// An empty preview: it flashed random numbers for 1.5s (which read as real results), and that
+			// uncancelled timer reset the bars to the old option count after one was removed.
+			setSeries(allOptions.map(() => 0));
 		}
 	}, [allOptions, chartType]);
 
@@ -124,9 +121,7 @@ const QuestChoiceCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 				<div className="mb-6">
 					<label className="flex items-center cursor-pointer justify-between">
 						<div className="text-[#1a1a1a] font-medium text-[0.875rem]">
-							{isMultipleSelection
-								? "Select Multiple Answer"
-								: "Select Single Answer"}
+							Allow multiple answers
 						</div>
 
 						<div className="relative">
@@ -152,6 +147,11 @@ const QuestChoiceCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 							></div>
 						</div>
 					</label>
+					<p className="mt-1.5 text-xs text-[#888]">
+						{isMultipleSelection
+							? "Players can pick more than one option."
+							: "Players pick one option. Turn on to let them pick several."}
+					</p>
 				</div>
 
 				<div className="mb-[20px]">

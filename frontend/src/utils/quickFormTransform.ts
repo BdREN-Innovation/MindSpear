@@ -155,7 +155,11 @@ export function quickFormTaskArray<T extends AnyTask<any>>(
       description: task.description,
       task_data: {
         ...task.task_data,
-        questions: match.questions,
+        // The editor's empty "New Option" row isn't an option (it was saved as a blank choice).
+        questions: match.questions.map((question: any) => ({
+          ...question,
+          options: (question.options ?? []).filter((option: any) => `${option?.text ?? ""}`.trim() !== ""),
+        })),
       },
     };
 
@@ -179,6 +183,9 @@ export function normalizeTasks(data: any) {
         title: item.title,
         minNumber: item?.task_data?.minNumber,
         maxNumber: item?.task_data?.maxNumber,
+        // A scale's end labels, shown to players.
+        minText: item?.task_data?.minText,
+        maxText: item?.task_data?.maxText,
         contant_title: item?.task_data?.contant_title,
         image_url: item?.task_data?.image_url,
         layout_id: item?.task_data?.layout_id,

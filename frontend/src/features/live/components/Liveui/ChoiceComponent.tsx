@@ -15,6 +15,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 type TaskQuestion = {
 	id: number | string;
@@ -250,6 +252,7 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		}
 	}, [dataNew?.id, task?.id]);
 	const dataSubmit = async () => {
+		markAnswered(task?.id);
 		await saveAnswer();
 		if (task?.id) setTaskExpired(task.id);
 		setwatingData(false);
@@ -292,7 +295,10 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	const handleExpire = () => {
 		if (!questTimeData?.questionId) return;
 		// Time's up with an answer picked but not submitted: save it (it used to be dropped).
-		if (watingData && hasSelection) void saveAnswer();
+		if (watingData && hasSelection) {
+			markAnswered(task?.id);
+			void saveAnswer();
+		}
 		const saved = setTaskExpired(questTimeData.questionId);
 		const ok =
 			saved?.status === "completed" &&
@@ -440,7 +446,7 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

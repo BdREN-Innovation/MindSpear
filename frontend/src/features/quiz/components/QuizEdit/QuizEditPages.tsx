@@ -20,7 +20,7 @@ import {
 } from "@/features/quiz/store/quizItems/quizSlice";
 import { useDispatch } from "react-redux";
 import { Pencil, Trash2 } from "lucide-react";
-import { MdOutlinePublic, MdQuiz } from "react-icons/md";
+import { MdLockOutline, MdOutlinePublic, MdQuiz } from "react-icons/md";
 import Questions from "@/features/quiz/components/QuizReports/Questions";
 import { clearQuestData } from "@/features/quest/store/questQuestionTimeSlice";
 import QuizQuestionsResultView from "@/components/ResultComponent/QuizQuestionsResultView";
@@ -311,7 +311,11 @@ const QuizEditPages: React.FC<QuizCreatorPreviewProps> = () => {
 
 										<div className="flex items-center">
 											<div className="w-[40px] h-[40px] bg-primary text-[#fff] rounded-[5px] flex justify-center items-center mr-[10px] shadow-2">
-												<MdOutlinePublic className="text-[18px]" />
+												{quinInformationData?.quiz?.visibility === "private" ? (
+													<MdLockOutline className="text-[18px]" />
+												) : (
+													<MdOutlinePublic className="text-[18px]" />
+												)}
 											</div>
 											<div className="">
 												<h3 className="text-[18px] text-[#2a3547] font-bold capitalize">

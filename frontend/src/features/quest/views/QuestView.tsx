@@ -15,7 +15,7 @@ import {
 } from "@/features/quiz/store/quizItems/quizSlice";
 import { useDispatch } from "react-redux";
 import { Calendar, Pencil, Trash2 } from "lucide-react";
-import { MdOutlinePublic, MdQuiz } from "react-icons/md";
+import { MdLockOutline, MdOutlinePublic, MdQuiz } from "react-icons/md";
 import Questions from "@/features/quest/components/QuestReports/Questions";
 import HostLive from "@/features/quest/components/Quest/HostLive";
 import { convertTaskData } from "@/utils/questDataTransformer";
@@ -372,7 +372,11 @@ const QuestView: React.FC<QuizCreatorPreviewProps> = ({}) => {
 
 									<div className="flex items-center gap-3">
 										<div className="w-12 h-12 bg-blue-500 text-white rounded-lg flex items-center justify-center">
-											<MdOutlinePublic className="text-xl" />
+											{quinInformationData?.quest?.visibility === "private" ? (
+												<MdLockOutline className="text-xl" />
+											) : (
+												<MdOutlinePublic className="text-xl" />
+											)}
 										</div>
 										<div>
 											<div className="text-2xl font-bold text-gray-900 capitalize">

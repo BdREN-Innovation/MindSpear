@@ -1297,6 +1297,10 @@ class QuestAttemptController extends ApiBaseController
 
             // Process each task to count option selections
             foreach ($questTasks as $task) {
+                // How many players answered. The option counts don't say: a scale's are averages, a
+                // ranking's are scores, and a multiple-answer pick counts once per option.
+                $task->responses_count = $task->completions->count();
+
                 if ($task->task_type == 'quick_form') {
                     $questions = $task->task_data['questions'] ?? [];
                     $optionsCount = [];
@@ -1377,6 +1381,10 @@ class QuestAttemptController extends ApiBaseController
                             if (is_array($selectedValues)) {
                                 // For each position in the array, accumulate the sum and count
                                 foreach ($selectedValues as $position => $value) {
+                                    // 0 is a statement the player left unrated (scales start at 1).
+                                    if (! is_numeric($value) || (float) $value == 0.0) {
+                                        continue;
+                                    }
                                     if (! isset($positionSums[$position])) {
                                         $positionSums[$position] = 0;
                                         $positionCounts[$position] = 0;
@@ -1411,37 +1419,25 @@ class QuestAttemptController extends ApiBaseController
                         }
                     }
 
-                    // Fill in any missing positions
-                    $maxPosition = ! empty($positionSums) ? max(array_keys($positionSums)) : 0;
+                    // Fill in statements nobody rated
+                    $statements = $task->task_data['questions'] ?? [];
+                    $maxPosition = max(count($statements) - 1, ! empty($positionSums) ? max(array_keys($positionSums)) : 0);
                     for ($i = 0; $i <= $maxPosition; $i++) {
                         $key = (string) $i;
                         if (! isset($optionsCount[$key])) {
                             $optionsCount[$key] = [
                                 'count' => 0,
-                                'text' => $question['text'] ?? $question['label'] ?? 'Option ' . ($i + 1),
+                                'average' => 0,
+                                'text' => $statements[$i]['text'] ?? 'Option ' . ($i + 1),
                             ];
                         }
                     }
 
-                    // Sort by count descending
-                    uasort($optionsCount, function ($a, $b) {
-                        return $b['count'] - $a['count'];
-                    });
-
-                    // Convert to object format to preserve keys in JSON
+                    // Keyed by the statement's position in task_data.questions, which stays in its
+                    // original order: re-sorting it here gave statements each other's results, as the
+                    // client reads these keys by index (the chart sorts by itself).
+                    ksort($optionsCount, SORT_NUMERIC);
                     $task->optionsCount = (object) $optionsCount;
-
-                    // Reorder the questions array to match the sorted optionsCount order
-                    // Create a copy of task_data to avoid the "indirect modification" error
-                    $taskData = $task->task_data;
-                    $sortedQuestions = [];
-
-                    foreach (array_keys((array) $task->optionsCount) as $optionIndex) {
-                        $sortedQuestions[] = $taskData['questions'][$optionIndex];
-                    }
-
-                    $taskData['questions'] = $sortedQuestions;
-                    $task->task_data = $taskData;
                 } elseif ($task->task_type == 'ranking') {
                     $numOptions = count($task->task_data['questions']);
                     $totalCompletions = count($task->completions);

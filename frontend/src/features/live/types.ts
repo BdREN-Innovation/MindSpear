@@ -93,6 +93,9 @@ export type AnswerAggregatePayload = SessionEventPayload & {
 		value_type?: "count" | "percentage" | string;
 		total_answers?: number;
 		scores?: Record<string, number> | number[];
+		/** Scales: each statement's average rating, and the top of the scale. */
+		averages?: Record<string, number> | number[];
+		scale_max?: number;
 		order?: number[];
 		highest_value?: number;
 	} | null;

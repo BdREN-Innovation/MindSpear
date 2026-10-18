@@ -9,8 +9,6 @@ import { RiDeleteBin5Line } from "react-icons/ri";
 import { HiOutlineDuplicate } from "react-icons/hi";
 
 import {
-	clearHoveredItem,
-	setHoveredItem,
 	setSelectedItem,
 	setMultipleSelectedItems,
 	removeSelectedItem,
@@ -56,19 +54,24 @@ interface SortableItemProps {
 	item: MenuItem;
 	multypleselectedItem: MenuItem[];
 	index: number;
-	onMouseEnter: (item: MenuItem) => void;
-	onMouseLeave: () => void;
 	onClick: (item: MenuItem) => void;
 	onDelete: (key: string) => void;
 	onDuplicate: (key: string) => void;
+}
+
+/** Two lines of the question (it was cut to 15 letters), or a placeholder when it has none yet. */
+function CardTitle({ text }: { text: string }) {
+	return (
+		<span className={`line-clamp-2 w-full break-words px-1 text-center text-[13px] leading-snug ${text ? "text-[#333]" : "italic text-[#999]"}`}>
+			{text || "Untitled question"}
+		</span>
+	);
 }
 
 function SortableItem({
 	currentActiveItem,
 	item,
 	multypleselectedItem,
-	onMouseEnter,
-	onMouseLeave,
 	onClick,
 	onDelete,
 	onDuplicate,
@@ -156,10 +159,6 @@ function SortableItem({
 			.replace(/\s+/g, " ")
 			.trim();
 	};
-	const truncateChars = (text: string, limit = 10) => {
-		const plain = htmlToText(text || "").trim();
-		return plain.length > limit ? plain.slice(0, limit) + "..." : plain;
-	};
 
 	console.log(item, "itemitemitemitemitemitemitemitemitem");
 
@@ -170,8 +169,6 @@ function SortableItem({
 				style={style}
 				{...attributes}
 				{...listeners}
-				onMouseEnter={() => onMouseEnter(item)}
-				onMouseLeave={onMouseLeave}
 				className=""
 			>
 				<div
@@ -189,7 +186,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 					{item.key === "sorting" && (
@@ -201,7 +198,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -214,7 +211,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -228,7 +225,7 @@ function SortableItem({
 								className="mr-2"
 							/>
 
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -241,7 +238,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -254,7 +251,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -267,7 +264,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -280,7 +277,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -293,7 +290,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -306,7 +303,7 @@ function SortableItem({
 								height={60}
 								className="mr-2"
 							/>
-							{truncateChars(`${item?.title}`, 15)}
+							<CardTitle text={htmlToText(item?.title || "").trim()} />
 						</>
 					)}
 
@@ -395,25 +392,6 @@ function QuestQsenListShow() {
 		);
 	};
 
-	const handleMouseLeave = () => {
-		dispatch(clearHoveredItem());
-	};
-
-	const handleMouseEnter = (item: MenuItem) => {
-		dispatch(
-			setHoveredItem({
-				key: item.key,
-				id: item.id,
-				title: "",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-			}),
-		);
-	};
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -535,8 +513,6 @@ function QuestQsenListShow() {
 									item={item}
 									index={index}
 									multypleselectedItem={multypleselectedItem}
-									onMouseEnter={handleMouseEnter}
-									onMouseLeave={handleMouseLeave}
 									onClick={handleItemClick}
 									currentActiveItem={selectedItem}
 									onDelete={() =>

@@ -412,7 +412,8 @@ class QuestController extends ApiBaseController
             $liveSessions = app(LiveSessionService::class);
 
             if ($runningSession) {
-                $quest->update(['status' => Quest::STATUS_RUNNING]);
+                // Hosting publishes the quest: players can only join a published one.
+                $quest->update(['status' => Quest::STATUS_RUNNING, 'is_published' => true]);
                 $liveSessions->ensurePublicChannelKey($runningSession);
 
                 return $this->okResponse(
@@ -440,8 +441,11 @@ class QuestController extends ApiBaseController
 
             $liveSessions->ensurePublicChannelKey($questSession);
 
+            // Hosting publishes the quest: players can only join a published one (it stayed
+            // unpublished when the quest was within its dates, so nobody could join).
             $quest->update([
                 'status' => Quest::STATUS_RUNNING,
+                'is_published' => true,
             ]);
 
             $payload = $liveSessions->state(LiveSessionService::MODULE_QUEST, $questSession);

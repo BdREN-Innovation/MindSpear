@@ -9,6 +9,7 @@ import QuestWordCloudCreatorPreview from "./QuestWordCloudCreatorPreview";
 import QuestQuickFormCreatorPreview from "./QuestQuickFormCreatorPreview";
 import QuestRankingCreatorPreview from "./QuestRankingCreatorPreview";
 import QuestScalesCreatorPreview from "./QuestScalesCreatorPreview";
+import QuestEmptyState from "./QuestEmptyState";
 import QuestshortingCreatorPreview from "./QuestshortingCreatorPreview";
 import QuestShortAnswerCreatorPreview from "./QuestShortAnswerCreatorPreview";
 
@@ -18,8 +19,7 @@ import { useParams, usePathname } from "next/navigation";
 import { setQuiz } from "@/features/quiz/store/quizInformationSlice";
 import type { Quiz } from "@/types/types";
 import { convertTaskData } from "@/utils/questDataTransformer";
-import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice";
-import { PiWarningCircle } from "react-icons/pi";
+import { setMultipleSelectedItems, setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
 import { setQuest } from "@/features/quest/store/questInformationSlice";
 import QuestContantCreatorPreview from "./QuestContantCreatorPreview";
 import { toast } from "react-toastify";
@@ -66,9 +66,6 @@ function QuestContantView() {
 			state.questInformation.questInformation,
 	);
 
-	const hoveredItem = useSelector(
-		(state: RootState) => state.quiz.hoveredItem,
-	);
 	const selectedItem = useSelector(
 		(state: RootState) => state.quiz.selectedItem,
 	);
@@ -85,15 +82,8 @@ function QuestContantView() {
 	const renderPreview = (item: QuizItem | null) => {
 		// console.log(item, "9999999999999");
 
-		if (!item)
-			return (
-				<div className="h-[calc(90vh-80px)] bg-[#fff] rounded-[10px] flex flex-col justify-center items-center">
-					<PiWarningCircle className="text-[60px] text-[#fda14d]" />
-					<h3 className="font-bold text-[#333] pt-[15px]">
-						Please create you question
-					</h3>
-				</div>
-			);
+		// None selected yet: the effect below opens the first question.
+		if (!item) return null;
 
 		switch (item.key) {
 			case "qsenchoice":
@@ -131,7 +121,20 @@ function QuestContantView() {
 		}
 	};
 
-	const activeItem = hoveredItem ?? selectedItem;
+	// The selected question of this quest. Hovering a list card or an "Add Question" menu entry
+	// used to swap the editor; the menu's hover outlived the menu, leaving the editor blank.
+	const activeItem =
+		selectedItem && multypleselectedItem?.some((i) => `${i.id}` === `${selectedItem.id}`)
+			? selectedItem
+			: null;
+
+	// Questions but none selected (e.g. the selected one was deleted): open the first one.
+	useEffect(() => {
+		if (!activeItem && multypleselectedItem?.length) {
+			const first = [...multypleselectedItem].sort((a, b) => (a.position || 0) - (b.position || 0))[0];
+			dispatch(setSelectedItem(first));
+		}
+	}, [activeItem, multypleselectedItem, dispatch]);
 
 	useEffect(() => {
 		const dataFetch = async () => {
@@ -194,12 +197,7 @@ function QuestContantView() {
 			{multypleselectedItem?.length > 0 ? (
 				renderPreview(activeItem)
 			) : (
-				<div className="h-[calc(90vh-55px)] bg-[#fff] rounded-lg flex flex-col justify-center items-center">
-					<PiWarningCircle className="text-[60px] text-[#fda14d]" />
-					<h3 className="font-bold text-[#333] pt-[15px]">
-						Please create you question
-					</h3>
-				</div>
+				<QuestEmptyState questId={qId} />
 			)}
 		</div>
 	);

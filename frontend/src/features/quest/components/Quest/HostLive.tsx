@@ -218,6 +218,15 @@ const HostLive: React.FC<HostLiveProps> = ({
 			const session = await getHostLiveSession("quest", questId);
 			dispatch(setQuestSession(session));
 
+			// A session that hasn't started a task yet goes back to its lobby (Start sends the first
+			// task to players); the live screen showed task 1 while players waited in the lobby.
+			if (!(session as { current_task_id?: number | null }).current_task_id) {
+				const lobby = new URLSearchParams({ sid: String(session.id) });
+				if (session.public_channel_key) lobby.set("pck", session.public_channel_key);
+				router.push(`/quests-session/${questId}?${lobby.toString()}`);
+				return;
+			}
+
 			const search = new URLSearchParams({
 				jlk: questData,
 				qid: questId,
@@ -269,13 +278,9 @@ const HostLive: React.FC<HostLiveProps> = ({
 
 	const currentDate = new Date();
 
+	// A readable session name, e.g. "Team check-in · 18 Oct, 13:09" (it was "Team_check-in_Oct_18_13_09_PM").
 	function generateFormattedTitle(baseTitle = titleData) {
-		const formattedBase = baseTitle.replace(/ /g, "_");
-		const momentDate = moment(currentDate);
-		const formattedDate = momentDate.format("MMM_D");
-		const formattedTime = momentDate.format("HH_mm_A");
-
-		return `${formattedBase}_${formattedDate}_${formattedTime}`;
+		return `${baseTitle || "Live quest"} · ${moment(currentDate).format("D MMM, HH:mm")}`;
 	}
 
 	const hostLiveApiCall = async (endDate: any) => {

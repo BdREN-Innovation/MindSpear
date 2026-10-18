@@ -75,18 +75,6 @@ function QuestAttemptForm() {
 		};
 		dataFetch();
 	}, [joinid]);
-	const open = moment.utc(quizData?.quest?.start_datetime);
-	const close = moment.utc(quizData?.quest?.end_datetime);
-	const duration = moment.duration(close.diff(open));
-	const days = Math.floor(duration.asDays());
-	const hours = duration.hours();
-	const minutes = duration.minutes();
-	const timeParts = [];
-	if (days > 0) timeParts.push(`${days} day${days > 1 ? "s" : ""}`);
-	if (hours > 0) timeParts.push(`${hours} hour${hours > 1 ? "s" : ""}`);
-	if (minutes > 0)
-		timeParts.push(`${minutes} minute${minutes > 1 ? "s" : ""}`);
-	const result = timeParts.join(", ") || "Live now";
 	const clearQuestionDataFromStorage = () => {
 		if (typeof window !== "undefined") {
 			localStorage.removeItem("quiz_currentQuestion");
@@ -233,10 +221,9 @@ function QuestAttemptForm() {
 				name={currentUserName}
 				onNameChange={setCurrentUserName}
 				onSubmit={dataSubmit}
-				durationText={result}
 				countLabel={
-					quizData?.quest?.tasks
-						? `${quizData?.quest?.tasks.length} tasks`
+					quizData?.quest?.tasks?.length
+						? `${quizData.quest.tasks.length} question${quizData.quest.tasks.length === 1 ? "" : "s"}`
 						: "Ready"
 				}
 				isSubmitting={isSubmitting}

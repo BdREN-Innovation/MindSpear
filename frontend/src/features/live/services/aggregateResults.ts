@@ -12,7 +12,8 @@ type LiveTask = {
 
 export type LiveResultDatum =
 	// total: how many players answered (several picks each on a multiple-answer question).
-	| { quest_id: number; task_type: string; id: number; number: number[]; total?: number }
+	// scaleMax: on a scale, number holds each statement's average rating out of scaleMax.
+	| { quest_id: number; task_type: string; id: number; number: number[]; total?: number; scaleMax?: number }
 	| {
 			quest_id: number;
 			task_type: string;
@@ -63,7 +64,7 @@ const flattenTextValues = (value: unknown): string[] => {
 
 type ChartScores = NonNullable<AnswerAggregatePayload["chart"]>["scores"];
 
-const chartScoresToNumber = (scores: ChartScores): number[] | null => {
+const chartScoresToNumber = (scores: ChartScores, round = true): number[] | null => {
 	if (!scores) return null;
 
 	const number: number[] = [];
@@ -76,7 +77,7 @@ const chartScoresToNumber = (scores: ChartScores): number[] | null => {
 		if (index === null || index < 0) continue;
 
 		while (number.length <= index) number.push(0);
-		number[index] = Math.round(Number(value) || 0);
+		number[index] = round ? Math.round(Number(value) || 0) : Number(value) || 0;
 	}
 
 	return number.length ? number : null;
@@ -99,9 +100,23 @@ export function aggregatePayloadToResult(
 	const answers = payload.answers ?? {};
 	const questId = Number(task.quest_id ?? 0);
 
+	// How many players answered (a chart's scores, e.g. a scale's averages, aren't a head count).
+	const answered = Number(payload.total_answers ?? payload.chart?.total_answers);
+	const total = Number.isFinite(answered) && answered > 0 ? { total: answered } : {};
+
+	if (taskType === "scales") {
+		const averages = chartScoresToNumber(payload.chart?.averages, false);
+		if (averages) {
+			return {
+				quest_id: questId, task_type: taskType, id: taskId, number: averages, ...total,
+				scaleMax: Number(payload.chart?.scale_max) || undefined,
+			};
+		}
+	}
+
 	const chartNumber = chartScoresToNumber(payload.chart?.scores);
 	if (chartNumber && !textLikeTypes.has(taskType)) {
-		return { quest_id: questId, task_type: taskType, id: taskId, number: chartNumber };
+		return { quest_id: questId, task_type: taskType, id: taskId, number: chartNumber, ...total };
 	}
 
 	if (textLikeTypes.has(taskType)) {
@@ -121,6 +136,8 @@ export function aggregatePayloadToResult(
 
 	const optionCount = task.task_data?.questions?.length ?? 0;
 	const number = Array.from({ length: Math.max(optionCount, 1) }, () => 0);
+	// Scales: how many players rated each statement, to turn the sums into averages.
+	const ratedBy: number[] = [];
 
 	for (const [key, countValue] of Object.entries(answers)) {
 		const count = Number(countValue) || 0;
@@ -133,20 +150,28 @@ export function aggregatePayloadToResult(
 				: [parsed];
 
 		values.forEach((value, position) => {
-			const index = taskType === "scales" ? position : numericIndex(value);
+			if (taskType === "scales") {
+				// 0 is a statement left unrated.
+				const rating = Number(value) || 0;
+				if (!rating) return;
+				while (number.length <= position) number.push(0);
+				number[position] += rating * count;
+				ratedBy[position] = (ratedBy[position] ?? 0) + count;
+				return;
+			}
+
+			const index = numericIndex(value);
 			if (index === null || index < 0) return;
 
 			while (number.length <= index) number.push(0);
-			number[index] += taskType === "scales" ? (Number(value) || 0) * count : count;
+			number[index] += count;
 		});
 	}
 
-	const total = Number(payload.total_answers);
-	return {
-		quest_id: questId,
-		task_type: taskType,
-		id: taskId,
-		number,
-		...(Number.isFinite(total) && total > 0 ? { total } : {}),
-	};
+	if (taskType === "scales") {
+		const averages = number.map((sum, index) => (ratedBy[index] ? Math.round((sum / ratedBy[index]) * 10) / 10 : 0));
+		return { quest_id: questId, task_type: taskType, id: taskId, number: averages, ...total };
+	}
+
+	return { quest_id: questId, task_type: taskType, id: taskId, number, ...total };
 }

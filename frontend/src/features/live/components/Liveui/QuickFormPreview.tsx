@@ -15,6 +15,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 // import moment from "@/lib/dayjs";
 
@@ -374,6 +376,7 @@ const QuickFormPreview: React.FC<Props> = ({ task }) => {
 	// 	//console.log("SUBMIT payload:", payload);
 	// };
 	const handleSubmit = async () => {
+		markAnswered(task?.id);
 		const payload = buildSubmission(orderedQuestions, form);
 		await saveAnswer(payload);
 		setwatingData(false);
@@ -478,7 +481,7 @@ const QuickFormPreview: React.FC<Props> = ({ task }) => {
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

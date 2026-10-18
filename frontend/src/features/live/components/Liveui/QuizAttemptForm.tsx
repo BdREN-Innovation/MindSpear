@@ -137,18 +137,6 @@ function QuizAttemptForm() {
 		};
 		dataFetch();
 	}, [joinid]);
-	const open = moment.utc(quizData?.quiz?.open_datetime);
-	const close = moment.utc(quizData?.quiz?.close_datetime);
-	const duration = moment.duration(close.diff(open));
-	const days = Math.floor(duration.asDays());
-	const hours = duration.hours();
-	const minutes = duration.minutes();
-	const timeParts = [];
-	if (days > 0) timeParts.push(`${days} day${days > 1 ? "s" : ""}`);
-	if (hours > 0) timeParts.push(`${hours} hour${hours > 1 ? "s" : ""}`);
-	if (minutes > 0)
-		timeParts.push(`${minutes} minute${minutes > 1 ? "s" : ""}`);
-	const result = timeParts.join(", ") || "0 minute";
 	const userId = Math.floor(Math.random() * 10000).toString();
 	const dataSubmit = async () => {
 		if (!currentUserName.trim()) {
@@ -274,10 +262,9 @@ function QuizAttemptForm() {
 				name={currentUserName}
 				onNameChange={setCurrentUserName}
 				onSubmit={dataSubmit}
-				durationText={result}
 				countLabel={
 					quizData?.quiz?.questions?.length
-						? `${qsenList.length} questions`
+						? `${qsenList.length} question${qsenList.length === 1 ? "" : "s"}`
 						: "Ready"
 				}
 				isSubmitting={isSubmitting}

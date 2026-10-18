@@ -412,7 +412,8 @@ it('adds canonical live chart scores for quest ranking sorting and scales snapsh
     liveTestQuestCompletion($participants[0], $sortingTask, [2, 1, 0]);
     liveTestQuestCompletion($participants[1], $sortingTask, [2, 0, 1]);
     liveTestQuestCompletion($participants[0], $scalesTask, [5, 3, 1]);
-    liveTestQuestCompletion($participants[1], $scalesTask, [4, 3, 2]);
+    // The third statement is left unrated (0); it doesn't pull the average down.
+    liveTestQuestCompletion($participants[1], $scalesTask, [4, 3, 0]);
 
     $aggregates = app(LiveAggregateService::class);
     $ranking = $aggregates->snapshot(LiveSessionService::MODULE_QUEST, $session->id, $rankingTask->id);
@@ -423,7 +424,9 @@ it('adds canonical live chart scores for quest ranking sorting and scales snapsh
         ->and($ranking['chart']['order'])->toBe([1, 0, 2])
         ->and((array) $sorting['chart']['scores'])->toMatchArray(['0' => 50, '1' => 50, '2' => 100])
         ->and($sorting['chart']['order'])->toBe([2, 0, 1])
-        ->and((array) $scales['chart']['scores'])->toMatchArray(['0' => 90, '1' => 60, '2' => 30])
+        ->and((array) $scales['chart']['scores'])->toMatchArray(['0' => 90, '1' => 60, '2' => 20])
+        ->and((array) $scales['chart']['averages'])->toMatchArray(['0' => 4.5, '1' => 3.0, '2' => 1.0])
+        ->and($scales['chart']['scale_max'])->toEqual(5)
         ->and($scales['chart']['order'])->toBe([0, 1, 2]);
 });
 

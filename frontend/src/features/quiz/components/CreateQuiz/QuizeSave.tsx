@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
 // import { QuizItem, FinalData, TransformedQuestion } from '@/types/types';
 import { MdDataSaverOn } from "react-icons/md";
@@ -11,11 +11,10 @@ import axiosInstance from "@/utils/axiosInstance";
 import { toast } from "react-toastify";
 import { AxiosError } from "axios";
 // import { useRouter } from 'next/router';
-import { persistor } from "@/stores/store";
 import { convertDataToQuestions } from "@/utils/quizUtils";
 import { Quiz } from "@/types/types";
 import { clearQuiz } from "@/features/quiz/store/quizInformationSlice";
-import { setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
+import { clearMultipleSelectedItems, setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
 const TYPE_ICONS: Record<string, string> = {
 	quiz: "/images/icons/Icon-01.svg",
 	truefalse: "/images/icons/Icon-02.svg",
@@ -41,6 +40,16 @@ function QuizeSave() {
 	const isQuizEdit = pathname.includes("quiz-edit");
 
 	const dispatch = useDispatch();
+	// Set after a save. The questions are cleared when the editor unmounts: clearing them before
+	// leaving flashed the empty "Add your first question" picker while the next page loaded. Only
+	// the questions are cleared; purging the whole store also logged the user out.
+	const savedRef = useRef(false);
+	useEffect(
+		() => () => {
+			if (savedRef.current) dispatch(clearMultipleSelectedItems());
+		},
+		[dispatch]
+	);
 	const qId = params?.quizId as string;
 	const quesentList = useSelector(
 		(state: RootState) => state.quiz.multypleselectedItem,
@@ -169,8 +178,8 @@ function QuizeSave() {
 			);
 			toast.success(response.data.message);
 			setIsModalOpen(false);
-			// clearQuiz
-			persistor.purge();
+			// The editor's questions are cleared once it unmounts (see below).
+			savedRef.current = true;
 			router.push("/my-library/quiz-page");
 			dispatch(clearQuiz());
 			// console.log(response, "responseData?.data");

@@ -5,7 +5,6 @@ import { RootState } from "@/stores/store";
 import {
 	addQuestOption,
 	removeQuizOption,
-	toggleSwitchSelectionMode,
 	updateLimitedTimeTitle,
 	removeSelectedItem,
 	// updatePoints,
@@ -29,7 +28,6 @@ const QuestRankingCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 	const { selectedItem, multypleselectedItem } = useSelector(
 		(state: RootState) => state.quiz
 	);
-	const isMultipleSelection = selectedItem?.isMultipleSelection ?? false;
 
 	const currentItem = multypleselectedItem.find((item) => item.id === id);
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,12 +52,9 @@ const QuestRankingCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 			);
 			setLabels(newLabels);
 
-			const randomValues = allOptions.map(() =>
-				Math.floor(Math.random() * 100)
-			);
-			setLabels(newLabels);
-			setSeries(randomValues);
-			setTimeout(() => setSeries(allOptions.map(() => 0)), 1500);
+			// An empty preview: it flashed random numbers for 1.5s (which read as real results), and that
+			// uncancelled timer reset the bars to the old option count after one was removed.
+			setSeries(allOptions.map(() => 0));
 		}
 	}, [allOptions, chartType]);
 
@@ -118,38 +113,10 @@ const QuestRankingCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 					</button>
 				</div>
 
-				<div className="mb-6">
-					<label className="flex items-center cursor-pointer justify-between">
-						<div className="text-[#1a1a1a] font-medium text-[0.875rem]">
-							{isMultipleSelection
-								? "Select Multiple Answer"
-								: "Select Single Answer"}
-						</div>
-
-						<div className="relative">
-							<input
-								type="checkbox"
-								className="sr-only"
-								checked={!!isMultipleSelection}
-								onChange={() =>
-									dispatch(toggleSwitchSelectionMode())
-								}
-							/>
-							<div
-								className={`block w-14 h-8 rounded-full ${isMultipleSelection
-									? "bg-primary"
-									: "bg-gray-400"
-									}`}
-							></div>
-							<div
-								className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition ${isMultipleSelection
-									? "transform translate-x-6"
-									: ""
-									}`}
-							></div>
-						</div>
-					</label>
-				</div>
+				{/* A ranking has no single/multiple choice (that switch did nothing useful here). */}
+				<p className="mb-6 text-xs text-[#888]">
+					Players tap or drag the items below into their own order.
+				</p>
 
 				<div className="mb-[20px] hidden">
 					<h3 className="pb-4 text-[#1a1a1a] font-medium text-[0.875rem]">

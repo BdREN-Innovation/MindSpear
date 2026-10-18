@@ -12,6 +12,7 @@ import ConfirmDialog from "@/utils/showConfirmDialog";
 import { Calendar, Clock, Pencil, Trash2 } from "lucide-react";
 import {
 	MdOutlineDataThresholding,
+	MdLockOutline,
 	MdOutlinePublic,
 	MdQuiz,
 } from "react-icons/md";
@@ -315,7 +316,11 @@ const SurveyView = () => {
 
 								<div className="flex items-center gap-3">
 									<div className="w-12 h-12 bg-blue-500 text-white rounded-lg flex items-center justify-center">
-										<MdOutlinePublic className="text-xl" />
+										{(surveyData?.visibility || "private") === "private" ? (
+											<MdLockOutline className="text-xl" />
+										) : (
+											<MdOutlinePublic className="text-xl" />
+										)}
 									</div>
 									<div>
 										<div className="text-2xl font-bold text-gray-900 capitalize">

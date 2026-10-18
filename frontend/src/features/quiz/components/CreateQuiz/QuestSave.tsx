@@ -1,36 +1,37 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui";
-import { MdDataSaverOn, MdError } from "react-icons/md";
+import { MdDataSaverOn } from "react-icons/md";
+import { AlertTriangle, Pencil, Save } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter, usePathname } from "next/navigation";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { clearMultipleSelectedItems, setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
 // import { RootState } from "@/services/redux/store";
 import axiosInstance from "@/utils/axiosInstance";
 import { toast } from "react-toastify";
 import { AxiosError } from "axios";
-import { FaEye } from "react-icons/fa6";
-import { SiKdenlive } from "react-icons/si";
 // import { useRouter } from 'next/router';
-import { persistor } from "@/stores/store";
-import { Quiz } from "@/types/types";
 // import { clearQuest } from "@/services/redux/features/questInformationSlice";
-import { IoSaveSharp } from "react-icons/io5";
 import { QuestConvertDataComponent } from "@/utils/questDataTransformer";
 import { quickFormTaskArray } from "@/utils/quickFormTransform";
 import { SaveAll } from "lucide-react";
 // import { type Questio nsResponse } from "@/utils/quickFormTransform";
-interface QuizState {
-	quiz: Quiz;
-}
-interface QuizRootState {
-	quizInformation: {
-		quizInformation: QuizState;
-	};
-}
 
 function QuestSave() {
 	const [isModalOpen, setIsModalOpen] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const dispatch = useDispatch();
+	// Set after a save. The questions are cleared when the editor unmounts: clearing them before
+	// leaving flashed the empty "Add your first question" picker while the next page loaded. Only
+	// the questions are cleared; purging the whole store also logged the user out.
+	const savedRef = useRef(false);
+	useEffect(
+		() => () => {
+			if (savedRef.current) dispatch(clearMultipleSelectedItems());
+		},
+		[dispatch]
+	);
 	const params = useParams();
 	const pathname = usePathname();
 	const router = useRouter();
@@ -59,9 +60,6 @@ function QuestSave() {
 	// 	"multypleselectedItemmultypleselectedItemmultypleselectedItem"
 	// );
 
-	const quizresponse = useSelector(
-		(state: QuizRootState) => state?.quizInformation?.quizInformation?.quiz,
-	);
 
 	type ValidationResult = {
 		id: string;
@@ -89,15 +87,19 @@ function QuestSave() {
 			);
 
 			if (item.key === "qsenchoice") {
-				// if (!item.title?.trim()) messages.push("Title is required.");
+				if (!item.title?.trim()) messages.push("Add the question text.");
 				if (filledOptions.length < 2)
-					messages.push("At least 2 options must have text.");
+					messages.push("Fill in at least 2 options.");
+			}
+
+			if (item.key === "wordcloud" && !item.title?.trim()) {
+				messages.push("Add the question text.");
 			}
 
 			if (item.key === "truefalse") {
-				if (!item.title?.trim()) messages.push("Title is required.");
+				if (!item.title?.trim()) messages.push("Add the question text.");
 				if (filledOptions.length < 2)
-					messages.push("At least 2 options must have text.");
+					messages.push("Fill in at least 2 options.");
 			}
 
 			if (
@@ -108,13 +110,13 @@ function QuestSave() {
 					"quick_form",
 				].includes(item.key)
 			) {
-				if (!item.title?.trim()) messages.push("Title is required.");
+				if (!item.title?.trim()) messages.push("Add the question text.");
 			}
 
 			if (["scales", "ranking", "sorting"].includes(item.key)) {
-				if (!item.title?.trim()) messages.push("Title is required.");
+				if (!item.title?.trim()) messages.push("Add the question text.");
 				if (filledOptions.length < 2)
-					messages.push("At least 2 options must have text.");
+					messages.push("Fill in at least 2 options.");
 			}
 
 			return {
@@ -142,7 +144,25 @@ function QuestSave() {
 		tasks: payloadData,
 	};
 
+	// The quest being edited (its settings live in questInformation).
+	const questInfo = useSelector((state: any) => state.questInformation?.questInformation);
+	const questTitle: string = (questInfo?.quest ?? questInfo)?.title ?? "";
+	const hasQuestName = !!questTitle.trim() && questTitle !== "My Quest" && questTitle !== "Untitled Quest";
+	const problems = validationResults
+		.filter((result) => result.hasError)
+		.map((result) => ({
+			...result,
+			position: multypleselectedItem.find((item) => `${item.id}` === `${result.id}`)?.position ?? "",
+		}));
+	const fixQuestion = (id: string) => {
+		const item = multypleselectedItem.find((question) => `${question.id}` === `${id}`);
+		if (item) dispatch(setSelectedItem(item));
+		setIsModalOpen(false);
+	};
+
 	const onSubmit = async () => {
+		if (saving) return;
+		setSaving(true);
 		try {
 			const response = await axiosInstance.post(
 				`/quest-tasks/update-multiple`,
@@ -150,7 +170,8 @@ function QuestSave() {
 			);
 			toast.success(response.data.message);
 			setIsModalOpen(false);
-			persistor.purge();
+			// The editor's questions are cleared once it unmounts (see below).
+			savedRef.current = true;
 			router.push("/my-library/quest-page");
 		} catch (error) {
 			const axiosError = error as AxiosError<{ message?: string }>;
@@ -160,7 +181,7 @@ function QuestSave() {
 					axiosError.response.data,
 				);
 				toast.error(
-					axiosError.response.data?.message || "Verification failed.",
+					axiosError.response.data?.message || "The quest could not be saved. Please try again.",
 				);
 			} else {
 				console.error("Unexpected error:", axiosError.message);
@@ -169,6 +190,8 @@ function QuestSave() {
 						"Unexpected error occurred. Please try again.",
 				);
 			}
+		} finally {
+			setSaving(false);
 		}
 	};
 
@@ -220,172 +243,93 @@ function QuestSave() {
 				""
 			)}
 
-			{/* isFormValid */}
-			<Modal
-				// title={`${
-				// 	isFormValid
-				// 		? "This Eduquize be played"
-				// 		: "This Eduquize can&apos;t be played"
-				// }  `}
-				title={""}
-				open={isModalOpen}
-				onClose={() => setIsModalOpen(false)}
-				width={600}
-			>
-				{isFormValid ? (
-					<div className="">
-						{`${quizresponse?.title}` === "My Quest" ? (
-							<>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center">
-										<Image
-											className="border border-[#2222] rounded-[10px]"
-											src="/images/placeholder.jpg"
-											width={120}
-											height={120}
-											alt=""
-										/>
-										<div className="ml-[10px]">
-											<h4 className="font-bold">
-												{" "}
-												Please Update Your Quiz
-												Name{" "}
-											</h4>
-										</div>
+			<Modal title="" open={isModalOpen} onClose={() => setIsModalOpen(false)} width={600}>
+				{!isFormValid ? (
+					<div>
+						<div className="flex items-start gap-3">
+							<span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
+								<AlertTriangle className="h-5 w-5 text-red-500" aria-hidden />
+							</span>
+							<div>
+								<h3 className="text-lg font-bold text-[#222]">
+									{problems.length === 1
+										? "1 question needs attention"
+										: `${problems.length} questions need attention`}
+								</h3>
+								<p className="text-sm text-[#666]">
+									Fix these before {isQuizEdit ? "updating" : "saving"} your quest.
+								</p>
+							</div>
+						</div>
+						<ul className="mt-4 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+							{problems.map((result) => (
+								<li key={result.id} className="flex items-center gap-3 rounded-lg border border-[#eee] p-3">
+									<Image src={getQuestionImage(result)} alt="" width={32} height={32} />
+									<div className="min-w-0 flex-1">
+										<p className="text-xs font-semibold uppercase tracking-wide text-[#999]">
+											Question {result.position}
+										</p>
+										<ul className="text-sm text-red-600">
+											{result.messages.map((msg) => (
+												<li key={msg}>{msg}</li>
+											))}
+										</ul>
 									</div>
-
-									<div className="flex flex-col">
-										<button className="bg-red-500 text-white px-3 py-1 rounded">
-											Fix
-										</button>
-									</div>
-								</div>
-							</>
-						) : (
-							<>
-								<div className="flex flex-col justify-center items-center">
-									<h3 className="text-[18px] md:text-[25px]  py-[10px] font-bold w-full border border-[#2222] text-center rounded-[10px] mt-[10px]">
-										Do you want to{" "}
-										{isQuizEdit ? "update" : "save"} this
-										Quest?
-									</h3>
-									<IoSaveSharp className="text-[100px] text-primary my-[30px]" />
-								</div>
-								<div className="hidden">
-									<div className="flex cursor-pointer items-center gap-4 bg-[#f2f1f0] shadow-1 p-3 rounded-md mb-[15px]">
-										<FaEye className="text-[30px]" />
-										<div className=" flex flex-col ">
-											<h5 className="text-[17px] font-bold">
-												{" "}
-												Preview{" "}
-											</h5>
-											<p className="text-[#858585]">
-												{" "}
-												Launch a trial session for this
-												MindSpear{" "}
-											</p>
-										</div>
-									</div>
-									<div className="flex cursor-pointer items-center gap-4 bg-[#f2f1f0] shadow-1 p-3 rounded-md">
-										<SiKdenlive className="text-[30px]" />
-										<div className=" flex flex-col ">
-											<h5 className="text-[17px] font-bold">
-												{" "}
-												Host live{" "}
-											</h5>
-											<p className="text-[#858585]">
-												{" "}
-												Display from a big screen{" "}
-											</p>
-										</div>
-									</div>
-								</div>
-							</>
-						)}
+									<button
+										type="button"
+										onClick={() => fixQuestion(result.id)}
+										className="flex-shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+									>
+										Fix
+									</button>
+								</li>
+							))}
+						</ul>
+					</div>
+				) : !hasQuestName ? (
+					<div className="text-center">
+						<span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#fff3e8]">
+							<Pencil className="h-6 w-6 text-primary" aria-hidden />
+						</span>
+						<h3 className="mt-3 text-lg font-bold text-[#222]">Give your quest a name first</h3>
+						<p className="mx-auto mt-1 max-w-[380px] text-sm text-[#666]">
+							Click <span className="font-semibold">Untitled quest</span> at the top left to name it, then
+							{isQuizEdit ? " update" : " save"} again.
+						</p>
 					</div>
 				) : (
-					<div className="h-[300px] overflow-y-auto  scrollbar-hidden">
-						{validationResults.map((result) => (
-							<div
-								key={result.id}
-								className="shadow mt-[10px] p-[10px]"
-							>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center">
-										<Image
-											src={getQuestionImage(result)}
-											width={70}
-											height={70}
-											alt=""
-										/>
-										<div className="ml-[10px]">
-											<h4 className="font-medium">
-												{result.key.toUpperCase()}
-											</h4>
-											<h4 className="font-bold">
-												{result.messages.length > 0
-													? ""
-													: result.title}
-											</h4>
-											{result.messages.length > 0 && (
-												<h4 className="text-red-500">
-													{result.messages[0]}
-												</h4>
-											)}
-										</div>
-									</div>
-
-									<div className="flex flex-col">
-										{result.hasError ? (
-											<button className="bg-red-500 text-white px-3 py-1 rounded">
-												Fix
-											</button>
-										) : (
-											<button className="bg-green-500 text-white px-3 py-1 rounded">
-												Done
-											</button>
-										)}
-									</div>
-								</div>
-
-								{result.hasError && (
-									<div className="flex items-center mt-2">
-										<MdError className="text-[30px] mr-[10px] text-[#bc5eb3]" />
-										<div>
-											{result.messages.map(
-												(msg, index) => (
-													<p
-														key={index}
-														className="text-sm text-red-600 font-medium"
-													>
-														{msg}
-													</p>
-												),
-											)}
-										</div>
-									</div>
-								)}
-							</div>
-						))}
+					<div className="text-center">
+						<span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#fff3e8]">
+							<Save className="h-6 w-6 text-primary" aria-hidden />
+						</span>
+						<h3 className="mt-3 text-lg font-bold text-[#222]">
+							{isQuizEdit ? "Update" : "Save"} &ldquo;{questTitle}&rdquo;?
+						</h3>
+						<p className="mt-1 text-sm text-[#666]">
+							{multypleselectedItem.length} question{multypleselectedItem.length === 1 ? "" : "s"}
+						</p>
 					</div>
 				)}
 
-				<div className="flex justify-center items-center mt-[20px] gap-4 ">
+				<div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
 					<button
+						type="button"
 						onClick={() => setIsModalOpen(false)}
-						className="flex text-[.875rem]  items-center bg-[#bc5eb3] text-[#fff] font-bold py-3 px-4 w-full justify-center rounded-md"
+						className="w-full rounded-lg border border-[#e5e5e5] bg-white px-4 py-2.5 text-sm font-semibold text-[#333] hover:bg-[#fafafa]"
 					>
-						{" "}
-						Back to edit{" "}
+						Keep editing
 					</button>
-
-					{isFormValid && quizresponse?.title !== "My Quiz" && (
+					{isFormValid && hasQuestName && (
 						<button
+							type="button"
 							onClick={() => onSubmit()}
-							className="flex text-[.875rem]  items-center bg-primary text-[#fff] font-bold py-3 px-4 w-full justify-center rounded-md"
+							disabled={saving}
+							className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
 						>
-							{" "}
-							{isQuizEdit ? "Update" : "Submit"}{" "}
+							{saving && (
+								<span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+							)}
+							{isQuizEdit ? "Update quest" : "Save quest"}
 						</button>
 					)}
 				</div>

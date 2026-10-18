@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "@/components/ui";
-import { PencilSquareIcon, UserIcon } from "@/assets/icons";
+import { PencilSquareIcon } from "@/assets/icons";
+import { Pencil, Type } from "lucide-react";
 import InputGroup from "@/components/FormElements/InputGroup";
 import { TextAreaGroup } from "@/components/FormElements/InputGroup/text-area";
 
@@ -55,7 +56,7 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 		description: z.string().optional(),
 		start_datetime: z.date().nullable().optional(),
 		end_datetime: z.date().nullable().optional(),
-		is_published: z.boolean(),
+		is_public: z.boolean(),
 	});
 
 	type FormData = z.infer<typeof formSchema>;
@@ -69,28 +70,26 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 	} = useForm<FormData>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			title: "Question Titile",
+			title: "",
 			description: "",
 			start_datetime: null,
 			end_datetime: new Date(
 				new Date().setFullYear(new Date().getFullYear() + 5)
 			),
-			is_published: false,
+			is_public: false,
 		},
 	});
+	// A new quest is created with a placeholder name; the field starts empty for it.
+	const isPlaceholderTitle = (title?: string) => !title || title === "My Quest" || title === "Untitled Quest";
 	useEffect(() => {
 		if (quiz) {
 			reset({
-				title:
-					quiz.title === "My Quest" ? "Question Title" : quiz.title,
+				title: isPlaceholderTitle(quiz.title) ? "" : quiz.title,
 				description: quiz.description ?? "",
-				start_datetime: quiz.start_datetime
-					? new Date(
-							new Date(quiz.start_datetime).getTime() +
-								new Date().getTimezoneOffset() * 60000
-					  )
-					: new Date(),
-				is_published: visibilityStatus ?? false,
+				// The API sends UTC; new Date() shows it in local time. Adding the UTC offset showed the
+				// UTC time as if local, and saving it back moved the start by that offset each time.
+				start_datetime: quiz.start_datetime ? new Date(quiz.start_datetime) : new Date(),
+				is_public: visibilityStatus,
 			});
 		}
 	}, [quiz, reset, visibilityStatus]);
@@ -127,8 +126,11 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 		const endTime = new Date(
 			new Date().setFullYear(new Date().getFullYear() + 5)
 		);
+		// "Public" shares the quest as a template (its visibility); it used to set is_published instead.
+		const { is_public, ...fields } = data;
 		const formattedData = {
-			...data,
+			...fields,
+			visibility: is_public ? "public" : "private",
 			start_datetime: moment(data.start_datetime).format(
 				"YYYY-MM-DD HH:mm:ss"
 			),
@@ -156,7 +158,7 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 					axiosError.response.data
 				);
 				toast.error(
-					axiosError.response.data?.message || "Verification failed."
+					axiosError.response.data?.message || "The quest settings could not be saved."
 				);
 			} else {
 				console.error("Unexpected error:", axiosError.message);
@@ -172,37 +174,32 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 
 	return (
 		<div className="w-full">
-			<div
-				onClick={() => {
-					if (!isDisabled) setIsModalOpen(true);
-				}}
-				className="w-full"
+			{/* One clear control: the quest's name (or a prompt to name it) that opens its settings. */}
+			<button
+				type="button"
+				disabled={isDisabled}
+				onClick={() => setIsModalOpen(true)}
+				title={
+					isDisabled
+						? "Settings can't be changed after the quest has been hosted"
+						: "Edit the quest title and settings"
+				}
+				className="group flex h-[50px] w-[300px] max-w-full items-center gap-3 rounded-[10px] border border-[#e5e5e5] bg-white pl-4 pr-3 text-left outline-none transition hover:border-primary focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-[#e5e5e5] dark:border-dark-3 dark:bg-dark-2"
 			>
-				<button
-					className={`flex !w-[300px] !h-[50px] font-bold cursor-pointer items-center gap-3.5 rounded-[10px] border bg-white py-3 pl-5 pr-[100px] outline-none transition-colors focus-visible:border-primary dark:border-dark-3 dark:bg-dark-2 dark:hover:border-dark-4 dark:hover:bg-dark-3 dark:hover:text-dark-6 dark:focus-visible:border-primary mr-[20px] ${
-						isDisabled
-							? "opacity-50 cursor-not-allowed"
-							: "hover:bg-gray-200 dark:hover:bg-[#031224]"
-					} `}
-				>
-					{" "}
-					{defailtValueUse === "My Quest"
-						? "Question Titile"
-						: defailtValueUse}{" "}
-				</button>
-				<button
-					disabled={isDisabled}
-					className={`rounded-sm py-[8px] px-[20px] bg-[#f2f2f2] absolute right-7 top-1/2 -translate-y-1/2 max-[1015px]:size-5 z-999 ${
-						isDisabled
-							? "opacity-50 cursor-not-allowed"
-							: "hover:bg-gray-200 dark:hover:bg-[#031224]"
-					}`}
-				>
-					Quest Title
-				</button>
-			</div>
+				<span className="min-w-0 flex-1 truncate">
+					{isPlaceholderTitle(defailtValueUse) ? (
+						<span className="text-[#999]">Untitled quest</span>
+					) : (
+						<span className="font-semibold text-[#222] dark:text-white">{defailtValueUse}</span>
+					)}
+				</span>
+				<span className="flex flex-shrink-0 items-center gap-1 rounded-md bg-[#f5f5f5] px-2 py-1 text-xs font-medium text-[#555] group-hover:bg-[#fff3e8] group-hover:text-primary">
+					<Pencil className="h-3.5 w-3.5" aria-hidden />
+					Edit
+				</span>
+			</button>
 			<Modal
-				title="MindSpear Quest Setting"
+				title="Quest settings"
 				open={isModalOpen}
 				onClose={() => setIsModalOpen(false)}
 			>
@@ -213,7 +210,7 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 							type="text"
 							label="Title"
 							placeholder="Enter Quest Name"
-							icon={<UserIcon />}
+							icon={<Type className="h-5 w-5" aria-hidden />}
 							iconPosition="left"
 							height="sm"
 							{...register("title")}
@@ -298,7 +295,7 @@ function QuestSetting({ defailtValueUse }: QuizeSettingProps) {
 
 						<div className="mb-5.5 flex items-center gap-4">
 							<Controller
-								name="is_published"
+								name="is_public"
 								control={control}
 								render={({ field }) => (
 									<>

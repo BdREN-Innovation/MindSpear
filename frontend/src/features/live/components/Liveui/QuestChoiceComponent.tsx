@@ -24,6 +24,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 type TaskQuestion = {
 	id: number | string;
@@ -214,6 +216,7 @@ const QuestChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		}
 	}, [dataNew?.id]);
 	const dataSubmit = async () => {
+		markAnswered(task?.id);
 		await saveAnswer();
 		if (task?.id) setTaskExpired(task.id);
 		setwatingData(false);
@@ -380,7 +383,7 @@ const QuestChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

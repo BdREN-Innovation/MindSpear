@@ -5,11 +5,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion";
 import DOMPurify from "dompurify";
 import {
-	AllScalesChart,
 	BarChart as GlobalBarChart,
 	DonutChart as GlobalDonutChart,
 	HorizontalBarChart as GlobalHorizontalBarChart,
 	PieChart as GlobalPieChart,
+	ScaleProgressChart,
 	WordCloud,
 } from "@/components/charts";
 import QuickFormCreatorView from "@/features/live/components/Liveui/QuickFormCreatorView";
@@ -31,8 +31,8 @@ type HostLiveQuestionViewProps = {
 	participantCount?: number;
 	/** Quiz only: shown once the question's time is up. */
 	correctAnswers?: string[];
-	/** "Question" for a quiz, "Slide" for a quest. */
-	itemLabel?: string;
+	/** A quest's true/false is a "Yes / No" poll. */
+	module?: "quiz" | "quest";
 };
 
 const VIEW_LABELS: Record<string, string> = {
@@ -55,7 +55,7 @@ export default function HostLiveQuestionView({
 	viewModel,
 	participantCount,
 	correctAnswers,
-	itemLabel = "Slide",
+	module = "quest",
 }: HostLiveQuestionViewProps) {
 	const [timeUp, setTimeUp] = useState(false);
 	const {
@@ -345,12 +345,26 @@ export default function HostLiveQuestionView({
 			case "choice":
 				return <ChartCanvas>{renderChoiceChart()}</ChartCanvas>;
 
-			case "scales":
+			case "scales": {
+				// Average rating per statement ("4.5/5"); it used to show a percentage of the top value,
+				// which read like a share of players.
+				const range = viewModel.scaleRange;
 				return (
 					<ChartCanvas>
-						<AllScalesChart title="" items={viewModel.scaleItems} height={520} />
+						<div className="w-full">
+							{range && (
+								<p className="mb-4 text-center text-sm font-semibold text-slate-500">
+									Average rating
+									{range.minText || range.maxText
+										? ` · ${range.min} = ${range.minText || "lowest"}, ${range.max} = ${range.maxText || "highest"}`
+										: ` out of ${range.max}`}
+								</p>
+							)}
+							<ScaleProgressChart title="" items={viewModel.scaleItems} full={range?.max ?? 5} sort height={520} />
+						</div>
 					</ChartCanvas>
 				);
+			}
 
 			case "ranking":
 				return (
@@ -392,6 +406,7 @@ export default function HostLiveQuestionView({
 						<QuickFormCreatorView
 							answerData={viewModel.quickFormAnswers}
 							quickFromId={viewModel.quickFormId}
+							refreshKey={viewModel.responseTotal}
 						/>
 					</div>
 				);
@@ -423,10 +438,15 @@ export default function HostLiveQuestionView({
 		<QuestHostStage className={isFullscreen ? "pt-5" : undefined}>
 			<QuestHostQuestionHeader
 				title={<span dangerouslySetInnerHTML={{ __html: cleanTitle }} />}
-				viewLabel={formatViewLabel(viewModel.currentView)}
+				viewLabel={
+					module === "quest" && viewModel.currentView === "truefalse"
+						? "Yes / No"
+						: formatViewLabel(viewModel.currentView)
+				}
 				responseCount={viewModel.responseTotal}
 				totalSlidesLabel={
-					totalSlides ? `${itemLabel} ${currentSlideIndex + 1} of ${totalSlides}` : undefined
+					// A quest's tasks are "questions" in its editor too (this said "Slide 1 of 2").
+					totalSlides ? `Question ${currentSlideIndex + 1} of ${totalSlides}` : undefined
 				}
 				progressRef={progressRef}
 				timeRef={timeRef}

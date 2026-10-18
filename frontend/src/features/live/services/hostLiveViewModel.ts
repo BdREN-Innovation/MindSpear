@@ -15,6 +15,10 @@ export type HostLiveTask = {
 	image_url?: string | null;
 	task_data?: {
 		questions?: HostTaskQuestion[];
+		minNumber?: number | string;
+		maxNumber?: number | string;
+		minText?: string;
+		maxText?: string;
 	};
 };
 
@@ -41,7 +45,16 @@ export type HostRankingItem = {
 
 export type HostScaleItem = {
 	text: string;
+	/** The average rating. */
 	value: number;
+};
+
+/** A scale's range and what its ends mean, e.g. 1 = "Strongly disagree" to 5 = "Strongly agree". */
+export type HostScaleRange = {
+	min: number;
+	max: number;
+	minText: string;
+	maxText: string;
 };
 
 export type HostLiveViewModel = {
@@ -64,6 +77,7 @@ export type HostLiveViewModel = {
 	choiceSeries: number[];
 	rankingItems: HostRankingItem[];
 	scaleItems: HostScaleItem[];
+	scaleRange?: HostScaleRange;
 	textAnswers: string[];
 	wordCloudWords: HostWordCloudWord[];
 	quickFormAnswers: unknown[];
@@ -162,7 +176,7 @@ const buildScaleItems = (
 	categories
 		.map((text, index) => ({
 			text,
-			value: Math.round(Number(series[index] ?? 0)),
+			value: Math.round(Number(series[index] ?? 0) * 10) / 10,
 		}))
 		.sort((left, right) => right.value - left.value);
 
@@ -248,6 +262,8 @@ export function buildHostLiveViewModel(
 	}
 
 	if (taskType === "scales") {
+		const min = Number(task.task_data?.minNumber) || 1;
+		const max = (result && "scaleMax" in result && result.scaleMax) || Number(task.task_data?.maxNumber) || 5;
 		return {
 			currentView,
 			taskType,
@@ -261,6 +277,12 @@ export function buildHostLiveViewModel(
 			choiceSeries,
 			rankingItems,
 			scaleItems,
+			scaleRange: {
+				min,
+				max,
+				minText: task.task_data?.minText ?? "",
+				maxText: task.task_data?.maxText ?? "",
+			},
 			textAnswers,
 			wordCloudWords,
 			quickFormAnswers: [],

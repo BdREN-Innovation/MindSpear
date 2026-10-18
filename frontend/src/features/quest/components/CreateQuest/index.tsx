@@ -7,10 +7,6 @@ import axiosInstance from "@/utils/axiosInstance";
 import { Quiz } from "@/types/types";
 import { useDispatch } from "react-redux";
 import { setQuest } from "@/features/quest/store/questInformationSlice";
-import {
-	addNewQuestItem,
-	setSelectedItem,
-} from "@/features/quiz/store/quizItems/quizSlice";
 import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
 import moment from "@/lib/dayjs";
@@ -164,63 +160,8 @@ function CreateQuest() {
 				throw new Error("Quiz creation failed: missing quiz ID.");
 			}
 
-			const responseQuestTasks = await axiosInstance.post(
-				`/quest-tasks/store`,
-				{
-					quest_id: `${quizId}`,
-					title: "Untitled question",
-					task_type: `qsenchoice`,
-					visibility: "public",
-					serial_number: 1,
-				}
-			);
-
-			// addNewQuestItem({
-			// 		key: "qsenchoice",
-			// 		quiz_id: `${quizId}`,
-			// 		title: "",
-			// 		options: [],
-			// 		maxOptions: 0,
-			// 		minOptions: 0,
-			// 		allowDuplicates: false,
-			// 		isMultipleSelection: false,
-			// 		timeLimit: "",
-			// 		position: 1,
-			// 		id: responseQuestTasks.data.data.questTask.id,
-			// 	})
-
-			dispatch(
-				addNewQuestItem({
-					key: "qsenchoice",
-					quiz_id: `${quizId}`,
-					title: "Untitled question",
-					options: [],
-					maxOptions: 0,
-					minOptions: 0,
-					allowDuplicates: false,
-					isMultipleSelection: false,
-					timeLimit: "",
-					contant_title: "",
-					image_url: "",
-					layout_id: "",
-					position: 1,
-					id: responseQuestTasks.data.data.questTask.id,
-				})
-			);
-
-			dispatch(
-				setSelectedItem({
-					key: "qsenchoice",
-					id: `${quizId}`,
-					title: "Untitled question",
-					options: [],
-					maxOptions: 0,
-					minOptions: 0,
-					allowDuplicates: false,
-					isMultipleSelection: false,
-					timeLimit: "",
-				})
-			);
+			// A blank quest opens on the question-type picker. It used to start with a multiple-choice
+			// question (and selected it by the quest's id, so the editor showed an empty card).
 
 			// const questionResponse = await axiosInstance.post(
 			// 	`/quest-tasks/store`,

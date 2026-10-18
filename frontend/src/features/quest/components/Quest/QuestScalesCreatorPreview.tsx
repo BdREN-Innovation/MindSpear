@@ -56,12 +56,9 @@ const QuestChoiceCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 			);
 			setLabels(newLabels);
 
-			const randomValues = allOptions.map(() =>
-				Math.floor(Math.random() * 100)
-			);
-			setLabels(newLabels);
-			setSeries(randomValues);
-			setTimeout(() => setSeries(allOptions.map(() => 0)), 1500);
+			// An empty preview: it flashed random numbers for 1.5s (which read as real results), and that
+			// uncancelled timer reset the bars to the old option count after one was removed.
+			setSeries(allOptions.map(() => 0));
 		}
 	}, [allOptions]);
 

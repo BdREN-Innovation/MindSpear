@@ -16,6 +16,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 type TaskQuestion = ScaleOption;
 type TaskItem = {
@@ -185,6 +187,7 @@ const QuestScalesChoiceComponent: React.FC<Props> = ({ task }) => {
 	};
 	const dataNew: any = task;
 	const dataSubmit = async () => {
+		markAnswered(task?.id);
 		await saveAnswer();
 		if (task?.id) setTaskExpired(task.id);
 		setwatingData(false);
@@ -271,7 +274,11 @@ const QuestScalesChoiceComponent: React.FC<Props> = ({ task }) => {
 	const handleTimeUpdate = (remaining: number) => {
 		currentTimeGetRef.current = remaining;
 	};
-	const selectionText = `Selected values: [${selectedValues.join(", ")}]`;
+	const ratedCount = selectedValues.filter((value) => value !== 0).length;
+	const selectionText = `${ratedCount} of ${selectedValues.length} rated`;
+	// What the ends of the scale mean (the editor's "Bottom/Top of the scale").
+	const minLabel = (task as any)?.minText ?? (task as any)?.task_data?.minText;
+	const maxLabel = (task as any)?.maxText ?? (task as any)?.task_data?.maxText;
 	return (
 		<>
 			{watingData ? (
@@ -312,6 +319,8 @@ const QuestScalesChoiceComponent: React.FC<Props> = ({ task }) => {
 												value={selectedValues[i] ?? 0}
 												onChange={handleScaleChange}
 												onSkip={handleSkip}
+												minLabel={minLabel}
+												maxLabel={maxLabel}
 											/>
 										</div>
 									))
@@ -326,12 +335,12 @@ const QuestScalesChoiceComponent: React.FC<Props> = ({ task }) => {
 						<StickySubmitBar
 							onSubmit={dataSubmit}
 							selectedText={selectionText}
-							helperText="Rate the items, then submit."
+							helperText="Rate each statement, then submit."
 						/>
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

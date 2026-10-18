@@ -11,7 +11,6 @@ type JoinIntroCardProps = {
 	name: string;
 	onNameChange: (value: string) => void;
 	onSubmit: () => void;
-	durationText?: string;
 	countLabel?: string;
 	isSubmitting?: boolean;
 	className?: string;
@@ -23,7 +22,6 @@ export function JoinIntroCard({
 	name,
 	onNameChange,
 	onSubmit,
-	durationText,
 	countLabel,
 	isSubmitting = false,
 	className,
@@ -58,11 +56,11 @@ export function JoinIntroCard({
 					<div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
 						<div className="flex items-center gap-2 text-xs font-bold uppercase text-primary">
 							<Clock3 className="h-4 w-4" />
-							Open for
+							Status
 						</div>
-						<p className="mt-1 text-sm font-black text-slate-950">
-							{durationText || "Live now"}
-						</p>
+						{/* This used to show the whole availability window ("Open for 1826 days"), which means
+						    nothing in a live session the host paces. */}
+						<p className="mt-1 text-sm font-black text-slate-950">Live now</p>
 					</div>
 					<div className="rounded-lg border border-secondary/20 bg-secondary/10 p-3">
 						<div className="flex items-center gap-2 text-xs font-bold uppercase text-secondary">

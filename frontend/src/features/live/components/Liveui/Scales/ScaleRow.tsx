@@ -1,8 +1,7 @@
 "use client";
 import React from "react";
 import clsx from "clsx";
-import ScaleProgress from "./ScaleProgress";
-import { Slider } from 'antd';
+import { Slider } from "antd";
 
 export type ScaleOption = {
   id: number | string;
@@ -19,8 +18,15 @@ type Props = {
   value: number;
   onChange: (index: number, next: number) => void;
   onSkip: (index: number) => void;
+  /** What the ends of the scale mean, e.g. "Strongly disagree" / "Strongly agree". */
+  minLabel?: string;
+  maxLabel?: string;
 };
 
+/**
+ * One statement to rate. A short scale (up to 11 points) is a row of number buttons; it used to be
+ * a slider that sat on the lowest value while saying "Skipped", with no hint what the ends meant.
+ */
 const ScaleRow: React.FC<Props> = ({
   option,
   index,
@@ -29,60 +35,71 @@ const ScaleRow: React.FC<Props> = ({
   value,
   onChange,
   onSkip,
+  minLabel,
+  maxLabel,
 }) => {
-  const displayText = option.text ?? option.label ?? `Option ${index + 1}`;
-  const sliderValue = value === 0 ? min : value;
+  const displayText = option.text ?? option.label ?? `Statement ${index + 1}`;
+  const rated = value !== 0;
+  const points = max - min + 1;
+  const asButtons = points > 1 && points <= 11;
 
   return (
-    <div className="w-full rounded-lg border border-gray-200 p-4 bg-white space-y-3 shadow">
-      <div className="flex items-center justify-between">
-        <div className="text-base font-medium text-gray-800">{displayText}</div>
+    <div className="w-full space-y-3 rounded-lg bg-white p-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-base font-semibold text-gray-800">{displayText}</div>
         <div
           className={clsx(
-            "px-2 py-1 rounded-lg text-xs font-semibold",
-            value === 0 ? "bg-slate-100 text-slate-500" : "bg-[#bc5eb3] text-white"
+            "flex-shrink-0 rounded-lg px-2 py-1 text-xs font-semibold",
+            rated ? "bg-[#bc5eb3] text-white" : "bg-slate-100 text-slate-500"
           )}
-          title={value === 0 ? "Skipped" : `Selected: ${value}`}
         >
-          {value === 0 ? "Skipped" : `Value: ${value}`}
+          {rated ? `Your rating: ${value}` : "Not rated"}
         </div>
       </div>
 
-      <ScaleProgress value={value} min={min} max={max} />
-
-      <div className="flex items-center gap-3">
+      {asButtons ? (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={displayText}>
+          {Array.from({ length: points }, (_, i) => min + i).map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={value === n}
+              onClick={() => onChange(index, n)}
+              className={clsx(
+                "h-11 min-w-11 flex-1 rounded-lg border text-base font-bold transition",
+                value === n
+                  ? "border-[#bc5eb3] bg-[#bc5eb3] text-white shadow"
+                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-[#bc5eb3]/50 hover:bg-white"
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      ) : (
         <Slider
           min={min}
           max={max}
           step={1}
-          value={sliderValue}
+          value={rated ? value : min}
           onChange={(newValue) => onChange(index, Number(newValue))}
           className="w-full"
-          styles={{
-            track: {
-              height: '10px',
-              backgroundColor: '#bc5eb3'
-            },
-            rail: {
-              height: '10px'
-            },
-            handle: {
-              borderColor: '#f00',
-              // borderWidth: '2px',
-              // height: '20px',
-              // width: '20px',
-              // marginTop: '-5px'
-            }
-          }}
         />
-        <button
-          type="button"
-          onClick={() => onSkip(index)}
-          className="px-3 py-1.5 rounded-lg border text-sm bg-slate-50 hover:bg-slate-100"
-          title="Skip this option (set to 0)"
-        >
-          Skip
-        </button>
+      )}
+
+      <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+        <span>{minLabel ? `${min} = ${minLabel}` : min}</span>
+        {rated && (
+          <button
+            type="button"
+            onClick={() => onSkip(index)}
+            className="rounded-md px-2 py-1 font-semibold text-slate-500 hover:bg-slate-100"
+          >
+            Clear
+          </button>
+        )}
+        <span className="text-right">{maxLabel ? `${max} = ${maxLabel}` : max}</span>
       </div>
     </div>
   );

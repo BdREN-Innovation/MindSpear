@@ -1,43 +1,29 @@
 "use client";
-import { IoIosClose } from "react-icons/io";
-import Image from "next/image";
-import Link from "next/link";
+import QuestHostLiveHeader from "../live/quests/HostLiveHeader";
 
 interface HeaderProps {
 	onClose?: () => void;
+	joinCode?: string | null;
+	label?: string;
 }
 
-export default function HostLiveHeader({ onClose }: HeaderProps) {
+/** The quiz host's top bar: the same as the quest one (it was a 20px close dot). */
+export default function HostLiveHeader({ onClose, joinCode, label = "Quiz live" }: HeaderProps) {
 	const clearAllTimerStorage = () => {
-		const keys = Object.keys(localStorage);
-		keys.forEach((key) => {
-			if (key.startsWith("timer_")) {
-				localStorage.removeItem(key);
-			}
+		Object.keys(localStorage).forEach((key) => {
+			if (key.startsWith("timer_")) localStorage.removeItem(key);
 		});
 	};
 
 	return (
-		<div className="flex justify-between items-center px-2">
-			<div
-				className="w-5 h-5 rounded-full flex justify-center items-center bg-[#2222]"
-				onClick={() => {
-					localStorage.removeItem("leaderboardState");
-					clearAllTimerStorage();
-					onClose?.();
-				}}
-			>
-				<IoIosClose className="text-xl cursor-pointer hover:text-[#f00]" />
-			</div>
-
-			<Link href="/">
-				<Image
-					src="/images/logo/logo.svg"
-					alt="Logo"
-					width={126}
-					height={22}
-				/>
-			</Link>
-		</div>
+		<QuestHostLiveHeader
+			joinCode={joinCode}
+			label={label}
+			onClose={() => {
+				localStorage.removeItem("leaderboardState");
+				clearAllTimerStorage();
+				onClose?.();
+			}}
+		/>
 	);
 }

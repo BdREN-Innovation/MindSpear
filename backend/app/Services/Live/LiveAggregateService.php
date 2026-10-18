@@ -505,7 +505,8 @@ class LiveAggregateService
             foreach ($values as $position => $value) {
                 $positionIndex = $this->numericIndex($position);
 
-                if ($positionIndex === null || $positionIndex < 0 || $positionIndex >= $optionCount || ! is_numeric($value)) {
+                // 0 is a statement the player left unrated (scales start at 1); it isn't a rating.
+                if ($positionIndex === null || $positionIndex < 0 || $positionIndex >= $optionCount || ! is_numeric($value) || (float) $value == 0.0) {
                     continue;
                 }
 
@@ -515,11 +516,14 @@ class LiveAggregateService
         }
 
         $scores = [];
+        $averages = [];
 
         foreach ($sums as $index => $sum) {
             $scores[(string) $index] = $counts[$index] > 0
                 ? (int) round(($sum / ($highestValue * $counts[$index])) * 100)
                 : 0;
+            // The plain average rating, so the host can show "4.0 / 5" rather than "80%".
+            $averages[(string) $index] = $counts[$index] > 0 ? round($sum / $counts[$index], 1) : 0;
         }
 
         return [
@@ -527,6 +531,8 @@ class LiveAggregateService
             'value_type' => 'percentage',
             'total_answers' => $totalAnswers,
             'scores' => (object) $scores,
+            'averages' => (object) $averages,
+            'scale_max' => $scaleMax,
             'order' => $this->scoreOrder($scores),
             'highest_value' => $highestValue,
         ];

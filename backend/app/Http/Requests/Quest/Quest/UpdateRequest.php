@@ -76,18 +76,12 @@ class UpdateRequest extends BaseFormRequest
 
         $convertedData = [];
 
-        if ($this->has('open_datetime')) {
-            $convertedData['open_datetime'] = $this->convertToUtc(
-                $this->input('open_datetime'),
-                $timezone
-            );
-        }
-
-        if ($this->has('close_datetime')) {
-            $convertedData['close_datetime'] = $this->convertToUtc(
-                $this->input('close_datetime'),
-                $timezone
-            );
+        // A quest's times are start/end (this converted the quiz's open/close names, so the
+        // local time was saved as if it were UTC).
+        foreach (['start_datetime', 'end_datetime'] as $field) {
+            if ($this->filled($field)) {
+                $convertedData[$field] = $this->convertToUtc($this->input($field), $timezone);
+            }
         }
 
         return array_merge($data, $convertedData, [

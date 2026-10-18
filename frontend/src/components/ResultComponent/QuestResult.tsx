@@ -9,8 +9,8 @@ import ResultShowModal from "./ResultShowModal";
 import { Modal } from "@/components/ui";
 import { Skeleton } from "antd";
 import { toast } from "react-toastify";
-// import moment from "@/lib/dayjs";
-// import Link from "next/link";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
 
 function QuestResult() {
 	const params = useParams();
@@ -19,6 +19,7 @@ function QuestResult() {
 	const [resultShowAttemId, setResultShowAttemId] = useState(0);
 	const [activeUser, setActiveUser] = useState("");
 	const [loading, setLoading] = useState(true);
+	const [questTitle, setQuestTitle] = useState("");
 
 	useEffect(() => {
 		const quizFetch = async () => {
@@ -31,14 +32,7 @@ function QuestResult() {
 				);
 
 				setQuestResultList(response?.data?.data?.leaderboard);
-				console.log(
-					response?.data?.data?.leaderboard,
-					"response?.data?.data"
-				);
-				console.log(
-					responseList?.data?.data?.quest,
-					"response?.data?.data"
-				);
+				setQuestTitle(responseList?.data?.data?.quest?.title ?? "");
 			} catch (error) {
 				const axiosError = error as AxiosError<{ message?: string }>;
 
@@ -63,8 +57,6 @@ function QuestResult() {
 		};
 		quizFetch();
 	}, []);
-
-	console.log(questResultList, "questResultListquestResultList");
 
 	const openDetails = (u: any) => {
 		setIsModalStatus(true);
@@ -102,10 +94,23 @@ function QuestResult() {
 	// quicFromData
 	return (
 		<div>
-			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-[20px]">
+			{/* The page had only a bare "Individual Results" heading: no quest name and no way back. */}
+			<div className="mb-[20px]">
+				<Link
+					href={`/my-library/quest/${params?.id}`}
+					className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-primary"
+				>
+					<ChevronLeft className="h-4 w-4" />
+					Back to {questTitle || "quest"}
+				</Link>
 				<h1 className="text-[20px] font-semibold tracking-tight">
 					Individual Results
 				</h1>
+				{!loading && questResultList?.length > 0 && (
+					<p className="text-sm text-slate-500">
+						{questResultList.length} participant{questResultList.length === 1 ? "" : "s"} · open one to see their answers
+					</p>
+				)}
 			</div>
 
 			{loading ? (
@@ -155,11 +160,12 @@ function QuestResult() {
 			)}
 
 			<Modal size="xl"
-				title={`${activeUser} - Answer`}
+				title={`${activeUser}'s answers`}
 				open={isModalStatus}
 				onClose={() => setIsModalStatus(false)}
 			>
-				<ResultShowModal attemId={resultShowAttemId} />
+				{/* Keyed so each participant opens on their first answer (it kept the last one's tab). */}
+				<ResultShowModal key={resultShowAttemId} attemId={resultShowAttemId} />
 			</Modal>
 		</div>
 	);

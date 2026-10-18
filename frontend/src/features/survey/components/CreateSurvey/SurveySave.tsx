@@ -14,7 +14,6 @@ import { AxiosError } from "axios";
 import { FaEye } from "react-icons/fa6";
 import { SiKdenlive } from "react-icons/si";
 // import { useRouter } from 'next/router';
-import { persistor } from "@/stores/store";
 import { Quiz } from "@/types/types";
 // import { clearQuest } from "@/services/redux/features/questInformationSlice";
 import { IoSaveSharp } from "react-icons/io5";
@@ -301,8 +300,8 @@ function SurveySave() {
 				// This ensures the latest changes are loaded
 				window.location.href = `/survey/create/${qId}`;
 			} else {
-				// For create mode, clear store and redirect to library
-				persistor.purge();
+				// For create mode, redirect to the library (purging the whole store here also logged
+				// the user out on the next page load).
 				router.push("/my-library/survey-page");
 			}
 		} catch (error) {

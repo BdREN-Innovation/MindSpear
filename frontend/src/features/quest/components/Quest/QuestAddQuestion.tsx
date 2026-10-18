@@ -12,9 +12,6 @@ import {
 } from "@/components/ui/Dropdown";
 import { useDispatch, useSelector } from "react-redux";
 import {
-	setHoveredItem,
-	clearHoveredItem,
-	addNewQuestItem,
 	setSelectedItem,
 	setMultipleSelectedItems,
 } from "@/features/quiz/store/quizItems/quizSlice";
@@ -27,6 +24,7 @@ import type { GeneratedFor } from "@/features/ai-generate/types";
 import { convertTaskData } from "@/utils/questDataTransformer";
 import { AxiosError } from "axios";
 import { toast } from "react-toastify";
+import { useAddQuestQuestion } from "@/features/quest/hooks/useAddQuestQuestion";
 import { RootState } from "@/stores/store";
 import { useParams } from "next/navigation";
 import { FilePlus2, Sparkles } from "lucide-react";
@@ -51,9 +49,9 @@ const QuestAddQuestion: React.FC = () => {
 	const multyplItem = quesentList?.filter(
 		(list) => `${list?.quiz_id}` === `${qId}`,
 	);
-	const nextPosition = multyplItem.length + 1;
 
 	const dispatch = useDispatch();
+	const { addQuestion } = useAddQuestQuestion(qId);
 
 	/** Adds AI-generated tasks after the existing ones. */
 	const appendGeneratedTasks = async (result: GeneratedFor<"quest">) => {
@@ -249,71 +247,12 @@ const QuestAddQuestion: React.FC = () => {
 		return () => window.removeEventListener("scroll", handleScroll);
 	}, [dispatch]);
 
-	const handleMouseEnter = (item: MenuItem) => {
-		dispatch(
-			setHoveredItem({
-				key: item.key,
-				id: item.id,
-				title: "",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-				position: nextPosition,
-			}),
-		);
-	};
 
 	const handleItemClick = async (item: MenuItem) => {
-		const response = await axiosInstance.post(`/quest-tasks/store`, {
-			quest_id: `${qId}`,
-			title: "Untitled question",
-			task_type: `${item?.key}`,
-			visibility: "public",
-			serial_number: multyplItem.length + 1,
-		});
-		dispatch(
-			addNewQuestItem({
-				key: item.key,
-				quiz_id: `${qId}`,
-				title: "Untitled question",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-				contant_title: "",
-				image_url: "",
-				layout_id: "",
-				position: nextPosition,
-				id: response.data.data.questTask.id,
-			}),
-		);
-		const newId = response.data.data.questTask.id;
-		dispatch(
-			setSelectedItem({
-				key: item.key,
-				id: newId,
-				title: "Untitled question",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-				position: nextPosition,
-			}),
-		);
-
 		setIsDropDownOpen(false);
+		await addQuestion(item.key);
 	};
 
-	const handleMouseLeave = () => {
-		dispatch(clearHoveredItem());
-	};
 
 	return (
 		<div className="bg-white px-3 py-2 rounded-lg h-[calc(90vh-80px)]">
@@ -349,8 +288,6 @@ const QuestAddQuestion: React.FC = () => {
 							{items.map((item) => (
 								<div
 									key={item.id}
-									onMouseEnter={() => handleMouseEnter(item)}
-									onMouseLeave={handleMouseLeave}
 									onClick={() => handleItemClick(item)}
 									className="group flex cursor-pointer px-4 py-3 rounded-lg hover:bg-gray-100 transition"
 								>

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { ParticipantStage } from "./ParticipantStage";
 
 type WaitingStageProps = {
-	mode?: "lobby" | "host" | "complete";
+	mode?: "lobby" | "host" | "timeup" | "complete";
 	title?: string;
 	message?: string;
 	statusLabel?: string;
@@ -22,6 +22,11 @@ const copy = {
 	host: {
 		title: "Answer locked in",
 		message: "Nice move. Wait here while the host moves on to the next question.",
+		statusLabel: "Waiting for host",
+	},
+	timeup: {
+		title: "Time's up",
+		message: "No answer was sent for this question. The host will move on shortly.",
 		statusLabel: "Waiting for host",
 	},
 	complete: {

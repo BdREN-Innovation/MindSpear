@@ -30,6 +30,10 @@ function QuizAttempt() {
 	const participantToken = getParticipantToken("quest", sessionId);
 
 	const [tasks, setTasks] = useState<any[]>([]);
+	// The join link answers 400 once the quest has no running session. A player reloading after the
+	// end used to land back in "You're in the quest lobby" (their token is revoked, so the live
+	// state never arrives).
+	const [linkEnded, setLinkEnded] = useState(false);
 	const popListenerAdded = useRef(false);
 
 	const dispatchLiveState = useCallback(
@@ -96,7 +100,8 @@ function QuizAttempt() {
 				setTasks(normalized);
 			} catch (error) {
 				const axiosError = error as AxiosError<{ message?: string }>;
-				console.error("Unexpected error:", axiosError.message);
+				if (axiosError.response?.status === 400) setLinkEnded(true);
+				else console.error("Unexpected error:", axiosError.message);
 			}
 		};
 		if (joinid) dataFetch();
@@ -111,7 +116,7 @@ function QuizAttempt() {
 
 		const handlePopState = async () => {
 			const confirmLeave = window.confirm(
-				"Are you sure you want to leave the quiz?"
+				"Are you sure you want to leave the quest?"
 			);
 			if (confirmLeave) {
 				window.removeEventListener("popstate", handlePopState);
@@ -144,13 +149,11 @@ function QuizAttempt() {
 	// 		window.removeEventListener("beforeunload", handleBeforeUnload);
 	// }, [quizId, userId, quizTitle, userName]);
 
-	console.log(tasks, "taskstaskstaskstaskstaskstasks");
-
 	return (
 		<div>
 			<QuestPlayComponent
 				tasks={tasks}
-				sessionStatus={channelState.sessionStatus}
+				sessionStatus={linkEnded ? "ended" : channelState.sessionStatus}
 				currentItemId={channelState.currentTaskId}
 			/>
 		</div>

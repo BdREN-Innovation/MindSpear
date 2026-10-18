@@ -12,7 +12,6 @@ import { AxiosError } from "axios";
 import { FaEye } from "react-icons/fa6";
 import { SiKdenlive } from "react-icons/si";
 // import { useRouter } from 'next/router';
-import { persistor } from "@/stores/store";
 import { Quiz } from "@/types/types";
 // import { clearQuest } from "@/services/redux/features/questInformationSlice";
 import { IoSaveSharp } from "react-icons/io5";
@@ -150,7 +149,7 @@ function QuestDrafSave() {
 			);
 			toast.success(response.data.message);
 			setIsModalOpen(false);
-			persistor.purge();
+			// The editor stays open after a draft save (purging the store here also logged the user out).
 			// router.push("/my-library?tab=quest");
 		} catch (error) {
 			const axiosError = error as AxiosError<{ message?: string }>;

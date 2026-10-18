@@ -75,6 +75,11 @@ type Task = {
 	task_data: {
 		questions?: { id: number | string; text: string; color?: string }[];
 		time_limit?: number;
+		// Scales: the range and what its ends mean.
+		minNumber?: number;
+		maxNumber?: number;
+		minText?: string;
+		maxText?: string;
 	};
 };
 
@@ -143,6 +148,10 @@ function normalizeQuizeToQuest(quizeData: any): Quest {
 					questions: q?.task_data?.questions,
 					// time_limit: q.time_limit_seconds ? q.time_limit_seconds : q?.time_limit,
 					time_limit: q?.task_data?.time_limit ?? 0,
+					minNumber: q?.task_data?.minNumber,
+					maxNumber: q?.task_data?.maxNumber,
+					minText: q?.task_data?.minText,
+					maxText: q?.task_data?.maxText,
 				},
 				is_required: true,
 				open_datetime: quizeData.start_datetime,
@@ -188,6 +197,7 @@ export default function LiveQuiz() {
 	>("bar");
 	const [countdownValue, setCountdownValue] = useState<number | null>(null);
 	const [isAdvancing, setIsAdvancing] = useState(false);
+	const [joinCode, setJoinCode] = useState<string | null>(null);
 
 	const [quest, setQuest] = useState<Quest | null>(null);
 	const [results, setResults] = useState<LiveResultDatum[]>([]);
@@ -325,6 +335,7 @@ export default function LiveQuiz() {
 							});
 
 							setQuest(normalized);
+							setJoinCode(questData?.quest?.join_code ?? null);
 							setResults([]);
 							setSessionId(questData.questSession.id);
 							setPublicChannelKey(
@@ -555,7 +566,12 @@ export default function LiveQuiz() {
 	return (
 		<QuestHostLiveShell isFullscreen={isFullscreen}>
 			<div className="px-3 pt-3 sm:px-5 lg:px-8">
-				<HostLiveHeader onClose={handleCloseClick} />
+				{/* A quest has no leaderboard: it is shown once the quest has ended, when nobody can join. */}
+				<HostLiveHeader
+					onClose={handleCloseClick}
+					joinCode={showLeaderboard ? null : joinCode}
+					label={showLeaderboard ? "Ended" : undefined}
+				/>
 			</div>
 			{!showLeaderboard && (
 				<div className="fixed left-3 top-24 z-[80] hidden lg:block">
@@ -593,6 +609,8 @@ export default function LiveQuiz() {
 					onNext={handleNextWithConfirm}
 					onToggleFullscreen={toggleFullscreen}
 					isBusy={isAdvancing}
+					isFirst={currentSlideIndex === 0}
+					isLast={!!quest && currentSlideIndex === quest.tasks.length - 1}
 				/>
 			) : (
 				<>
@@ -604,6 +622,8 @@ export default function LiveQuiz() {
 							onNext={handleNextWithConfirm}
 							onToggleFullscreen={toggleFullscreen}
 							isBusy={isAdvancing}
+							isFirst={currentSlideIndex === 0}
+							isLast={!!quest && currentSlideIndex === quest.tasks.length - 1}
 						/>
 					)}
 				</>
@@ -635,14 +655,22 @@ export default function LiveQuiz() {
 				width={500}
 			>
 				<div className="space-y-3">
+					{/* It always said "last question", also when ending early with the close button. */}
 					<p className="text-gray-700 text-[15px] leading-relaxed">
-						You are currently viewing the{" "}
-						<span className="font-medium">last question</span> of
-						this quest.
+						{!quest || currentSlideIndex >= quest.tasks.length - 1 ? (
+							<>
+								You are on the <span className="font-medium">last question</span> of this quest.
+							</>
+						) : (
+							<>
+								You are on question {currentSlideIndex + 1} of {quest.tasks.length}. Ending now finishes it
+								for everyone; the remaining questions won&apos;t be asked.
+							</>
+						)}
 					</p>
 
 					<p className="text-gray-700 text-sm font-medium">
-						Do you want to end this quest now?
+						End this quest and show the final results?
 					</p>
 
 					<div className="flex justify-end gap-3 pt-3">
@@ -650,7 +678,7 @@ export default function LiveQuiz() {
 							className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
 							onClick={() => setEndModalOpen(false)}
 						>
-							Continue Quest
+							Keep going
 						</button>
 
 						<button

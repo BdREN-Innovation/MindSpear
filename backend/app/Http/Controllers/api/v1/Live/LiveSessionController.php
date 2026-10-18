@@ -5,6 +5,7 @@ namespace App\Http\Controllers\api\v1\Live;
 use App\Http\Controllers\api\v1\ApiBaseController;
 use App\Models\Quest\Quest;
 use App\Models\Quest\QuestSession;
+use App\Models\Quest\QuestTaskCompletion;
 use App\Models\Quest\QuestTask;
 use App\Models\Quiz\Question;
 use App\Models\Quiz\Quiz;
@@ -26,6 +27,49 @@ class LiveSessionController extends ApiBaseController
         private readonly LiveAggregateService $aggregates,
     ) {}
 
+    /**
+     * The host's view of a quick form's submissions in a session. They hold personal details, so
+     * they are never part of the public aggregate broadcast; only the quest owner can read them.
+     */
+    public function questFormResponses(Request $request, int $id, int $sessionId, int $taskId): JsonResponse
+    {
+        $quest = Quest::find($id);
+
+        if (! $quest) {
+            return $this->notFoundResponse([], __('Quest not found.'));
+        }
+
+        if ((int) $quest->creator_id !== (int) auth()->id()) {
+            return $this->forbiddenResponse([], __('You are not allowed to access this quest.'));
+        }
+
+        $sessionBelongs = QuestSession::whereKey($sessionId)->where('quest_id', $quest->id)->exists();
+        $taskBelongs = QuestTask::whereKey($taskId)->where('quest_id', $quest->id)->exists();
+
+        if (! $sessionBelongs || ! $taskBelongs) {
+            return $this->notFoundResponse([], __('Quest session or task not found.'));
+        }
+
+        $responses = QuestTaskCompletion::with('participant:id,anonymous_details,user_id')
+            ->where('task_id', $taskId)
+            ->whereHas('participant', fn ($query) => $query->where('quest_session_id', $sessionId))
+            ->latest('id')
+            ->limit(200)
+            ->get()
+            ->map(fn (QuestTaskCompletion $completion) => [
+                'id' => $completion->id,
+                'participant' => $completion->participant?->anonymous_details['name'] ?? null,
+                // Stored as {"0": field, "1": field, ...}; the view lists the fields.
+                'answer_data' => array_values(array_filter(
+                    (array) $completion->completion_data,
+                    fn ($field) => is_array($field) && isset($field['type']),
+                )),
+            ])
+            ->values();
+
+        return $this->okResponse(['responses' => $responses], __('Form responses retrieved successfully.'));
+    }
+
     public function questHostSession(Request $request, int $id): JsonResponse
     {
         $quest = Quest::find($id);
@@ -46,6 +90,11 @@ class LiveSessionController extends ApiBaseController
 
         if (! $session) {
             return $this->notFoundResponse([], __('No active quest session found.'));
+        }
+
+        // A running session must be joinable (sessions started before hosting published the quest).
+        if (! $quest->is_published) {
+            $quest->update(['is_published' => true]);
         }
 
         $payload = array_merge(

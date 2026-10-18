@@ -63,6 +63,11 @@ type Task = {
 	task_data: {
 		questions?: { id: number | string; text: string; color?: string }[];
 		time_limit?: number;
+		// Scales: the range and what its ends mean.
+		minNumber?: number;
+		maxNumber?: number;
+		minText?: string;
+		maxText?: string;
 	};
 };
 
@@ -181,6 +186,10 @@ function normalizeQuizeToQuest(quizeData: any): Quest {
 					questions: q?.task_data?.questions,
 					// time_limit: q.time_limit_seconds ? q.time_limit_seconds : q?.time_limit,
 					time_limit: q?.task_data?.time_limit ?? 0,
+					minNumber: q?.task_data?.minNumber,
+					maxNumber: q?.task_data?.maxNumber,
+					minText: q?.task_data?.minText,
+					maxText: q?.task_data?.maxText,
 				},
 				is_required: true,
 				open_datetime: quizeData.start_datetime,
@@ -215,6 +224,7 @@ function uniqueById<T extends { id: number }>(arr: T[]): T[] {
 
 export default function LiveQuiz() {
 	const [endModalOpen, setEndModalOpen] = useState(false);
+	const [joinCode, setJoinCode] = useState<string | null>(null);
 	const [sessionId, setSessionId] = useState<number | null>(null);
 	const [publicChannelKey, setPublicChannelKey] = useState<string | null>(
 		null
@@ -420,6 +430,7 @@ export default function LiveQuiz() {
 								questSession: quizSession,
 							});
 							setQuest(normalized);
+							setJoinCode(quizSession?.join_code ?? questData?.quiz?.join_code ?? null);
 
 							if (quizSession?.id) {
 								setSessionId(quizSession.id);
@@ -460,6 +471,7 @@ export default function LiveQuiz() {
 							});
 
 							setQuest(normalized);
+							setJoinCode(questData?.quest?.join_code ?? null);
 							setResults([]);
 							setSessionId(questData.questSession.id);
 							setPublicChannelKey(
@@ -651,7 +663,11 @@ export default function LiveQuiz() {
 					: "min-h-screen flex flex-col bg-white p-4 pb-24"
 			}`}
 		>
-			<HostLiveHeader onClose={() => setEndModalOpen(true)} />
+			<HostLiveHeader
+				onClose={() => setEndModalOpen(true)}
+				joinCode={joinCode}
+				label={mode === "quize" ? "Quiz live" : "Quest live"}
+			/>
 			{!showLeaderboard && (
 				<div className="absolute top-50 left-[20px] z-999">
 					<HostLiveLeftSideBar
@@ -671,11 +687,11 @@ export default function LiveQuiz() {
 					chartType={chartType}
 					viewModel={viewModel}
 					correctAnswers={mode === "quize" ? currentTask?.correct_answers : undefined}
-					itemLabel={mode === "quize" ? "Question" : "Slide"}
+					module={mode === "quize" ? "quiz" : "quest"}
 				/>
 			) : (
 				<div className="flex-1 flex items-center justify-center text-gray-500">
-					{totalSlides === 0 ? "Loading quiz..." : "No slide to show"}
+					{totalSlides === 0 ? "Loading…" : "No question to show"}
 				</div>
 			)}
 
@@ -688,7 +704,6 @@ export default function LiveQuiz() {
 					onToggleFullscreen={toggleFullscreen}
 					current={currentSlideIndex + 1}
 					total={totalSlides}
-					itemLabel={mode === "quize" ? "Question" : "Slide"}
 					onEnd={() => setEndModalOpen(true)}
 					endLabel={mode === "quize" ? "End quiz" : "End quest"}
 				/>
@@ -703,8 +718,7 @@ export default function LiveQuiz() {
 							onToggleFullscreen={toggleFullscreen}
 							current={currentSlideIndex + 1}
 							total={totalSlides}
-							itemLabel={mode === "quize" ? "Question" : "Slide"}
-							onEnd={() => setEndModalOpen(true)}
+									onEnd={() => setEndModalOpen(true)}
 							endLabel={mode === "quize" ? "End quiz" : "End quest"}
 						/>
 					)}

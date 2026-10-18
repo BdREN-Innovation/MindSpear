@@ -14,6 +14,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 type TaskQuestion = {
 	id: number | string;
@@ -150,6 +152,7 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		}
 	};
 	const handleSubmit = async () => {
+		markAnswered(task?.id);
 		const trimmed = answer.trim();
 		if (!trimmed) {
 			setError("Please write your answer.");
@@ -264,7 +267,7 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

@@ -54,31 +54,14 @@ const QuestWordCloudCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 	};
 
 	if (currentItem === undefined) return null;
+	// Sample words for the preview (players' words replace them live).
 	const values: Word[] = [
-		{
-			text: "Creative",
-			value: 60,
-		},
-		{
-			text: "bold",
-			value: 50,
-		},
-		{
-			text: "transpirration",
-			value: 40,
-		},
-		{
-			text: "focuse",
-			value: 45,
-		},
-		{
-			text: "transpirration",
-			value: 25,
-		},
-		{
-			text: "fast",
-			value: 20,
-		},
+		{ text: "Creative", value: 60 },
+		{ text: "Bold", value: 50 },
+		{ text: "Inspiring", value: 45 },
+		{ text: "Focused", value: 40 },
+		{ text: "Growth", value: 25 },
+		{ text: "Fast", value: 20 },
 	];
 
 	const handleReorder = (fromId: string, toId: string) => {
@@ -113,6 +96,7 @@ const QuestWordCloudCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 						/>
 
 						{/* </div> */}
+						<p className="text-center text-xs text-[#999]">Sample preview: players&apos; words appear here live.</p>
 					</div>
 				</div>
 			</div>
@@ -137,6 +121,11 @@ const QuestWordCloudCreatorPreview: React.FC<{ id: string }> = ({ id }) => {
 					</button>
 				</div>
 
+				{/* These are suggestions players can tap; it only said "Option 1" / "Add Word". */}
+				<h4 className="text-sm font-semibold text-[#222]">Suggested words (optional)</h4>
+				<p className="mb-3 text-xs text-[#888]">
+					Players can tap one of these or type their own word.
+				</p>
 				<OptionList
 					allOptions={allOptions}
 					quizId={id}

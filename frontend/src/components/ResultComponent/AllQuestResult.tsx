@@ -82,6 +82,7 @@ export default function AllQuestResult({ attemId, className }: AllQuestResultPro
 				participant_id: null,
 				task_id: task?.id,
 				status: "Completed",
+				responses: task?.responses_count,
 				completion_data: {
 					start_time: questSession.start_datetime,
 					selected_option: [],
@@ -104,10 +105,16 @@ export default function AllQuestResult({ attemId, className }: AllQuestResultPro
 
 			// Handle different task types
 			switch (task?.task_type) {
+				case "scales":
+					// The average rating per statement ("count" is a percentage of the top value).
+					completion.completion_data.selected_option = (task?.task_data?.questions ?? []).map(
+						(_question: any, index: number) => Number(task?.optionsCount?.[index]?.average ?? 0)
+					);
+					break;
+
 				case "single_choice":
 				case "multiple_choice":
 				case "truefalse":
-				case "scales":
 				case "ranking":
 				case "sorting":
 					if (task?.optionsCount && task?.task_data?.questions) {

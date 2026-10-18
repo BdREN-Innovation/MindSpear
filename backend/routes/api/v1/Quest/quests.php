@@ -19,6 +19,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::post('/host-live/{id}', [QuestController::class, 'hostLive'])->name('quests.host.live');
         Route::get('/{id}/host-live-session', [LiveSessionController::class, 'questHostSession'])->name('quests.host.live.session');
+        Route::get('/{id}/sessions/{sessionId}/tasks/{taskId}/form-responses', [LiveSessionController::class, 'questFormResponses'])
+            ->whereNumber(['id', 'sessionId', 'taskId'])
+            ->name('quests.host.live.form.responses');
         Route::post('/update-host-live/{id}', [QuestController::class, 'updateHostLive'])->name('quests.update.host.live');
         Route::post('/end-host-live/{id}', [QuestController::class, 'endLive'])->name('quests.end.live');
         Route::post('/status-host-live/{id}', [QuestController::class, 'statusLive'])->name('quests.status.live');

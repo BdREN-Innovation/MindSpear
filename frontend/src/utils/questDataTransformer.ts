@@ -127,7 +127,6 @@ export function QuestConvertDataComponent(
 		.replace(/\.\d+Z$/, ".000000Z");
 
 	const processSingleItem = (item: InputQuestionData): OutputQuestTask => {
-		console.log(item, "itemitemitemitemitemitemitem");
 
 		return {
 			quest_id: item?.quiz_id,
@@ -142,11 +141,23 @@ export function QuestConvertDataComponent(
 			serial_number: item?.position,
 			task_data: {
 				time_limit: item?.timeLimit ? parseInt(item.timeLimit) : 30,
-				questions: item?.options?.map((option) => ({
-					id: parseInt(option?.id),
-					text: option?.text || option?.placeholder,
-					color: option?.color,
-				})),
+				// Only answers the host typed. Empty ones used to be saved with their placeholder, so
+				// players saw "Option 3" as a choice and "Item 1" as a suggested short answer.
+				// A loaded quick form keeps its fields in task_data (its options are empty); without this,
+				// saving the quest without opening the quick form wiped them.
+				questions:
+					item?.key === "quick_form"
+						? ((item as any)?.task_data?.questions ?? []).map((question: any) => ({
+								...question,
+								options: (question.options ?? []).filter((option: any) => `${option?.text ?? ""}`.trim() !== ""),
+							}))
+						: (item?.options ?? [])
+								.filter((option) => `${option?.text ?? ""}`.trim() !== "")
+								.map((option) => ({
+									id: parseInt(option?.id),
+									text: `${option?.text}`.trim(),
+									color: option?.color,
+								})),
 				minNumber:
 					item?.key === "scales"
 						? item?.task_data?.minNumber || 1
@@ -155,14 +166,15 @@ export function QuestConvertDataComponent(
 					item?.key === "scales"
 						? item?.task_data?.maxNumber || 5
 						: 0,
+				// The low end is "disagree", as the editor shows (these defaults were the other way round).
 				minText:
 					item?.key === "scales"
-						? item?.task_data?.minText || "Strongly agree"
-						: "Strongly agree",
+						? item?.task_data?.minText || "Strongly disagree"
+						: "Strongly disagree",
 				maxText:
 					item?.key === "scales"
-						? item?.task_data?.maxText || "Strongly disagree"
-						: "Strongly disagree",
+						? item?.task_data?.maxText || "Strongly agree"
+						: "Strongly agree",
 				contant_title: item?.contant_title,
 				image_url: item?.image_url,
 				layout_id: item?.layout_id,
@@ -254,7 +266,11 @@ export function convertTaskData(inputData: InputTask[]): OutputTask[] {
 			} as unknown as OutputTask;
 		}
 
-		const options: OutputOption[] = (task?.task_data?.questions ?? []).map(
+		// Older saves stored the placeholder ("Option 1", "Item 1") as a word cloud / text answer's
+		// suggestion; those aren't real suggestions.
+		const isLegacyPlaceholder = (text?: string) =>
+			["wordcloud", "shortanswer", "longanswer"].includes(task.task_type) && /^(Option|Item) \d+$/.test(`${text ?? ""}`.trim());
+		const options: OutputOption[] = (task?.task_data?.questions ?? []).filter((question: any) => !isLegacyPlaceholder(question?.text)).map(
 			(question: any) => ({
 				id: String(question.id),
 				text: question.text,
@@ -316,9 +332,12 @@ export function convertTaskData2(inputData: InputTask[]): OutputTask[] {
 				key = task.task_type;
 		}
 
-		// Convert options
+		// Convert options. Older saves stored the placeholder ("Option 1", "Item 1") as a word
+		// cloud / text answer's suggestion; those aren't real suggestions.
+		const legacyPlaceholder = (text?: string) =>
+			["wordcloud", "shortanswer", "longanswer"].includes(task.task_type) && /^(Option|Item) \d+$/.test(`${text ?? ""}`.trim());
 		const options: OutputOption[] =
-			task?.task_data?.questions?.map((question) => ({
+			task?.task_data?.questions?.filter((question) => !legacyPlaceholder(question.text)).map((question) => ({
 				id: question.id.toString(),
 				text: question.text,
 				placeholder: `Add answer ${question.id}`,

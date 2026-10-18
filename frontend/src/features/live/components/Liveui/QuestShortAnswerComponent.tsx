@@ -16,6 +16,8 @@ import {
 	ParticipantTimerPanel,
 	StickySubmitBar,
 	WaitingStage,
+	markAnswered,
+	wasAnswered,
 } from "./participant-ui";
 type TaskQuestion = {
 	id: number | string;
@@ -162,6 +164,7 @@ const QuestShortAnswerComponent: React.FC<Props> = ({
 		}
 	};
 	const handleSubmit = async () => {
+		markAnswered(task?.id);
 		const trimmed = answer.trim();
 		if (!trimmed) {
 			// setError("Please write your answer.");
@@ -333,7 +336,8 @@ const QuestShortAnswerComponent: React.FC<Props> = ({
 
 									<div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
 										{task?.questions
-											?.filter((q: any) => q?.text !== "Option 1")
+											// Skip empty ones and placeholders older saves stored ("Option 1", "Item 1").
+											?.filter((q: any) => `${q?.text ?? ""}`.trim() !== "" && !/^(Option|Item) \d+$/.test(`${q?.text}`.trim()))
 											.map((item: any, i) => (
 												<button
 													type="button"
@@ -367,7 +371,7 @@ const QuestShortAnswerComponent: React.FC<Props> = ({
 					</div>
 				</ParticipantStage>
 			) : (
-				<WaitingStage mode="host" />
+				<WaitingStage mode={wasAnswered(task?.id) ? "host" : "timeup"} />
 			)}
 		</>
 	);

@@ -6,10 +6,10 @@ import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { BarChart3, CheckCircle2, ClipboardList } from "lucide-react";
 import {
-	AllScalesChart,
 	BarChart as GlobalBarChart,
 	HorizontalBarChart as GlobalHorizontalBarChart,
 	PieChart as GlobalPieChart,
+	ScaleProgressChart,
 	WordCloud,
 } from "@/components/charts";
 import QuickFormAnswerView from "@/features/live/components/Liveui/QuickFormAnswerView";
@@ -29,6 +29,9 @@ export type TabItem = {
 type Question = { id: number; text: string; color?: string };
 type TaskData = {
 	maxNumber: number | undefined;
+	minNumber?: number;
+	minText?: string;
+	maxText?: string;
 	questions: Question[];
 	time_limit?: number;
 	time_limit_seconds?: number;
@@ -51,6 +54,8 @@ type CompletionData = {
 };
 type Submission = {
 	id: number;
+	/** How many players answered. */
+	responses?: number;
 	participant_id: number | null;
 	task_id: number;
 	status: string;
@@ -97,6 +102,16 @@ const toNumberArray = (
 	return Array.from({ length: Math.max(targetLength, source.length, 1) }, (_, index) =>
 		Math.round(Number(source[index] ?? 0)),
 	);
+};
+
+const TYPE_LABELS: Record<string, string> = {
+	single_choice: "Single choice",
+	multiple_choice: "Multiple choice",
+	truefalse: "Yes / No",
+	wordcloud: "Word cloud",
+	shortanswer: "Short answer",
+	longanswer: "Long answer",
+	quick_form: "Quick form",
 };
 
 const taskIcon = (taskType: string) => {
@@ -191,13 +206,28 @@ function ChartPanel({ sub }: { sub: Submission }) {
 	}
 
 	if (taskType === "scales") {
+		// Average rating per statement ("4.5/5"), not a percentage of the top value.
+		const averages = toArray(sub.completion_data?.selected_option);
 		const scaleItems = categories.map((text, index) => ({
 			text,
-			value: values[index] ?? 0,
+			value: Math.round(Number(averages[index] ?? 0) * 10) / 10,
 			color: colors[index],
 		}));
+		const { minNumber, maxNumber, minText, maxText } = sub.task.task_data ?? {};
+		const min = Number(minNumber) || 1;
+		const max = Number(maxNumber) || 5;
 
-		return <AllScalesChart title="" items={scaleItems} height={460} />;
+		return (
+			<div className="w-full">
+				<p className="mb-4 text-center text-sm font-semibold text-slate-500">
+					Average rating
+					{minText || maxText
+						? ` · ${min} = ${minText || "lowest"}, ${max} = ${maxText || "highest"}`
+						: ` out of ${max}`}
+				</p>
+				<ScaleProgressChart title="" items={scaleItems} full={max} sort height={460} />
+			</div>
+		);
 	}
 
 	if (taskType === "wordcloud") {
@@ -237,18 +267,18 @@ function ChartPanel({ sub }: { sub: Submission }) {
 function ResultPanel({ sub }: { sub: Submission }) {
 	const title = htmlToText(sub.task.title);
 	const rawTaskType = String(sub.task.task_type || "").toLowerCase();
-	const taskType = rawTaskType.replaceAll("_", " ");
+	const taskType = TYPE_LABELS[rawTaskType] ?? rawTaskType.replaceAll("_", " ");
 	const selectedItems = toArray(sub.completion_data?.selected_option);
 	const numericValues = toNumberArray(
 		sub.completion_data?.selected_option,
 		sub.task.task_data?.questions?.length ?? selectedItems.length,
 	);
-	const responseTotal =
-		rawTaskType === "wordcloud" ||
+	const responseTotal = sub.responses ??
+		(rawTaskType === "wordcloud" ||
 		rawTaskType === "shortanswer" ||
 		rawTaskType === "longanswer"
 			? selectedItems.length
-			: numericValues.reduce((total, value) => total + Math.max(value, 0), 0);
+			: numericValues.reduce((total, value) => total + Math.max(value, 0), 0));
 
 	return (
 		<div className="space-y-5">
@@ -261,8 +291,8 @@ function ResultPanel({ sub }: { sub: Submission }) {
 						{title}
 					</h2>
 				</div>
-				<ResultStat label="Task Type" value={taskType} />
-				<ResultStat label="Entries" value={responseTotal || "Aggregated"} />
+				<ResultStat label="Type" value={taskType} />
+				<ResultStat label="Responses" value={responseTotal || "None"} />
 			</section>
 
 			<section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
@@ -278,7 +308,7 @@ function ResultStat({ label, value }: { label: string; value: React.ReactNode })
 			<p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">
 				{label}
 			</p>
-			<p className="capitalize text-xl font-black text-slate-950">{value}</p>
+			<p className="text-xl first-letter:uppercase font-black text-slate-950">{value}</p>
 		</div>
 	);
 }
@@ -416,7 +446,7 @@ export default function AllResultView({
 								</span>
 								<span className="min-w-0">
 									<span className="block text-xs font-black uppercase tracking-wide text-slate-500">
-										Slide {tab.serial_number}
+										Question {tab.serial_number}
 									</span>
 									<span className="line-clamp-2 text-sm font-black text-slate-950">
 										{label}
