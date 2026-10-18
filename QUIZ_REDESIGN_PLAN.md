@@ -4,7 +4,14 @@
 >
 > **Strategic role.** Quiz v2 is **additive to Quest v2**. Quest v2 (see [QUEST_REDESIGN_PLAN.md](QUEST_REDESIGN_PLAN.md)) ships first and introduces the shared slide engine — tables, slide-type registry, state machine, editor shell, presenter shell, and PWA participant shell. Quiz v2 reuses all of that and adds only what is Quiz-specific: scored slide types, a time-weighted scoring service, the `hidden_until_reveal` state-machine variant, the Leaderboard slide, and product-scoped editor/presenter/participant behaviour. This is a deliberate flip from the original ordering and shortens Quiz v2 dramatically.
 >
-> **Out of scope (for now).** Anything the shared engine already provides (see Quest v2 plan). Also skipped within Quiz: unscored types (Poll, Word Cloud, Q&A, Rating, 100 Points, Matrix, Pin on Image — those ship with Quest v2 and stay product-scoped to Quest), emoji reactions, audience chat, AI option generation, templates marketplace, full Spinner Wheel prediction/scoring mode.
+> **Out of scope (for now).** Anything the shared engine already provides (see Quest v2 plan). Also skipped within Quiz: unscored types (Poll, Word Cloud, Q&A, Rating, 100 Points, Matrix, Pin on Image — those ship with Quest v2 and stay product-scoped to Quest), emoji reactions, audience chat, templates marketplace, full Spinner Wheel prediction/scoring mode.
+>
+> **Amendments (2026-10-17, user-confirmed).** This plan predates the built Quest v2 engine, My Files and the AI wizard. Where this section disagrees with the text below, this section wins.
+> - **Legacy quiz stays.** Quiz v2 is live-hosting only. Legacy Quiz v1 keeps self-paced / exam attempts (`quiz_mode`, `/attempt/...`), the question bank, quiz reports, Discover / public templates and the Fun Games "import a quiz from My Library". §4.4 no longer deletes legacy tables; it only lists what must exist in v2 before any removal is considered.
+> - **Fun Games stays separate.** Quiz v2 is the slide-based AhaSlides-style quiz on the deck engine; Fun Games remains its own game mode with its own scoring/timer services. No shared code now.
+> - **AI generation is in scope.** New `quiz_v2` target in `features/ai-generate` writing scored v2 slides (pick_answer_single/multi, short_answer, correct_order, match_pairs, categorise) through `POST /quizzes/{id}/slides/bulk`. The wizard UI is the existing `DocumentToQuestionsWizard` (same as the current quiz). Legacy quiz AI stays unchanged.
+> - **Create modals.** Dashboard "Create a new quiz" (existing modal) and a new "Create a new quest" modal both offer a Blank card and a big "AI Generate (From a File)" card. When the user's v2 flag is on they create v2 decks; otherwise the legacy flows run. This replaces Quest's small "Or generate from a file" pill.
+> - **Engine alignment.** States reuse the built engine: Quiz's "answering" = `voting`; Quiz adds `reveal` (waiting → get_ready → voting → reveal → next). Positions are 1-based (a new deck's `qr_code` slide is position 1). Images use My Files (`slide_options.image_file_id`, `slides.media_file_id`). Routes use `DeckRoutes` with prefixes `quizzes` / `quiz-sessions` and product `quiz`. Feature flag `users.quiz_v2_enabled` (+ `QUIZ_V2_DEFAULT_ENABLED`), gated exactly like `quest_v2_enabled`. PostgreSQL only; migrations dated after the latest Deck migration.
 >
 > **Scope confirmed with user.**
 > - Quiz v2 only; Quest v2 ships first and delivers the shared primitives.
@@ -18,9 +25,9 @@
 > - [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) — Phases 0–3 done (Reverb live, Socket.IO gone, public/private channels, participant tokens). This plan uses the existing `LiveSessionService`, `LiveAggregateService`, `ParticipantTokenService`, and generic `LiveBroadcastEvent`.
 > - [QUEST_REDESIGN_PLAN.md](QUEST_REDESIGN_PLAN.md) — Delivers the shared slide engine before this plan starts. Every time this document references `decks`, `slides`, `slide_options`, `deck_sessions`, `deck_session_slide_runs`, `deck_participants`, `deck_participant_answers`, `SlideTypeRegistry`, the deck-editor components, the presenter shell, or the PWA participant shell, those were built in the Quest plan and this plan consumes them.
 >
-> **Database decision.** SQLite acceptable locally, PostgreSQL is production target. Every new migration, JSON filter, aggregate, or raw SQL in this plan must be checked against PostgreSQL before merge.
+> **Database decision.** PostgreSQL everywhere (local dev and tests included) — the deck engine and file library use PostgreSQL-only features.
 >
-> **Cutover decision.** Quiz v2 is a build-alongside replacement. Legacy Quiz v1 keeps running during development. After Quiz v2 has been the default for 2+ stability weeks, drop legacy `quizes`, `questions`, `quiz_sessions`, `quiz_participants`, `user_quiz_answers`, `quiz_origins`, and quiz-bank tables.
+> **Cutover decision.** Quiz v2 is built alongside Legacy Quiz v1 and becomes the default for **live hosting** only. Legacy tables are NOT dropped (see Amendments and §4.4).
 
 ---
 
@@ -49,7 +56,7 @@ Quiz v2 does **not** re-implement any of that.
 
 1. **Quiz-specific slide types** — `pick_answer_single`, `pick_answer_multi`, `short_answer` (scored), `match_pairs`, `correct_order`, `categorise`, `spinner_wheel`, `leaderboard`. Each implements `SlideTypeContract` with `products: ['quiz']` and `revealModel: 'hidden_until_reveal'` (except `leaderboard` which is `none`, and `spinner_wheel` which is special — see §3.7).
 2. **`hidden_until_reveal` state machine variant** — the shared engine already exposes a `revealModel` field. Quiz v2 supplies the engine logic that honours it: during `answering`, aggregate broadcasts go **only** to the private host channel; the public channel sees only a submitted-count. A new state `reveal` is reached when the host clicks Reveal or the timer ends, at which point the correct answer + public aggregate + reveal payload broadcasts on the public channel.
-3. **Scoring service** — `app/Services/Deck/ScoringService.php`. Delegates to each slide type's `score()`. Time-weighted linear interpolation between `points_min` and `points_max`. Partial credit for multi-select. Zero for wrong.
+3. **Scoring service** — `app/Services/Deck/ScoringService.php`. Delegates to each slide type's `score()`. Time-weighted linear interpolation between `points_min` and `points_max`. Partial credit for match / order / categorise; multi-select is all or nothing. Zero for wrong.
 4. **Leaderboard slide type + `LeaderboardService`** — `Top N` snapshot with `points_delta` per player (for the "+94" animation). Broadcasts on `leaderboard.updated` event. Cached in Redis per slide transition.
 5. **Reveal UI** — per-type `Presenter` components render a `reveal` state: correct-answer markers, bar chart with option images, animated score totals.
 6. **Quiz product scoping** — `/api/v1/quizzes/*` routes that filter the shared services to `product=quiz` and reject non-Quiz slide types at creation.
@@ -62,7 +69,7 @@ All registered with `products: ['quiz']` (except shared content types, which are
 | Type key | Scored? | Options? | Participant UI | Notes |
 |---|---|---|---|---|
 | `pick_answer_single` | Yes | 2–10 | Tap one option | Image + text per option |
-| `pick_answer_multi` | Yes | 2–10 | Tap multiple + Submit | Partial credit config |
+| `pick_answer_multi` | Yes | 2–10 | Tap multiple + Submit | All or nothing: exact correct set only |
 | `short_answer` | Yes | 1–5 accepted strings | Text input + Submit | Case-insensitive match (configurable), trim, collapse whitespace, exact-compare. No fuzzy match in v1. |
 | `match_pairs` | Yes | 2–8 pairs | Drag/tap to connect | Right column shuffled per participant (seed = participant_id + slide_id) |
 | `correct_order` | Yes | 3–8 items | Drag to reorder | Shuffled on mount, same seeded-shuffle pattern |
@@ -101,7 +108,7 @@ else:
 ```
 
 - Wrong answer → `0`
-- Multi-select partial credit: `points * (correct_selected / total_correct)` with no penalty for wrong-selected in v1 (configurable later)
+- Multi-select is all or nothing (user decision 2026-10-17): full points (with the usual speed-bonus interpolation) only when the selected set equals the correct set exactly; any subset or superset (including selecting every option) scores `0`, `isCorrect` false, `partialCreditRatio` 0. No `partial_credit` setting (an old one is accepted and dropped).
 - Match pairs: `points * (correct_pairs / total_pairs)`
 - Correct order: exact match = full; else `points * (items_in_correct_position / total)`
 - Categorise: `points * (items_in_correct_category / total)`
@@ -152,7 +159,7 @@ Registry seeds these on slide creation:
 | Type | Defaults |
 |---|---|
 | `pick_answer_single` | 2 empty options, 20s time, 50/100 points, speed bonus on, get_ready inherits deck |
-| `pick_answer_multi` | 3 empty options, 30s time, 50/100 points, partial credit on |
+| `pick_answer_multi` | 3 empty options, 30s time, 50/100 points (all-or-nothing scoring) |
 | `short_answer` | 1 empty accepted answer, 30s, 50/100, case-insensitive match |
 | `match_pairs` | 3 empty pairs, 45s, 50/100 |
 | `correct_order` | 4 empty items, 30s, 50/100 |
@@ -279,6 +286,100 @@ Add `quiz_v2_enabled` boolean to `users` table (or global config). Routes are mo
 
 **Phase 2 exit criteria:** Pest collection creates a Quiz deck, appends every Quiz type, edits, reorders, starts a session, submits answers, advances through reveal → leaderboard update → next slide — all green on PostgreSQL.
 
+### Implementation notes (Quiz Phases 1–2, done 2026-10-17)
+
+Phases 1 and 2 are built on the Quest v2 engine and pass on PostgreSQL: the full backend suite is green (1,133 tests), including `tests/Feature/Deck/Quiz/*` (the type, scoring and leaderboard tests, plus `QuizFeatureFlagTest`, `QuizAuthoringApiTest`, `QuizSessionApiTest` and `QuizV2EndToEndTest` for the engine and HTTP layer). `QuizV2EndToEndTest.php` is the exit test above, through the HTTP API only: it creates a quiz, appends all 8 quiz types, edits them (labels, `is_correct`, payloads, config, points), duplicates and reorders slides, starts a session, has 3 participants answer every scored type, reveals by all-answered, by the host and by the timer, checks both leaderboard slides, spins the wheel, ends the session and reads the review. Where the code differs from §1–§2, **the code is the contract** for Phases 3–4.
+
+**Where things live (backend/).**
+- Types (Phase 1): `app/Deck/Slides/Types/Quiz/*` (8 types + `AbstractQuizType`, `QuizOptions`, `Evaluation`; class docblocks hold every config / answer / aggregate shape). Scoring: `app/Deck/Scoring/{ScoringService, QuizScoring, LeaderboardService}.php`.
+- Engine (Phase 2): `app/Deck/Sessions/QuizRuntime.php` (everything the engine needs from scoring / leaderboard in one place), `SessionStateMachine` (reveal, spinner, leaderboard broadcast, auto-reveal), `SessionLauncher` (snapshots), `Participants/AnswerSubmissionService` (scoring on submit), `Services/Live/LiveAggregateService` (broadcast gating, `broadcastRevealed`), payloads in `app/Deck/Broadcasts/Payloads/{SubmittedCountUpdated, SlideRevealed, LeaderboardUpdated, SpinStarted}Payload.php` + `PublishSize`, `Http/Controllers/LeaderboardController.php`, `Http/Requests/Authoring/QuizFields.php`.
+- Routes: `routes/deck/quiz_{authoring, media, sessions, participants, review}.php` (`DeckRoutes::…(…, ['quiz'])`); the `quest_*.php` files are now registered for `['quest']` only. Config: `config/deck.php` → `routes.quiz`, `quiz_v2_default_enabled`, the `quiz` block (`get_ready_seconds` 5, `scoring` 50/100/on, `spin_seconds` 3, `leaderboard_size` 10, `leaderboard_max` 100, `reveal_leaderboard_limit` 10) and quiz rows in `option_limits`.
+- Migration `database/migrations/Deck/2026_10_20_000001_add_quiz_v2_enabled_to_users.php`; Filament → Users → Features → "Quiz v2"; `GET /api/v1/profile/show` returns `data.profile.quiz_v2_enabled` (effective value).
+
+#### Decisions taken
+- **Sessions prefix is `/api/v1/quiz-sessions/v2`, not `/quiz-sessions`.** Legacy Quiz v1 still serves `GET /api/v1/quiz-sessions/{id}/state` (and `POST …/change-question`); the same path for v2 would shadow it (numeric ids of both tables overlap). Authoring stays `/api/v1/quizzes` (legacy is `/quizes`). Frontend: `DECK_ROUTES.quiz = { authoring: "/quizzes", sessions: "/quiz-sessions/v2" }`.
+- **Rollout flag** exactly like Quest: `users.quiz_v2_enabled` or `QUIZ_V2_DEFAULT_ENABLED`; 403 `{message: "Quiz v2 is not enabled for your account.", data.code: 'feature_disabled'}` on every `/quizzes` route and on host advance / end / host state / host aggregate / host leaderboard. Participants are never gated.
+- **States.** Answering = `voting`; new terminal state `reveal` (`DeckSessionSlideRun::STATE_REVEAL`). Quiz runs never end in `closed`.
+- **Get ready.** Quiz decks default `settings.get_ready_seconds` to 5 (null resets to 5), new answer slides are seeded with it, and at session start a quiz answer slide whose `get_ready_seconds` is null gets 5. An explicit 0 means off.
+- **Scoring** happens synchronously on submit (`ScoringService` with `config_snapshot.scoring`), stored in `deck_participant_answers.is_correct / points_awarded` only. **Answers are final** (review fix): a second submit on a scored quiz run is 409 `invalid_state` `data.reason: 'already_answered'` and the first answer keeps its points. `deck_participants.total_points` (0 at join for quiz) moves **only at the reveal** (`QuizRuntime::applyRevealedPoints`, one UPDATE in the reveal transaction), so standing, leaderboards, `leaderboard_delta` and my-answer totals only ever reflect revealed runs. Quest answers are never scored (columns stay null) and Quest re-submissions still replace / merge.
+- **Auto-reveal**: after each accepted answer commits (and after a participant leaves), the run reveals when every participant still in the room (`left_at` null) has an answer on it.
+- **Leaving an active quiz run** (next / previous with `force` / jump / end) reveals it (broadcasting `slide.revealed`) instead of closing it. `close_voting` on a quiz run is the same as `reveal`.
+- **Spinner**: `start_voting` calls `SpinnerWheelSlideType::spin()` (weighted), stores the result in `config_snapshot._spin` (the `_` keeps it out of the participant config), goes to `voting` with `time_limit_seconds` = `ceil(spin_duration_ms / 1000)` (fallback `deck.quiz.spin_seconds`) and reveals itself at the deadline (`TransitionSlideRunJob` / `syncDue`), or on `reveal`. It takes no answers (409 `no_answers`).
+- **Leaderboard slide** is a content-kind run (navigation only). Becoming current broadcasts `leaderboard.updated`; size = `LeaderboardSlideType::limit(config)` (`top_n`, or 50 with `show_all_participants`). Ranks share ties (1, 2, 2, 4); `points_delta` is from the latest revealed scored run at or before the current slide.
+- **Authoring hooks wired**: `defaultSlideAttributes()` seeds new quiz slides (time limit per type unless the deck sets `default_time_limit`, `points_min` 50, `points_max` 100, `speed_bonus_enabled` true; spinner / leaderboard / content: null), `validateOptionPayload()` normalises option payloads on add / edit / bulk (errors keyed `payload.<key>`).
+
+#### Endpoint table
+Authoring: `/api/v1/quizzes` (Sanctum + `throttle:deck-author` + `deck.feature`, names `deck.quiz.*`). Same rows, request and response shapes as the Quest authoring table (QUEST_REDESIGN_PLAN.md "Implementation notes (Phases 2–3)"), including media / cover / option image and `POST /{deck}/sessions`, with these differences:
+
+| Method | Path | Quiz difference |
+|---|---|---|
+| POST | `/` | default title "Untitled quiz"; `settings.get_ready_seconds` defaults to 5 |
+| POST | `/{deck}/slides` | quiz + content types only (Quest-only types → 422 `unsupported_type`); seeds `timeLimitSeconds` (pick single 20, multi / short / order 30, match / categorise 45), `getReadySeconds` (deck, 5), `pointsMin` 50, `pointsMax` 100, `speedBonusEnabled` true |
+| PATCH | `/{deck}/slides/{slide}` | also `points_min?`, `points_max?` (int 0..1000 \| null), `speed_bonus_enabled?` (bool \| null). min ≤ max is checked against the stored values (422 on the field sent). Unscored types (spinner, leaderboard, content) → 422 "This slide type is not scored." null = default at session start |
+| POST / PATCH | `/{deck}/slides/{slide}/options[/{option}]` | also `is_correct?` (bool \| null). Payload goes through the type's `validateOptionPayload()`: match_pairs `{side: left\|right, pair_key}`, categorise `{correct_category_key}`, spinner `{weight?: 0.1..100}` (422 `payload.side` …) |
+| POST | `/{deck}/slides/bulk` | also `slides.N.points_min / points_max / speed_bonus_enabled` and `slides.N.options.M.is_correct`; errors `slides.N.points_min`, `slides.N.options.M.payload.side`, … ; all or nothing |
+
+On **Quest** routes the quiz-only fields answer 422 `"This field is only available on quiz slides."` (`points_min`, `points_max`, `speed_bonus_enabled`, `is_correct`, also inside bulk), and quiz types → 422 `unsupported_type`.
+
+Option counts (`config/deck.php option_limits`): pick single / multi 2–10, short_answer 1–5 (accepted answers), match_pairs 4–16 cells (2–8 pairs), correct_order 3–8, categorise 4–20 items (categories 2–5 live in config), spinner_wheel 2–12, leaderboard none.
+
+Live session: `/api/v1/quiz-sessions/v2` (names `deck.quiz.sessions.*`). Same rows as the Quest live table (by-code, state, participant-state, advance, end, join, answers, my-answer, aggregate, review; no Q&A routes), with these differences:
+
+| Method | Path | Auth | Quiz difference / response `data` | Errors |
+|---|---|---|---|---|
+| POST | `/{session}/advance` | host | `action` also `reveal` (quiz / spinner run in `voting`) and `insert_leaderboard` (a leaderboard run right after the current one, then moves to it). `close_voting` on a quiz run = reveal. `start_voting` on a spinner spins | 409 `invalid_state` `{slide_run_id, state, state_version}` (reveal outside `voting`, on a content / leaderboard run, twice; `insert_leaderboard` while a leaderboard is current), 422 `action` (`reveal` / `insert_leaderboard` on Quest routes) |
+| POST | `/{session}/slide-runs/{run}/answers` | participant | still **204**; scored on submit (answer row only); may reveal the run (all answered); brings back a participant who had left | as Quest; 409 `already_answered` on a second answer; spinner / leaderboard → 409 `no_answers` |
+| GET | `/{session}/slide-runs/{run}/my-answer` | participant (review token too) | before the reveal exactly the Quest shape `{slide_run_id, answer_payload, time_to_answer_ms, submitted_at}`; after it adds `{is_correct, points_awarded, correct_answer (the aggregate's correct block), total_points, rank}` (`points_awarded` of this run; `total_points` / `rank` the CURRENT standing over every revealed run, not a per-run snapshot) | 404 `You have not answered this slide.` |
+| POST | `/{session}/participants/join` | public | with a valid `X-Participant-Token` of this session (same device): **200** the SAME participant `{…, participant_token (unchanged), rejoined: true}` (stored name / avatar win, `left_at` cleared, points kept); otherwise 201 as before with `rejoined: false`. Quest too | as Quest |
+| POST | `/{session}/participants/leave` | participant (`X-Participant-Token`, or body `participant_token` for `sendBeacon`, form-encoded) | **204** (also when already left): sets `left_at`, broadcasts `participant.count.updated`, quiz: reveals the current run if everyone left in the room answered. Token stays valid. Quest too | 401, 404 |
+| GET | `/{session}/slide-runs/{run}/aggregate` | host or participant | participants: 403 `results_hidden` until the run is revealed, then `visibility: 'public'`, `final: true`, aggregate incl. `correct` (spinner: + `spin`) | as Quest |
+| GET | `/{session}/leaderboard?limit=1..100` | host (Sanctum, flag) **or** participant (`X-Participant-Token`, also after the end) | `{session_id, status, top_n (default 10), participant_count, leaderboard: [{rank, participant_id, display_name, emoji_avatar, total_points, points_delta}], me: {participant_id, total_points, rank, points_delta} \| null (host), server_time}` | 401, 403 `feature_disabled` (host), 404 (not the host / unknown session), 422 `limit` |
+| GET | `/{session}/review` | participant | runs' `my_answer` carries the correctness keys for revealed runs; unplayed runs `aggregate: null` | as Quest |
+
+#### State machine
+- Quiz answer types: `waiting → get_ready` (when `get_ready_seconds > 0`) `→ voting → reveal`. `voting → reveal` on `reveal` / `close_voting`, the time limit (`voting_started_at + time_limit_seconds`), every participant answered, leaving the slide, or `end`.
+- Spinner: `waiting → voting` (spinning, `time_limit_seconds` = spin length) `→ reveal`.
+- Leaderboard and content: stay `waiting`; `start_voting` / `reveal` → 409.
+- `reveal` is terminal (never reopened); navigation never changes the state of the run it lands on; going back from an active run needs `force:true` (409 `requires_force`).
+- Every transition bumps `state_version` and broadcasts `slide.state.changed` (public). `reveal` stamps `closed_at`.
+
+#### State payloads (additions for quiz sessions)
+- HOST STATE and PARTICIPANT STATE gain `quiz: {submitted_count (answers of participants still in the room), spin: {option_id, target_angle} | null, leaderboard: [rows] | null (when the current run is a leaderboard)}`; PARTICIPANT STATE's `quiz` also has `participant_count` (left_at null; host state has it top-level) and PARTICIPANT STATE has `standing: {participant_id, total_points, rank (null after leaving), points_delta}`.
+- Quiz runs (scored types) carry `options_hidden: bool`. A participant's current run in `waiting` / `get_ready` has `options: []`, `options_hidden: true` (title, body, config still there); so does the public `slide.changed`. Phones re-read GET state when the run enters `voting` (slide.state.changed). The presenter (`current_run`, host `runs`) and the post-session review always have the options.
+- Runs carry `config.scoring = {points_min, points_max, speed_bonus_enabled, time_limit_seconds}` (public: the "50p ── 100p" bar) on scored runs; never `is_correct`, `pair_key`, `correct_category_key` or answer keys (match_pairs / correct_order / categorise expose opaque string ids). Host `current_run` (presenter view) adds `answer_key`, per-option `option_id` and the live `aggregate`.
+- PARTICIPANT STATE before the reveal: `results_visibility: 'host'`, `aggregate: null`, `my_submission_for_current_slide` without correctness. After it: `results_visibility: 'public'`, the reveal aggregate, `my_submission_for_current_slide` with the my-answer correctness keys.
+
+#### Broadcasts (all with `slide_run_id` + `server_time`)
+- During `voting` on a quiz run: host channel `slide.aggregate.updated` (debounced) and `answer.submitted`; public channel only `slide.submitted_count.updated` `{slide_run_id, submitted_count, participant_count}` (same debounce). Never a public aggregate, never `slide.closed`.
+- `slide.revealed` (public) `{slide_run_id, type, state:'reveal', state_version, closed_at, aggregate (with correct), leaderboard_delta: [{participant_id, points_delta, new_total, new_rank}] (best first, ≤ 10), leaderboard_truncated, spin: {option_id, target_angle} | null, refetch}`. When it would not fit a Reverb publish: `aggregate: null, refetch: true` → GET `…/aggregate`. Order on a reveal: `slide.state.changed` then `slide.revealed`.
+- `spin.started` (public) `{slide_run_id, state_version, option_id, target_angle (degrees, under the 12 o'clock pointer), duration_seconds, ends_at}`; wheel geometry is in the run's `segments`.
+- `leaderboard.updated` (public) `{slide_run_id, top_n, leaderboard: [{rank, participant_id, display_name, emoji_avatar, total_points, points_delta}] | null, refetch}` after `slide.changed` + `slide.state.changed` when a leaderboard run becomes current; `refetch: true` → GET `…/leaderboard`.
+- Channels: `session.quiz.{public_channel_key}` and `private-host.quiz.v2.{session_id}`.
+
+#### Error codes
+Unchanged set (`not_found`, `conflict`, `invalid_state`, `unsupported_type`, `slide_limit_reached`, `forbidden`, `feature_disabled`, `unauthorized`, `results_hidden`, `too_many_requests`). Quiz-specific: 409 `invalid_state` for an illegal `reveal`, 409 `no_answers` on spinner / leaderboard answers, 403 `results_hidden` on a quiz aggregate before its reveal, 422 field errors `points_min` / `points_max` / `speed_bonus_enabled` / `is_correct` / `payload.*`.
+
+#### Review fixes (2026-10-17, after the 3 Quiz v2 reviews)
+- **Score oracle closed.** Answers are final for scored quiz runs (409 `invalid_state`, `data: {reason: 'already_answered', slide_run_id}`; checked before validation and again by the unique row under the run lock). Totals move only at the reveal (`QuizRuntime::applyRevealedPoints`: `UPDATE deck_participants … + SUM(points_awarded)` of the run, inside the reveal transaction, which holds the run lock that waits for in-flight answers, so every answer counts exactly once). Standing / leaderboard / `leaderboard_delta` / my-answer totals therefore never change during voting (regression: `QuizReviewFixesTest` "never moves standing…", "keeps the first answer final…").
+- **Shuffles** (`QuizOptions::shuffle`): options sorted by `HMAC-SHA256(app.key, "{run_id}:{participant_id}:{option_id}")` (participant id empty for the run-level order). Per participant: correct_order items, match_pairs right column, categorise items. No "never the given order" rotation (it leaked 2-item pairs and biased 3-item orders); the correct order can appear. The participant state uses the participant's order; public broadcasts (`slide.changed`) only ever carry options for an already-revealed run, in the run-level order; the presenter uses the run-level order. Proven in `QuizShuffleKeysTest` (2 items 50/50 over 4,000 seeds, 3 items uniform over 6,000, orders not recomputable with the old unkeyed hash or another key).
+- **Opaque option keys per run**: `'k' . substr(HMAC-SHA256(app.key, "deck-quiz-option:{salt}:{option_id}"), 0, 12)` where `salt = config_snapshot._key_salt`, 32 random hex chars drawn per run at session start (never serialised: `_` keys are stripped). Keys differ on every run and session of the same deck; runs snapshotted before the fix (no salt) keep the old per-option key so stored answers still match. (The salt stands in for the run id: the types only receive the snapshots, and a random salt is at least as strong.)
+- **Options hidden on phones until voting** (`options: []`, `options_hidden: true` in `waiting` / `get_ready`); phones re-read GET state when voting starts.
+- **Leave / rejoin / ghosts**: `POST …/participants/leave` (both products) and same-device rejoin (join with the stored token → same participant, 200 `rejoined: true`). An answer from a participant who left brings them back. `participant_count`, `submitted_count`, auto-reveal and leaderboards (`LeaderboardService` ranks `left_at` null only) consider only participants in the room; a participant who left reads `standing.rank: null` with their own total.
+- **`participant_count`** in the participant state `quiz` block (phones keep "x / y" after a reload). Quest state is unchanged.
+- **`insert_leaderboard`** advance action (host, quiz only; plan §3.2): creates a leaderboard run (default config `{top_n: 10, show_all_participants: false}`, no authoring slide, title "Leaderboard") right after the current run, shifts later runs' `position_snapshot` by one, then moves to it like `next_slide` (an active run is revealed first): `slide.changed` (total_slides + 1), `slide.state.changed`, `leaderboard.updated`. 409 when the current run is already a leaderboard; 422 on Quest routes.
+- **Rate shape**: per-token `deck-participant` (240 / min) is the main guard; the shared per-IP cap on token routes (answers, my-answer, aggregate, leaderboard, leave) is raised from 1,800 to **6,000 / min** (`ParticipantReadAccess::IP_PER_MINUTE`): 500 phones on one NAT answering every 20 s = 500 answers + ≤ 500 reads per question = 3,000 / min, so 2× headroom. GET state is per-token only. Quiz phones make ONE read after a reveal: GET state (it carries `my_submission_for_current_slide` with the correctness keys and `standing`), not state and my-answer.
+- **Host channel** `private-host.{product}.v2.{id}` now also requires the product's v2 rollout flag (DeckFeature), like the host HTTP routes.
+- **correct_order aggregate**: `most_common_order` is `{order, count, tied: bool}` — `tied` is true when two or more different orders share the top count (deterministic order still picked), so the presenter can avoid calling a tie (or a 1-1-1 split) "most common".
+- Docblock fix: my-answer's `total_points` / `rank` are the current standing, not "as of this run".
+- **Deferred:** §3.4 frontend E2E / visual regression / per-component unit tests are NOT built (the frontend has no test runner yet); logged here and in §3.4.
+
+#### For the frontend (Phases 3–4)
+- Use `sessionsBase('quiz') = '/quiz-sessions/v2'`. Gate the v2 quiz UI on `profile.quiz_v2_enabled`; any authoring / hosting call can still answer 403 `feature_disabled`.
+- Presenter: `start_voting` → countdown from `ends_at` (get_ready), then voting; show `quiz.submitted_count` / `slide.submitted_count.updated`, the host aggregate from the host channel, a Reveal button (`action: 'reveal'`), then Next. On `slide.revealed` animate the correct answer and `leaderboard_delta`.
+- Participant: after answering show "submitted" (answers are final; a 409 `already_answered` means it is already stored, keep the locked state); on `slide.revealed` (or `state: 'reveal'` on resync) make ONE read, GET state (`my_submission_for_current_slide` has `is_correct`, `points_awarded`, `total_points`, `rank`; `standing`), not state and my-answer. Never expect correctness before the reveal. While `options_hidden` is true show the question + "Get ready…"; re-read GET state when the run enters `voting`; render options exactly in the order the run view gives. "Leave session" calls `POST …/participants/leave` (best effort on pagehide with `fetch(…, {keepalive: true})` or `sendBeacon` + form-encoded `participant_token`); a reload with a stored token re-joins with `X-Participant-Token` (same participant).
+- Spinner: on `spin.started` rotate to `target_angle` over `duration_seconds`; `slide.revealed.spin` confirms the winner.
+- Leaderboard slide: render `leaderboard.updated.leaderboard` (or `quiz.leaderboard` from state); `points_delta` drives the "+94".
+
 ---
 
 ## Phase 3 — Frontend: Quiz slide type components
@@ -376,6 +477,8 @@ ApexCharts handles bar-chart animation. Framer Motion handles:
 
 ### 3.4 Tests
 
+> **Deferred (2026-10-17):** none of the items below is built yet: the frontend has no test runner. The backend side is covered by `tests/Feature/Deck/Quiz/*` (incl. `QuizV2EndToEndTest`, `QuizReviewFixesTest`, `QuizShuffleKeysTest`).
+
 - Cypress/Playwright E2E: full quiz flow across every type with 3 fake participants, all submissions recorded, reveal correct, leaderboard updated.
 - Visual regression snapshots of each reveal screen.
 - Per-type `Participant` component unit tests — submit-disabled invariants, confirm modals, validation messages.
@@ -401,6 +504,8 @@ Reuse main plan §5.2 harness, focused on Quiz specifics:
 - 500 participants submit answers in a 20-second window → all scored, leaderboard updated within 1s of reveal
 - 100 concurrent reconnects during `answering` → all clients receive correct state + remaining time
 - Private-channel aggregate floods: host-only `answer.submitted` events arriving at ~25/sec should not back-pressure Reverb
+- Voting-start burst (added 2026-10-17 after the review fixes): options are hidden on phones until voting, so every phone reads its own state when voting opens (0–0.4 s jitter) — 500 phones ≈ 500 state reads within half a second. Measure p95 latency and worker saturation (the dev server runs 4 PHP workers); widen the jitter or push per-participant options another way if it hurts the speed bonus.
+- Reveal: one state read per phone (0–2 s jitter) — 500 reads over 2 s.
 
 ### 4.3 Feature flag rollout
 
@@ -409,19 +514,11 @@ Reuse main plan §5.2 harness, focused on Quiz specifics:
 3. Default-on for everyone; legacy Quiz v1 reachable via settings toggle for 2 weeks
 4. After 2+ stable weeks default-on: legacy removal (§4.4)
 
-### 4.4 Legacy Quiz v1 removal checklist
+### 4.4 Legacy Quiz v1 — what stays, and what v2 needs before any removal
 
-Only after Quiz v2 is stable and default:
+Legacy Quiz v1 stays (user decision 2026-10-17). It still owns: self-paced / exam attempts (`quiz_mode`, `/attempt/...`, `quiz-attempts-url`), the question bank (`quiz_q_bank*`, `quiz_bank_questions`), quiz reports, Discover / public templates, and the Fun Games import (`ImportService::libraryQuizzes`). Do not drop `quizes`, `questions`, `quiz_sessions`, `quiz_participants`, `user_quiz_answers`, `quiz_origins` or the bank tables.
 
-- Delete legacy migrations-revert for: `quizes`, `questions`, `quiz_sessions`, `quiz_participants`, `user_quiz_answers`, `quiz_origins`, `quiz_q_bank_categories`, `quiz_q_banks`, `quiz_q_bank_questions`, `quiz_bank_questions`
-- Delete `backend/app/Models/Quiz/*` (old)
-- Delete `backend/app/Http/Controllers/api/v1/Quiz/*` (old)
-- Delete `frontend/src/features/quiz/components/{CreateQuiz,QuizEdit,QuizPublic,QuizReports}` old components
-- Delete `frontend/src/app/(protected)/quiz-creator/`, `quiz-edit/`, `quiz-play/`, `quiz-reports/`
-- Delete `frontend/src/app/(public)/attempt/quize/`, `(public)/live/quiz/`, `(public)/quiz-public/`, `(public)/quiz-result-view/`
-- Delete old Redux slices / services under `features/quiz/` no longer used
-- Grep audit: `grep -rn "from.*components/quiz.*QuizEdit" frontend/src` → zero
-- Remove `quiz_v2_enabled` feature flag
+Only after Quiz v2 has a home for every item above may removal be planned again, as a separate plan. Until then the cutover is limited to: the dashboard "Create a new quiz" modal and My Library create v2 decks for users with `quiz_v2_enabled`, and live hosting of those decks runs on v2.
 
 ### 4.5 Docs
 

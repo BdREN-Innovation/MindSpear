@@ -4,13 +4,22 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { ParticipantQaFeed } from "@/features/deck/live/qaFeed";
-import type { ParticipantRunView, SlideAggregate, StoredAnswer } from "@/features/deck/types";
+import type {
+	ParticipantRunView,
+	QuizScoringConfig,
+	QuizStanding,
+	SlideAggregate,
+	StoredAnswer,
+} from "@/features/deck/types";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
+import type { ParticipantQuizInfo, QuizReveal } from "@/features/deck-editor/slides/types";
 
 // Mounts the registry's Participant component for a run. The type components
 // are owned by other modules, so each one sits in an error boundary: a crash
 // in one slide type shows a small fallback instead of taking the session
 // screen down, and the boundary resets on the next run.
+// Quiz sessions also pass scoring (points bar), reveal (my result), standing
+// and the live quiz block; Quest never sets them.
 
 export interface SlideStageProps {
 	run: ParticipantRunView;
@@ -22,11 +31,28 @@ export interface SlideStageProps {
 	aggregate?: SlideAggregate | null;
 	qa?: ParticipantQaFeed;
 	mode?: "live" | "preview" | "review";
+	scoring?: QuizScoringConfig | null;
+	reveal?: QuizReveal | null;
+	standing?: QuizStanding | null;
+	quiz?: ParticipantQuizInfo | null;
 }
 
 const noSubmit = async () => undefined;
 
-export function SlideStage({ run, theme, mySubmission, onSubmit, disabled, aggregate, qa, mode = "live" }: SlideStageProps) {
+export function SlideStage({
+	run,
+	theme,
+	mySubmission,
+	onSubmit,
+	disabled,
+	aggregate,
+	qa,
+	mode = "live",
+	scoring,
+	reveal,
+	standing,
+	quiz,
+}: SlideStageProps) {
 	const entry = getSlideType(run.type);
 	if (!entry) return <SlideFallback title={run.title} message="This slide type isn't supported on this device yet." />;
 	const Participant = entry.Participant;
@@ -41,6 +67,10 @@ export function SlideStage({ run, theme, mySubmission, onSubmit, disabled, aggre
 				aggregate={aggregate ?? null}
 				qa={qa}
 				mode={mode}
+				scoring={scoring}
+				reveal={reveal}
+				standing={standing}
+				quiz={quiz}
 			/>
 		</SlideErrorBoundary>
 	);

@@ -1,13 +1,16 @@
 import type { DeckProduct } from "../types";
 
 // URL prefixes under /api/v1 per product, mirroring backend config('deck.routes').
-// Quiz v2 is not registered on the backend yet; its prefixes follow the
-// config comment there ('quizzes' / 'quiz-sessions') and must be confirmed
-// when the backend adds the entry.
+// Quiz v2 sessions live under /quiz-sessions/v2: legacy Quiz v1 still owns
+// /quiz-sessions/{id}/state (numeric ids of both tables overlap). Authoring is
+// /quizzes (legacy is /quizes).
 export const DECK_ROUTES: Record<DeckProduct, { authoring: string; sessions: string }> = {
 	quest: { authoring: "/quests/v2", sessions: "/quest-sessions/v2" },
-	quiz: { authoring: "/quizzes", sessions: "/quiz-sessions" },
+	quiz: { authoring: "/quizzes", sessions: "/quiz-sessions/v2" },
 };
+
+/** Every product with v2 deck routes, in the order a product-agnostic join-code lookup tries them. */
+export const DECK_PRODUCTS: readonly DeckProduct[] = ["quest", "quiz"];
 
 export function authoringBase(product: DeckProduct): string {
 	return DECK_ROUTES[product].authoring;

@@ -51,6 +51,44 @@ export function useAnnounce(): (message: string) => void {
 	return useContext(ParticipantShellContext).announce;
 }
 
+/** A polite live region's text and the function that sets it (AppShell renders the region). */
+export interface Announcer {
+	message: string;
+	announce: (message: string) => void;
+}
+
+/** Announcements stay in the region this long, then it empties (no stale "10 seconds left." on a later slide). */
+const ANNOUNCEMENT_TTL_MS = 5000;
+
+/**
+ * The live region's state. A screen that announces from outside its AppShell
+ * (the shell's context only reaches its children) creates one and passes it
+ * as `announcer`, so both share the one region.
+ */
+export function useAnnouncer(): Announcer {
+	// Clear then set, so the same sentence twice is announced twice.
+	const [message, setMessage] = useState("");
+	const setTimer = useRef<number | undefined>(undefined);
+	const clearTimer = useRef<number | undefined>(undefined);
+	const announce = useCallback((next: string) => {
+		window.clearTimeout(setTimer.current);
+		window.clearTimeout(clearTimer.current);
+		setMessage("");
+		setTimer.current = window.setTimeout(() => {
+			setMessage(next);
+			clearTimer.current = window.setTimeout(() => setMessage(""), ANNOUNCEMENT_TTL_MS);
+		}, 60);
+	}, []);
+	useEffect(
+		() => () => {
+			window.clearTimeout(setTimer.current);
+			window.clearTimeout(clearTimer.current);
+		},
+		[]
+	);
+	return useMemo(() => ({ message, announce }), [message, announce]);
+}
+
 /** Sets <meta name="theme-color"> while mounted (status bar / Android task colour), restoring the old value after. */
 function useThemeColorMeta(color: string) {
 	useEffect(() => {
@@ -93,6 +131,8 @@ export interface AppShellProps {
 	transitionDirection?: NavDirection;
 	/** Element id of the scrolling content (for skip links / tests). */
 	contentId?: string;
+	/** Share a live region created outside the shell (useAnnouncer); default: the shell's own. */
+	announcer?: Announcer;
 }
 
 export function AppShell({
@@ -105,6 +145,7 @@ export function AppShell({
 	transitionKey,
 	transitionDirection,
 	contentId,
+	announcer: sharedAnnouncer,
 }: AppShellProps) {
 	const resolved = useMemo(() => (typeof theme === "object" && theme ? theme : getDeckTheme(theme)), [theme]);
 	const keyboardInset = useKeyboardInset();
@@ -113,15 +154,9 @@ export function AppShell({
 	const direction = transitionDirection ?? mountDirection;
 	useThemeColorMeta(resolved.themeColor);
 
-	// Live region: clear then set, so the same sentence twice is announced twice.
-	const [announcement, setAnnouncement] = useState("");
-	const timer = useRef<number | undefined>(undefined);
-	const announce = useCallback((message: string) => {
-		window.clearTimeout(timer.current);
-		setAnnouncement("");
-		timer.current = window.setTimeout(() => setAnnouncement(message), 60);
-	}, []);
-	useEffect(() => () => window.clearTimeout(timer.current), []);
+	// Live region (clear then set; empties itself after a few seconds).
+	const ownAnnouncer = useAnnouncer();
+	const { message: announcement, announce } = sharedAnnouncer ?? ownAnnouncer;
 
 	const value = useMemo(
 		() => ({ theme: resolved, keyboardInset, managesKeyboard: true, announce }),

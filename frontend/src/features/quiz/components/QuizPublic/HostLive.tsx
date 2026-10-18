@@ -23,13 +23,9 @@ const HostLive: React.FC = () => {
 		dispatch(clearQuestSession());
 	}, [dispatch]);
 
-	const generateFormattedTitle = (baseTitle = "quiz Title") => {
-		const formattedBase = (baseTitle || "quiz Title").replace(/ /g, "_");
-		const formattedDate = moment().format("MMM_D");
-		const formattedTime = moment().format("HH_mm_A");
-
-		return `${formattedBase}_${formattedDate}_${formattedTime}`;
-	};
+	// A readable session name, e.g. "Science quiz · 18 Oct, 12:15" (it was "Science_quiz_Oct_18_12_15_PM").
+	const generateFormattedTitle = (baseTitle = "Live quiz") =>
+		`${baseTitle || "Live quiz"} · ${moment().format("D MMM, HH:mm")}`;
 
 	const getLiveEndDatetime = (quiz: any) => {
 		const now = moment();
@@ -102,7 +98,7 @@ const HostLive: React.FC = () => {
 			<MdLiveTv className="text-[30px]" />
 			<div className="flex flex-col">
 				<h5 className="text-[17px] font-bold">Host Live</h5>
-				<p className="text-[#858585]">Display from a big screen</p>
+				<p className="text-[#858585]">Run it together, shown on a big screen</p>
 			</div>
 		</button>
 	);

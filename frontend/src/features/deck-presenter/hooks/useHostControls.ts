@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { toDeckApiError } from "@/features/deck/api/errors";
-import { questSessionApi } from "@/features/deck/api/sessionApi";
+import { questSessionApi, type SessionApi } from "@/features/deck/api/sessionApi";
 import type { AdvanceAction, AdvanceInput, HostSessionState } from "@/features/deck/types";
 
 // Host transitions (POST advance / end). Rules that keep the room safe:
@@ -26,6 +26,8 @@ export interface HostControls {
 
 interface Options {
 	sessionId: number;
+	/** The product's host API (sessionApiFor(product)); default Quest. */
+	api?: SessionApi;
 	/** Apply a fresh HOST STATE (the action's response). */
 	onState: (state: HostSessionState) => void;
 	resync: () => Promise<void>;
@@ -38,7 +40,7 @@ function notify(kind: "info" | "error", message: string) {
 	else toast[kind](message, { toastId: TOAST_ID });
 }
 
-export function useHostControls({ sessionId, onState, resync }: Options): HostControls {
+export function useHostControls({ sessionId, api = questSessionApi, onState, resync }: Options): HostControls {
 	const [pending, setPending] = useState<PendingAction | null>(null);
 	// The ref guards synchronously (two key events can land before a re-render).
 	const pendingRef = useRef<PendingAction | null>(null);
@@ -62,7 +64,7 @@ export function useHostControls({ sessionId, onState, resync }: Options): HostCo
 		async (input: AdvanceInput): Promise<AdvanceOutcome> => {
 			if (!begin(input.action)) return "busy";
 			try {
-				onStateRef.current(await questSessionApi.advance(sessionId, input));
+				onStateRef.current(await api.advance(sessionId, input));
 				return "ok";
 			} catch (reason) {
 				const error = toDeckApiError(reason);
@@ -81,13 +83,13 @@ export function useHostControls({ sessionId, onState, resync }: Options): HostCo
 				finish();
 			}
 		},
-		[sessionId]
+		[api, sessionId]
 	);
 
 	const end = useCallback(async (): Promise<boolean> => {
 		if (!begin("end")) return false;
 		try {
-			onStateRef.current(await questSessionApi.end(sessionId));
+			onStateRef.current(await api.end(sessionId));
 			return true;
 		} catch (reason) {
 			const error = toDeckApiError(reason);
@@ -98,7 +100,7 @@ export function useHostControls({ sessionId, onState, resync }: Options): HostCo
 		} finally {
 			finish();
 		}
-	}, [sessionId]);
+	}, [api, sessionId]);
 
 	return { pending, advance, end };
 }

@@ -3,21 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-import { questSessionApi } from "@/features/deck/api/sessionApi";
+import { sessionApiFor } from "@/features/deck/api/sessionApi";
 import { useHostQaFeed } from "@/features/deck/live/qaFeed";
 import { useDeckHostChannel } from "@/features/deck/live/useDeckHostChannel";
 import { useDeckSessionChannel } from "@/features/deck/live/useDeckSessionChannel";
 import { DeckThemeProvider, getDeckTheme } from "@/features/deck/theme";
-import type { Deck, HostSessionState, ParticipantRunView, SlideAggregate } from "@/features/deck/types";
+import type { Deck, DeckProduct, HostSessionState, ParticipantRunView, SlideAggregate } from "@/features/deck/types";
 import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/slides/types";
+import { productCopy } from "@/features/deck-editor/components/productCopy";
 import { useFullscreen } from "../hooks/useFullscreen";
 import { useHostControls } from "../hooks/useHostControls";
 import { usePresenterKeyboard } from "../hooks/usePresenterKeyboard";
 import { aggregateEntries, aggregateResponses } from "../lib/format";
-import { isActiveState, primaryActionFor, runKindOf, stateLabel } from "../lib/runKind";
+import { isActiveState, primaryActionFor, revealsOnLeave, runKindOf, stateLabel } from "../lib/runKind";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ConnectionBanner } from "./ConnectionBanner";
-import { ControlBar, type ResponseTally } from "./ControlBar";
+import { ControlBar, type AnsweredTally, type ResponseTally } from "./ControlBar";
 import { JoinBanner } from "./JoinBanner";
 import { QaModerationSheet } from "./QaModerationSheet";
 import { QrSidebar } from "./QrSidebar";
@@ -29,28 +30,49 @@ import { SlideStage } from "./SlideStage";
 // useDeckSessionChannel (public channel + host channel merge + REST resync);
 // every host action's response (a full HOST STATE) is fed back in as a
 // snapshot, so the screen moves even when the socket is slow or down.
+//
+// Quiz sessions (product 'quiz'): the primary action runs Start → (get
+// ready) → Reveal → Next, a spinner Spin → (reveals by itself) → Next, and
+// leaderboard slides only navigate. During answering the bar shows
+// "x / y answered"; the Presenters get `quiz` (count, spin, leaderboard,
+// reveal delta). Leaving a quiz run that is still answering reveals it
+// (server side), so the arrow / slide list ask first. The bar's trophy
+// button inserts a leaderboard slide right after the current one and shows
+// it (advance insert_leaderboard; it asks first when that reveals a run).
 
-type Confirm = { kind: "back" } | { kind: "jump"; target: ParticipantRunView } | { kind: "end" } | { kind: "exit" };
+type Confirm =
+	| { kind: "back" }
+	| { kind: "jump"; target: ParticipantRunView }
+	/** Quiz: forward away from a run that is still answering (it gets revealed). */
+	| { kind: "leave"; target: ParticipantRunView | null }
+	/** Quiz: insert a leaderboard while the current run is still answering (it gets revealed). */
+	| { kind: "leaderboard" }
+	| { kind: "end" }
+	| { kind: "exit" };
 
 export interface LivePresenterProps {
 	deckId: number;
+	/** Default quest. */
+	product?: DeckProduct;
 	deck: Deck | null;
 	initialState: HostSessionState;
 	resumed: boolean;
 	onPresentAgain: () => void;
 }
 
-export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAgain }: LivePresenterProps) {
+export function LivePresenter({ deckId, product = "quest", deck, initialState, resumed, onPresentAgain }: LivePresenterProps) {
 	const router = useRouter();
 	const sessionId = initialState.session_id;
-	const editorHref = `/quests/${deckId}/edit`;
+	const api = sessionApiFor(product);
+	const copy = productCopy(product);
+	const editorHref = copy.editHref(deckId);
 
 	// Latest action response; the channel hook applies each new one as a snapshot.
 	const [seed, setSeed] = useState<HostSessionState>(initialState);
-	const fetchState = useCallback((signal: AbortSignal) => questSessionApi.getState(sessionId, signal), [sessionId]);
+	const fetchState = useCallback((signal: AbortSignal) => api.getState(sessionId, signal), [api, sessionId]);
 
 	const channel = useDeckSessionChannel<HostSessionState>({
-		product: "quest",
+		product,
 		publicChannelKey: initialState.public_channel_key,
 		fetchState,
 		initialState: seed,
@@ -59,12 +81,12 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 		resyncOnSlideChange: true,
 		pollWhileDisconnectedMs: 5000,
 	});
-	const hostChannel = useDeckHostChannel({ product: "quest", sessionId });
+	const hostChannel = useDeckHostChannel({ product, sessionId });
 	const { resync } = channel;
 	const latest = channel.latestState ?? seed;
 	const ended = channel.sessionStatus === "ended";
 
-	const { pending, advance, end } = useHostControls({ sessionId, onState: setSeed, resync });
+	const { pending, advance, end } = useHostControls({ sessionId, api, onState: setSeed, resync });
 	const busy = pending !== null;
 	const fullscreen = useFullscreen();
 
@@ -102,7 +124,7 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 	);
 
 	const qaFeed = useHostQaFeed({
-		product: "quest",
+		product,
 		sessionId,
 		runId: kind === "qa" ? runId : null,
 		qaEvents: channel.qaEvents,
@@ -120,15 +142,35 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 		return { count: Math.max(entries, people), people };
 	}, [kind, runId, aggregate, hostChannel.responseCounts]);
 
+	// Quiz extras of THIS run (the block resets on slide.changed; a stale one is ignored).
+	const quiz = channel.quiz && channel.quiz.slide_run_id === runId ? channel.quiz : null;
+
+	// "12 / 30 answered": the public submitted count, the host aggregate and
+	// answer.submitted can each be ahead of the others; answers never go away.
+	const answered = useMemo<AnsweredTally | null>(() => {
+		if (kind !== "quiz" || runId === null || state === "waiting") return null;
+		const count = Math.max(
+			quiz?.submitted_count ?? 0,
+			aggregateResponses(aggregate) ?? 0,
+			hostChannel.responseCounts[runId] ?? 0
+		);
+		return { count, of: quiz?.participant_count ?? channel.participantCount };
+	}, [kind, runId, state, quiz, aggregate, hostChannel.responseCounts, channel.participantCount]);
+
+	const loadLeaderboard = useCallback(
+		(limit?: number) => api.getLeaderboard(sessionId, limit ? { limit } : {}),
+		[api, sessionId]
+	);
+
 	const hostActions = useMemo<HostActions>(
 		() => ({
 			sessionId,
-			product: "quest",
+			product,
 			qa: kind === "qa" ? qaFeed : undefined,
-			loadAggregatePage:
-				runId !== null ? (page: number) => questSessionApi.getAggregate(sessionId, runId, { page }) : undefined,
+			loadAggregatePage: runId !== null ? (page: number) => api.getAggregate(sessionId, runId, { page }) : undefined,
+			loadLeaderboard: product === "quiz" ? loadLeaderboard : undefined,
 		}),
-		[sessionId, kind, qaFeed, runId]
+		[api, sessionId, product, kind, qaFeed, runId, loadLeaderboard]
 	);
 
 	const sessionInfo = useMemo<PresenterSessionInfo>(
@@ -140,16 +182,18 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 
 	useEffect(() => {
 		if (resumed)
-			toast.info("This quest was already live: you're back in that session.", { toastId: `deck-resumed-${sessionId}` });
-	}, [resumed, sessionId]);
+			toast.info(`This ${copy.noun} was already live: you're back in that session.`, {
+				toastId: `deck-resumed-${sessionId}`,
+			});
+	}, [resumed, sessionId, copy.noun]);
 
 	useEffect(() => {
 		const previous = document.title;
-		document.title = `Presenting · ${latest.session.deck_title || "Quest"}`;
+		document.title = `Presenting · ${latest.session.deck_title || copy.Noun}`;
 		return () => {
 			document.title = previous;
 		};
-	}, [latest.session.deck_title]);
+	}, [latest.session.deck_title, copy.Noun]);
 
 	// Without the private host channel, hidden-results aggregates and Q&A
 	// moderation copies never arrive: fall back to reading state.
@@ -190,6 +234,9 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 		[advance]
 	);
 
+	// Quiz / spinner runs that are still answering get revealed when the host leaves them.
+	const leavingReveals = revealsOnLeave(kind) && isActiveState(state);
+
 	const onPrimary = () => {
 		if (busy || ended || confirm) return;
 		if (primary.kind === "wait") return;
@@ -209,7 +256,8 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 
 	const onNext = () => {
 		if (busy || ended || isLast) return;
-		void advance({ action: "next_slide" });
+		if (leavingReveals) setConfirm({ kind: "leave", target: null });
+		else void advance({ action: "next_slide" });
 	};
 
 	const onJump = (target: ParticipantRunView) => {
@@ -217,12 +265,21 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 		if (busy || ended || target.id === runId) return;
 		const backwards = position !== null && target.position < position;
 		if (backwards && isActiveState(state)) setConfirm({ kind: "jump", target });
+		else if (leavingReveals) setConfirm({ kind: "leave", target });
 		else void jumpTo(target, false);
 	};
 
 	const onExit = () => {
 		if (ended) router.push(editorHref);
 		else setConfirm({ kind: "exit" });
+	};
+
+	// Quiz: a leaderboard slide right after this one, shown at once (not after a leaderboard).
+	const canInsertLeaderboard = product === "quiz" && !!runOrSlim && kind !== "leaderboard";
+	const onInsertLeaderboard = () => {
+		if (busy || ended || confirm || !canInsertLeaderboard) return;
+		if (leavingReveals) setConfirm({ kind: "leaderboard" });
+		else void advance({ action: "insert_leaderboard" });
 	};
 
 	const endSession = async (thenExit: boolean) => {
@@ -258,9 +315,11 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 			<DeckThemeProvider theme={theme} className="h-full w-full">
 				<SessionSummary
 					deckId={deckId}
+					product={product}
 					state={latest}
 					participantCount={channel.participantCount}
 					onPresentAgain={onPresentAgain}
+					loadLeaderboard={product === "quiz" ? loadLeaderboard : undefined}
 				/>
 			</DeckThemeProvider>
 		);
@@ -272,6 +331,16 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 			? `Slide ${position} of ${totalSlides}${run?.title ? `: ${run.title}` : ""}.${label ? ` ${label}.` : ""}`
 			: "";
 	const activeVerb = kind === "qa" ? "Q&A" : "Voting";
+	const backTitle = revealsOnLeave(kind)
+		? kind === "spin"
+			? "Stop the wheel and go back?"
+			: "Reveal the answer and go back?"
+		: `Close ${activeVerb === "Q&A" ? "Q&A" : "voting"} and go back?`;
+	const backDescription = revealsOnLeave(kind)
+		? kind === "spin"
+			? "The wheel is still spinning. Going back stops it where it lands."
+			: "Players are still answering this slide. Going back reveals the answer now, and answering can't be reopened."
+		: `${activeVerb} is still open on this slide. Going back closes it, and it can't be reopened.`;
 
 	return (
 		<DeckThemeProvider
@@ -279,7 +348,7 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 			as="main"
 			className="relative flex h-full w-full overflow-hidden bg-[var(--deck-bg)] text-[var(--deck-text)]"
 		>
-			<h1 className="sr-only">Presenting {latest.session.deck_title || "quest"}</h1>
+			<h1 className="sr-only">Presenting {latest.session.deck_title || copy.noun}</h1>
 			<p className="sr-only" aria-live="polite">
 				{announcement}
 			</p>
@@ -305,10 +374,11 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 						theme={theme}
 						host={hostActions}
 						session={sessionInfo}
+						quiz={quiz}
 						// Inside the scaled slide, so the Presenters' fixed clearance for it fits at any screen size.
 						cornerOverlay={<RunTimerChip kind={kind} runState={runState} />}
 					/>
-					<GetReadyOverlay runState={runState} />
+					<GetReadyOverlay runState={runState} kind={kind} />
 					{kind === "qa" && moderationOpen && (
 						<QaModerationSheet feed={qaFeed} onClose={() => setModerationOpen(false)} />
 					)}
@@ -331,6 +401,7 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 					onSlideListOpenChange={setSlideListOpen}
 					participantCount={channel.participantCount}
 					responses={responses}
+					answered={answered}
 					connection={channel.status}
 					qrOpen={qrOpen}
 					onToggleQr={() => setQrOpen((open) => !open)}
@@ -343,6 +414,18 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 								}
 							: null
 					}
+					insertLeaderboard={
+						product === "quiz"
+							? {
+									onInsert: onInsertLeaderboard,
+									disabled: !canInsertLeaderboard,
+									title:
+										kind === "leaderboard"
+											? "The leaderboard is showing"
+											: "Show the leaderboard now (adds a leaderboard slide after this one)",
+								}
+							: null
+					}
 					fullscreen={fullscreen}
 					onEnd={() => setConfirm({ kind: "end" })}
 					onExit={onExit}
@@ -351,10 +434,10 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 
 			<ConfirmDialog
 				open={confirm?.kind === "back" || confirm?.kind === "jump"}
-				title={`Close ${activeVerb === "Q&A" ? "Q&A" : "voting"} and go back?`}
-				description={`${activeVerb} is still open on this slide. Going back closes it, and it can't be reopened.`}
+				title={backTitle}
+				description={backDescription}
 				confirm={{
-					label: "Close and go back",
+					label: revealsOnLeave(kind) ? (kind === "spin" ? "Go back" : "Reveal and go back") : "Close and go back",
 					onSelect: () => {
 						const current = confirm;
 						setConfirm(null);
@@ -366,9 +449,52 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 				onCancel={() => setConfirm(null)}
 			/>
 			<ConfirmDialog
+				open={confirm?.kind === "leave"}
+				title={kind === "spin" ? "Move on while the wheel spins?" : "Reveal the answer and move on?"}
+				description={
+					kind === "spin"
+						? "The wheel stops where it lands and the next slide opens."
+						: "Players are still answering. Moving on reveals this slide's answer now, and answering can't be reopened."
+				}
+				confirm={{
+					label: kind === "spin" ? "Move on" : "Reveal and move on",
+					onSelect: () => {
+						const current = confirm;
+						setConfirm(null);
+						if (current?.kind !== "leave") return;
+						if (current.target) void jumpTo(current.target, false);
+						else void advance({ action: "next_slide" });
+					},
+				}}
+				cancelLabel="Stay here"
+				onCancel={() => setConfirm(null)}
+			/>
+			<ConfirmDialog
+				open={confirm?.kind === "leaderboard"}
+				title={kind === "spin" ? "Show the leaderboard while the wheel spins?" : "Reveal the answer and show the leaderboard?"}
+				description={
+					kind === "spin"
+						? "The wheel stops where it lands and a leaderboard slide opens after this one."
+						: "Players are still answering. Showing the leaderboard reveals this slide's answer now, and answering can't be reopened."
+				}
+				confirm={{
+					label: kind === "spin" ? "Show leaderboard" : "Reveal and show leaderboard",
+					onSelect: () => {
+						setConfirm(null);
+						void advance({ action: "insert_leaderboard" });
+					},
+				}}
+				cancelLabel="Stay here"
+				onCancel={() => setConfirm(null)}
+			/>
+			<ConfirmDialog
 				open={confirm?.kind === "end"}
 				title="End the session?"
-				description="Voting closes and everyone is disconnected. This session can't be reopened."
+				description={
+					product === "quiz"
+						? "Answering ends (an open question is revealed) and everyone is disconnected. This session can't be reopened."
+						: "Voting closes and everyone is disconnected. This session can't be reopened."
+				}
 				confirm={{ label: "End session", tone: "danger", onSelect: () => void endSession(false) }}
 				onCancel={() => setConfirm(null)}
 				initialFocus="cancel"
@@ -377,7 +503,7 @@ export function LivePresenter({ deckId, deck, initialState, resumed, onPresentAg
 			<ConfirmDialog
 				open={confirm?.kind === "exit"}
 				title="Leave present mode?"
-				description="The session stays live: participants keep their place, and presenting this quest again picks it back up."
+				description={`The session stays live: participants keep their place, and presenting this ${copy.noun} again picks it back up.`}
 				confirm={{ label: "Exit, keep it live", onSelect: () => router.push(editorHref) }}
 				secondary={{ label: "End session and exit", tone: "danger", onSelect: () => void endSession(true) }}
 				onCancel={() => setConfirm(null)}

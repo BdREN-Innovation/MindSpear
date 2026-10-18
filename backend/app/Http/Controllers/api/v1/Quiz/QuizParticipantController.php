@@ -14,7 +14,10 @@ class QuizParticipantController extends ApiBaseController
      */
     public function index(Request $request): JsonResponse
     {
-        $quizParticipants = QuizParticipant::with(['quiz', 'user']);
+        // Only participants of the caller's own quizzes: unfiltered, this listed every user's
+        // participants (names and scores) in any quiz report.
+        $quizParticipants = QuizParticipant::with(['quiz', 'user'])
+            ->whereHas('quiz', fn ($query) => $query->where('user_id', auth()->id()));
 
         if ($request->has('quiz_id')) {
             $quizParticipants = $quizParticipants->where('quiz_id', $request->input('quiz_id'));

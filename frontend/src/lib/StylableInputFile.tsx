@@ -145,7 +145,7 @@ export default function StylableInputFile({
 					</button>
 				) : (
 					<div className="group relative w-full mb-[20px] rounded-lg overflow-hidden border border-gray-300">
-						<img src={image} alt="Question media" className="w-full h-full object-cover cursor-pointer" onClick={choose} />
+						<img src={image} alt="Question media" className="mx-auto block max-h-72 w-full bg-slate-50 object-contain cursor-pointer" onClick={choose} />
 
 						{isUploading ? (
 							<div className="absolute inset-x-0 bottom-0 h-1.5 bg-white/60">

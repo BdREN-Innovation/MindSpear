@@ -2,13 +2,19 @@ import type { ComponentType } from "react";
 import type { LucideIcon } from "lucide-react";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { HostQaFeed, ParticipantQaFeed } from "@/features/deck/live/qaFeed";
+import type { QuizLiveState } from "@/features/deck/live/channelState";
 import type {
 	AggregateSnapshot,
 	AnswerPayloadMap,
+	CorrectAnswerOf,
 	Deck,
 	DeckProduct,
 	JoinInfo,
+	LeaderboardResponse,
 	OptionInput,
+	QuizAnswerResult,
+	QuizScoringConfig,
+	QuizStanding,
 	RunState,
 	RunViewOf,
 	SlideAggregateMap,
@@ -25,6 +31,15 @@ import type {
 // defineSlideType(). K narrows every prop to that type's config / answer /
 // aggregate shapes (features/deck/types.ts); the registry stores entries
 // with K erased so shells can render any run.
+//
+// Quiz additions (all optional, Quest shells never pass them):
+// - every scored quiz run reads results from `aggregate` once state is
+//   'reveal' (aggregate.correct is the answer key; before the reveal only the
+//   host has an aggregate);
+// - PresenterProps.quiz / ParticipantProps.quiz: live submitted count, spin,
+//   leaderboard rows + reveal delta (useDeckSessionChannel().quiz);
+// - ParticipantProps.scoring (the "50p ── 100p" bar), .reveal (my result after
+//   the reveal) and .standing (my total + rank).
 
 /* ------------------------------------------------------------------ */
 /* Editor (Inspector "Content" tab)                                    */
@@ -91,7 +106,28 @@ export interface HostActions {
 	qa?: HostQaFeed;
 	/** open_ended: load a full-text page of cards (GET .../aggregate?page=N, 20 a page). */
 	loadAggregatePage?(page: number): Promise<AggregateSnapshot>;
+	/** Quiz: GET {session}/leaderboard?limit= (e.g. a leaderboard slide showing more rows than the event). */
+	loadLeaderboard?(limit?: number): Promise<LeaderboardResponse>;
 }
+
+/**
+ * Quiz live extras of the current run, exactly useDeckSessionChannel().quiz:
+ * {slide_run_id, submitted_count, participant_count, spin, leaderboard,
+ * leaderboard_top_n, leaderboard_delta, leaderboard_truncated}.
+ */
+export type QuizSlideLiveInfo = QuizLiveState;
+
+/** Presenter quiz extras (null in preview / Quest). */
+export type PresenterQuizInfo = QuizSlideLiveInfo;
+
+/** Participant quiz extras: the live block plus who I am (to find "You" in leaderboard rows). */
+export interface ParticipantQuizInfo extends QuizSlideLiveInfo {
+	/** My participant id (null when unknown). */
+	participant_id: number | null;
+}
+
+/** My result on a revealed scored quiz run (my-answer / state my_submission correctness keys). */
+export type QuizReveal<K extends SlideTypeKey = SlideTypeKey> = QuizAnswerResult<CorrectAnswerOf<K>>;
 
 export interface PresenterProps<K extends SlideTypeKey = SlideTypeKey> {
 	/** The run (participant view; a PresenterRunView is accepted, but read results from `aggregate`). */
@@ -104,6 +140,12 @@ export interface PresenterProps<K extends SlideTypeKey = SlideTypeKey> {
 	mode: "live" | "preview";
 	host?: HostActions;
 	session?: PresenterSessionInfo;
+	/**
+	 * Quiz sessions: submitted count ("12 / 30 answered"), participant count, spin target,
+	 * leaderboard rows (leaderboard slide) and this run's leaderboard_delta after the reveal.
+	 * null/undefined in preview mode and on Quest (sample data is the type's own business).
+	 */
+	quiz?: PresenterQuizInfo | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -125,6 +167,17 @@ export interface ParticipantProps<K extends SlideTypeKey = SlideTypeKey> {
 	qa?: ParticipantQaFeed;
 	/** 'review' = post-session read-only. */
 	mode?: "live" | "preview" | "review";
+	/** Quiz scored runs: run.config.scoring (points_min / points_max / speed bonus / time limit) for the points bar; null otherwise. */
+	scoring?: QuizScoringConfig | null;
+	/**
+	 * Quiz, once the run is revealed and I answered: {is_correct, points_awarded, correct_answer,
+	 * total_points, rank}. null before the reveal (never expect correctness earlier) or without an answer.
+	 */
+	reveal?: QuizReveal<K> | null;
+	/** Quiz: my total points and rank (also for leaderboard slides). */
+	standing?: QuizStanding | null;
+	/** Quiz live extras (submitted count, spin, leaderboard rows) + my participant id. */
+	quiz?: ParticipantQuizInfo | null;
 }
 
 /* ------------------------------------------------------------------ */

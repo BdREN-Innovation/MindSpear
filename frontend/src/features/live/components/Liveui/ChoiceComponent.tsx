@@ -39,6 +39,8 @@ type Props = {
 	value?: string | null;
 	onChange?: (val: string) => void;
 };
+const MULTI_TYPES = new Set(["multiple_choice", "quiz_multiple_choice", "fill_in_the_blanks_multiple_choice"]);
+
 const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	const dispatch = useDispatch();
 	// const answers = useSelector((state: RootState) => state.answers);
@@ -65,15 +67,22 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		};
 		dataFetch();
 	}, [joinid]);
-	const isMulti =
-		(task?.task_type || task?.question_type) === "multiple_choice";
-	const options = useMemo(
+	// Quiz questions carry the editor's type names; "multiple_choice" alone missed them, so a
+	// multi-answer quiz question took one pick (the last) and nobody could score on it.
+	const isMulti = MULTI_TYPES.has(`${task?.task_type || task?.question_type || ""}`);
+	// Each option keeps the position of its answer in the question (empty ones are skipped
+	// for display, which used to shift the index sent for every answer after them).
+	const optionItems = useMemo(
 		() =>
-			task?.questions
-				?.map((q) => q.text ?? q.label ?? "")
-				.filter(Boolean) ?? [],
+			(task?.questions ?? [])
+				.map((q, i) => ({
+					text: `${q.text ?? q.label ?? ""}`,
+					index: Number.isInteger(Number(q.id)) ? Number(q.id) : i,
+				}))
+				.filter((item) => item.text.trim() !== ""),
 		[task?.questions],
 	);
+	const options = useMemo(() => optionItems.map((item) => item.text), [optionItems]);
 	const [selectedOption, setSelectedOption] = useState<string | "">(
 		(value as string) ?? "",
 	);
@@ -255,12 +264,20 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 				moment(quizStartTimeTime),
 				"seconds",
 			);
+			// Answer positions in the question: "0,2,3" for several answers, as the scoring expects.
+			const selected = isMulti
+				? selectedIndices
+						.map((i) => optionItems[i]?.index)
+						.filter((i): i is number => i !== undefined)
+						.sort((a, b) => a - b)
+						.join(",")
+				: optionItems[selectedIndex]?.index ?? selectedIndex;
 			const payload = {
 				question_id: task?.id,
 				answer_data: {
 					start_time: quizStartTimeTime,
 					end_time: currentTime,
-					selected_option: selectedIndex,
+					selected_option: selected,
 				},
 				time_taken_seconds: diffSeconds,
 			};
@@ -274,6 +291,8 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	};
 	const handleExpire = () => {
 		if (!questTimeData?.questionId) return;
+		// Time's up with an answer picked but not submitted: save it (it used to be dropped).
+		if (watingData && hasSelection) void saveAnswer();
 		const saved = setTaskExpired(questTimeData.questionId);
 		const ok =
 			saved?.status === "completed" &&
@@ -369,11 +388,19 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 							<div className="grid gap-4 lg:grid-cols-[1fr_18rem] lg:items-start">
 								<div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-primary/10 p-4">
 									<p className="text-xs font-black uppercase tracking-wide text-primary">
-										{isMulti ? "Pick your answers" : "Pick one answer"}
+										{isMulti ? "Select all that apply" : "Pick one answer"}
 									</p>
 									<h2 className="mt-2 break-words text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
 										{htmlToText(task?.title)}
 									</h2>
+									{(task as any)?.source_content_url && (
+										// eslint-disable-next-line @next/next/no-img-element
+										<img
+											src={(task as any).source_content_url}
+											alt=""
+											className="mt-4 max-h-64 w-full rounded-lg object-contain"
+										/>
+									)}
 								</div>
 								<ParticipantTimerPanel>
 									<SharedQuestTimer

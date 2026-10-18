@@ -30,6 +30,8 @@ export function submitErrorMessage(error: DeckApiError): string {
 					return "This slide doesn't take answers.";
 				case "not_open":
 					return "Questions are closed for this slide.";
+				case "already_answered":
+					return "You've already answered this question. Your first answer counts.";
 				default:
 					return error.message;
 			}

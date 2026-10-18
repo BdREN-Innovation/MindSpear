@@ -13,8 +13,8 @@ import { store } from "@/stores/store";
 import { SurveyProvider } from "@/contexts/SurveyContext";
 import SurveyDataInitializer from "@/features/survey/components/Survey/SurveyDataInitializer";
 
-/** /quests/<id>/edit and /quests/<id>/present (and anything below them). */
-const DECK_FULL_SCREEN_PATH = /^\/quests\/[^/]+\/(edit|present)(\/|$)/;
+/** /quests/<id>/edit, /quizzes/<id>/edit and their /present twins (and anything below them). */
+const DECK_FULL_SCREEN_PATH = /^\/(quests|quizzes)\/[^/]+\/(edit|present)(\/|$)/;
 
 function isDeckFullScreenPath(pathname: string | null): boolean {
 	return !!pathname && DECK_FULL_SCREEN_PATH.test(pathname);
@@ -48,7 +48,7 @@ export default function ProtectedLayout({
 	}, []);
 	if (!hydrated) return null;
 
-	// Quest v2 editor and presenter own the whole viewport: no app header,
+	// Quest / Quiz v2 editor and presenter own the whole viewport: no app header,
 	// sidebar or padding (still signed-in only, still inside Redux).
 	if (isDeckFullScreenPath(pathname)) {
 		return (

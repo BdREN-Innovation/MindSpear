@@ -62,7 +62,7 @@ export interface QuizParticipant {
   quiz_id: number;
   user_id: number;
   is_anonymous: boolean;
-  anonymous_details: string | null;
+  anonymous_details: { name?: string | null; email?: string | null } | null;
   start_time: string;
   end_time: string | null;
   score: number;
@@ -100,7 +100,8 @@ const participantsData = dataList
                   className="text-left text-base  text-dark dark:text-white"
                   key={i}
                 >
-                  <TableCell>{channel?.user?.full_name}</TableCell>
+                  {/* Anonymous participants have no user, only the name they joined with. */}
+                  <TableCell>{channel?.user?.full_name ?? channel?.anonymous_details?.name}</TableCell>
                   <TableCell>{channel?.user?.institution_name}</TableCell>
                   <TableCell>{channel?.user?.department}</TableCell>
                   <TableCell>{channel?.score}</TableCell>

@@ -96,6 +96,7 @@ const SortAnswerBlanksComponent: React.FC<SortAnswerBlanksProps> = ({
                 <Image
                   src={source_content_url} 
                   alt="Quiz visual"
+                  unoptimized
                   width={176}
                   height={64}
                   className="max-h-64 rounded-md"

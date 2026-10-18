@@ -41,7 +41,7 @@ class DeckAuthoringService
                 'product' => $product,
                 'title' => self::title($data['title'] ?? null) ?? 'Untitled ' . $product,
                 'description' => $data['description'] ?? null,
-                'settings' => DeckSettings::normalise([], $data['settings'] ?? []),
+                'settings' => DeckSettings::normalise([], $data['settings'] ?? [], $product),
             ]);
 
             try {
@@ -104,7 +104,7 @@ class DeckAuthoringService
             }
 
             if (array_key_exists('settings', $data)) {
-                $changes['settings'] = DeckSettings::normalise($fresh->settings, (array) $data['settings']);
+                $changes['settings'] = DeckSettings::normalise($fresh->settings, (array) $data['settings'], $fresh->product);
             }
 
             if ($changes !== []) {
@@ -139,7 +139,7 @@ class DeckAuthoringService
                 'title' => mb_substr(self::COPY_PREFIX . $deck->title, 0, self::MAX_TITLE),
                 'description' => $deck->description,
                 'cover_file_id' => $deck->cover_file_id,
-                'settings' => DeckSettings::normalise($deck->settings),
+                'settings' => DeckSettings::normalise($deck->settings, [], $deck->product),
             ]);
 
             $position = 0;

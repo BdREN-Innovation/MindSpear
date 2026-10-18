@@ -5,7 +5,7 @@ import { CheckCircle2, Radio } from "lucide-react";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
 import type { ParticipantRunView } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
-import { isActiveState, runKindOf, stateLabel } from "../lib/runKind";
+import { isActiveState, isFinishedState, runKindOf, stateLabel } from "../lib/runKind";
 
 // Slide rail popover (≡): every run of the session; picking one sends
 // jump_to. ↑/↓ move between slides, Esc closes, focus starts on the current
@@ -113,7 +113,7 @@ export function SlideListPopover({ runs, currentRunId, disabled, onJump, onClose
 										{current ? " · Showing now" : ""}
 									</span>
 								</span>
-								{label && run.state === "closed" && (
+								{label && isFinishedState(run.state) && (
 									<CheckCircle2 className="h-5 w-5 shrink-0 text-[var(--deck-success)]" aria-hidden />
 								)}
 								{label && isActiveState(run.state) && (

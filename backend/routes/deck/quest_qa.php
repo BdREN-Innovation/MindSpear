@@ -42,4 +42,4 @@ DeckRoutes::sessions(function (string $product) {
         ->middleware(['auth:sanctum', 'throttle:deck-author', 'deck.feature'])
         ->whereNumber(['session', 'question'])
         ->name('qa.questions.moderate');
-});
+}, ['quest']);

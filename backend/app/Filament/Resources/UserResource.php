@@ -73,6 +73,11 @@ class UserResource extends Resource
                         ->helperText(fn () => DeckFeature::enabledForEveryone(Deck::PRODUCT_QUEST)
                             ? 'Quest v2 is currently on for every account (QUEST_V2_DEFAULT_ENABLED).'
                             : 'Lets this user create, edit and host Quest v2 decks.'),
+                    Forms\Components\Toggle::make('quiz_v2_enabled')
+                        ->label('Quiz v2')
+                        ->helperText(fn () => DeckFeature::enabledForEveryone(Deck::PRODUCT_QUIZ)
+                            ? 'Quiz v2 is currently on for every account (QUIZ_V2_DEFAULT_ENABLED).'
+                            : 'Lets this user create, edit and host Quiz v2 (slide-based) quizzes.'),
                 ]),
             ]);
     }
@@ -172,7 +177,12 @@ class UserResource extends Resource
                             ->state(fn (User $record) => self::questV2Summary($record))
                             ->badge()
                             ->color(fn (User $record) => DeckFeature::enabled($record, Deck::PRODUCT_QUEST) ? 'success' : 'gray'),
-                    ]),
+                        TextEntry::make('quiz_v2_enabled')
+                            ->label('Quiz v2')
+                            ->state(fn (User $record) => self::quizV2Summary($record))
+                            ->badge()
+                            ->color(fn (User $record) => DeckFeature::enabled($record, Deck::PRODUCT_QUIZ) ? 'success' : 'gray'),
+                    ])->columns(2),
             ]);
     }
 
@@ -184,6 +194,16 @@ class UserResource extends Resource
         }
 
         return DeckFeature::enabledForEveryone(Deck::PRODUCT_QUEST) ? 'Enabled for everyone (QUEST_V2_DEFAULT_ENABLED)' : 'Disabled';
+    }
+
+    /** "Enabled" / "Disabled", noting when QUIZ_V2_DEFAULT_ENABLED turns it on for everyone. */
+    public static function quizV2Summary(User $user): string
+    {
+        if ($user->quiz_v2_enabled) {
+            return 'Enabled';
+        }
+
+        return DeckFeature::enabledForEveryone(Deck::PRODUCT_QUIZ) ? 'Enabled for everyone (QUIZ_V2_DEFAULT_ENABLED)' : 'Disabled';
     }
 
     /** e.g. "12.4 MB of 100 MB used (12.4%)". */

@@ -4,8 +4,11 @@ namespace App\Services\Live;
 
 use App\Deck\Broadcasts\BroadcastPayload;
 use App\Deck\Broadcasts\DeckBroadcaster;
+use App\Deck\Broadcasts\Payloads\ParticipantCountUpdatedPayload;
 use App\Deck\Broadcasts\Payloads\SlideAggregateUpdatedPayload;
 use App\Deck\Broadcasts\Payloads\SlideClosedPayload;
+use App\Deck\Broadcasts\Payloads\SubmittedCountUpdatedPayload;
+use App\Deck\Sessions\QuizRuntime;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Deck\Slides\Types\Quest\PollSettings;
@@ -219,16 +222,30 @@ class LiveAggregateService
 
     /**
      * Broadcast a run's aggregate without debouncing, on the channel
-     * resultsVisibility() picks.
+     * resultsVisibility() picks. A hidden_until_reveal (Quiz) run that is
+     * still taking answers also tells the public channel how many answered
+     * (`slide.submitted_count.updated`; participants still in the room), never what.
      */
     public function broadcastDeckAggregateNow(DeckSessionSlideRun $run, ?Closure $compute = null): void
     {
         $aggregate = $compute ? $compute() : $this->registry()->aggregate($run);
+        $broadcaster = app(DeckBroadcaster::class);
 
-        app(DeckBroadcaster::class)->broadcast(
+        $broadcaster->broadcast(
             $run->session,
             SlideAggregateUpdatedPayload::fromRun($run, $aggregate, $this->resultsVisibility($run)),
         );
+
+        if (
+            $run->state === DeckSessionSlideRun::STATE_VOTING
+            && $this->registry()->for($run->type_snapshot)->revealModel() === SlideTypeContract::REVEAL_HIDDEN
+        ) {
+            $broadcaster->broadcast($run->session, SubmittedCountUpdatedPayload::fromRun(
+                $run,
+                ParticipantCountUpdatedPayload::answeredCountFor($run),
+                ParticipantCountUpdatedPayload::countFor($run->session),
+            ));
+        }
     }
 
     /**
@@ -238,9 +255,15 @@ class LiveAggregateService
      * everything else stays on the host channel, so the presenter shows the
      * live chart and participants never receive it. Phase 3's
      * GET /slide-runs/{id}/aggregate must apply the same rule to participants.
+     * A revealed run (Quiz, spinner) is public: the reveal shows everyone the
+     * results and the correct answer; before it they stay with the host.
      */
     public function resultsVisibility(DeckSessionSlideRun $run): string
     {
+        if ($run->state === DeckSessionSlideRun::STATE_REVEAL) {
+            return BroadcastPayload::VISIBILITY_PUBLIC;
+        }
+
         return $this->registry()->for($run->type_snapshot)->revealModel() === SlideTypeContract::REVEAL_LIVE
             && PollSettings::showsResultsToParticipants($run->config_snapshot ?? [])
             ? BroadcastPayload::VISIBILITY_PUBLIC
@@ -272,6 +295,29 @@ class LiveAggregateService
                 $run->session,
                 SlideAggregateUpdatedPayload::fromRun($run, $aggregate, BroadcastPayload::VISIBILITY_HOST),
             );
+        });
+    }
+
+    /**
+     * `slide.revealed` for a quiz or spinner run that was just moved to
+     * `reveal` (Quiz plan §1.5): one public event with the final aggregate
+     * (correct answers included), this run's leaderboard_delta and, for a
+     * spinner, the spin result. Built after the surrounding transaction
+     * commits, when every answer the run will ever have is in.
+     */
+    public function broadcastRevealed(DeckSessionSlideRun $run): void
+    {
+        app(LiveSessionService::class)->afterCommit(function () use ($run) {
+            try {
+                $payload = app(QuizRuntime::class)->revealedPayload($run);
+            } catch (Throwable $exception) {
+                // The reveal is committed; clients still get slide.state.changed and can GET the aggregate.
+                report($exception);
+
+                return;
+            }
+
+            app(DeckBroadcaster::class)->broadcast($run->session, $payload);
         });
     }
 

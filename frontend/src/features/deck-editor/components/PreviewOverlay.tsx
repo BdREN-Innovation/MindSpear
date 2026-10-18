@@ -4,10 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { DeckTheme } from "@/features/deck/theme";
-import type { Slide } from "@/features/deck/types";
+import type { DeckProduct, Slide } from "@/features/deck/types";
+import { productCopy } from "./productCopy";
 import { ScaledSlide, SlidePresenterPreview } from "./SlidePreview";
 
 export interface PreviewOverlayProps {
+	/** Copy only; default quest. */
+	product?: DeckProduct;
 	slides: Slide[];
 	startIndex: number;
 	theme: DeckTheme;
@@ -20,7 +23,7 @@ const navButton =
 	"flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-30";
 
 /** Full-screen read-only walkthrough of the deck (plan §5.3): arrows / Space navigate, Esc closes. */
-export function PreviewOverlay({ slides, startIndex, theme, title, onClose }: PreviewOverlayProps) {
+export function PreviewOverlay({ product = "quest", slides, startIndex, theme, title, onClose }: PreviewOverlayProps) {
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(slides.length - 1, startIndex)));
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const slide = slides[index] ?? null;
@@ -121,7 +124,7 @@ export function PreviewOverlay({ slides, startIndex, theme, title, onClose }: Pr
 						<SlidePresenterPreview slide={slide} theme={theme} totalSlides={slides.length} />
 					</ScaledSlide>
 				) : (
-					<p className="flex h-full items-center justify-center text-white/70">This quest has no slides.</p>
+					<p className="flex h-full items-center justify-center text-white/70">This {productCopy(product).noun} has no slides.</p>
 				)}
 			</div>
 

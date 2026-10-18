@@ -1,7 +1,16 @@
 import { createHash } from "crypto";
 import { buildPrompt } from "../prompts";
-import { funGameQuestionSchema, generateRequestSchema, keepValid, questTaskSchema, questV2SlideSchema, quizQuestionSchema } from "../schema";
-import { MAX_TEXT_CHARS, type GenerateRequest, type GenerateResponse, type QuestAiTask, type QuestV2AiSlide, type QuizAiQuestion } from "../types";
+import { funGameQuestionSchema, generateRequestSchema, keepValid, questTaskSchema, questV2SlideSchema, quizQuestionSchema, quizV2SlideSchema } from "../schema";
+import {
+	MAX_TEXT_CHARS,
+	QUESTION_TYPES,
+	type GenerateRequest,
+	type GenerateResponse,
+	type QuestAiTask,
+	type QuestV2AiSlide,
+	type QuizAiQuestion,
+	type QuizV2AiSlide,
+} from "../types";
 
 // Server-only: used by the /api/ai/* route handlers. Never import from client components.
 
@@ -62,7 +71,29 @@ export function parseRequest(body: unknown): GenerateRequest {
 	if (!parsed.success) {
 		throw new GenerateError(parsed.error.issues[0]?.message ?? "Invalid request.", 422);
 	}
-	return { ...parsed.data, textData: parsed.data.textData.slice(0, MAX_TEXT_CHARS) };
+	// Only the target's own type names count (the prompt lists them, validate() filters by them).
+	const known = new Set(QUESTION_TYPES[parsed.data.target].map((type) => type.value));
+	const questionTypes = [...new Set(parsed.data.questionTypes)].filter((type) => known.has(type));
+	if (questionTypes.length === 0) {
+		throw new GenerateError("Choose at least one question type.", 422);
+	}
+	return { ...parsed.data, questionTypes, textData: parsed.data.textData.slice(0, MAX_TEXT_CHARS) };
+}
+
+/** The type name an item carries (fun games have none: they are all single choice / true-false). */
+function itemType(item: unknown): string | null {
+	const record = item as Record<string, unknown> | null;
+	const type = record?.type ?? record?.question_type ?? record?.task_type;
+	return typeof type === "string" ? type : null;
+}
+
+/** Keeps the items whose type the user asked for: the AI sometimes writes others. */
+export function onlyRequestedTypes<T>(items: T[], questionTypes: readonly string[]): T[] {
+	const wanted = new Set(questionTypes);
+	return items.filter((item) => {
+		const type = itemType(item);
+		return type === null || wanted.has(type);
+	});
 }
 
 async function callOpenAi(prompt: string): Promise<unknown> {
@@ -95,14 +126,18 @@ async function callOpenAi(prompt: string): Promise<unknown> {
 	}
 }
 
-function validate(req: GenerateRequest, output: unknown): GenerateResponse {
-	const items = (output as { questions?: unknown } | null)?.questions;
+export function validate(req: GenerateRequest, output: unknown): GenerateResponse {
+	const raw = (output as { questions?: unknown } | null)?.questions;
+	// Items of a type the user didn't choose are dropped before validation.
+	const items = Array.isArray(raw) ? onlyRequestedTypes(raw, req.questionTypes) : raw;
 	switch (req.target) {
 		case "quest":
 			// The schemas check the type names against QUESTION_TYPES, so the narrower types hold.
 			return { target: "quest", questions: keepValid(items, questTaskSchema) as QuestAiTask[] };
 		case "quest_v2":
 			return { target: "quest_v2", questions: keepValid(items, questV2SlideSchema) as QuestV2AiSlide[] };
+		case "quiz_v2":
+			return { target: "quiz_v2", questions: keepValid(items, quizV2SlideSchema) as QuizV2AiSlide[] };
 		case "fungame":
 			return { target: "fungame", questions: keepValid(items, funGameQuestionSchema) };
 		default:

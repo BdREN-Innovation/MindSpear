@@ -4,6 +4,7 @@ namespace App\Deck\Http\Controllers;
 
 use App\Deck\Exceptions\DeckException;
 use App\Deck\Http\Requests\SubmitDeckAnswerRequest;
+use App\Deck\Http\Resources\SessionStatePresenter;
 use App\Deck\Participants\AnswerSubmissionService;
 use App\Deck\Participants\ParticipantReadAccess;
 use App\Deck\Participants\SessionLookup;
@@ -23,7 +24,8 @@ class ParticipantAnswerController extends DeckController
     /**
      * POST /{sessions prefix}/{session}/slide-runs/{run}/answers
      * Body {answer_payload} → 204. 404 run not in the session, 409 invalid_state
-     * (data.reason: no_answers | session_not_live | not_current_slide | not_voting | time_up),
+     * (data.reason: no_answers | session_not_live | not_current_slide | not_voting | time_up,
+     * and on a scored quiz run already_answered: answers are final, the first one stands),
      * 413 payload_too_large, 422 answer_payload.*.
      */
     public function store(SubmitDeckAnswerRequest $request, string $session, string $run): Response
@@ -43,6 +45,10 @@ class ParticipantAnswerController extends DeckController
     /**
      * GET /{sessions prefix}/{session}/slide-runs/{run}/my-answer
      * → {slide_run_id, answer_payload (as stored), time_to_answer_ms, submitted_at}; 404 when none.
+     * Quiz, once the run is revealed (never before): + {is_correct, points_awarded,
+     * correct_answer, total_points, rank}. total_points / rank are the participant's
+     * CURRENT standing (every run revealed so far), not a snapshot as of this run;
+     * points_awarded is this run's.
      * Read-only, so it also accepts the token of an ended session (ParticipantReadAccess):
      * the post-session review screen lists the participant's own answers.
      *
@@ -63,11 +69,6 @@ class ParticipantAnswerController extends DeckController
             throw DeckException::notFound('You have not answered this slide.');
         }
 
-        return $this->okResponse([
-            'slide_run_id' => $slideRun->id,
-            'answer_payload' => ($answer->answer_payload ?? []) === [] ? (object) [] : $answer->answer_payload,
-            'time_to_answer_ms' => $answer->time_to_answer_ms,
-            'submitted_at' => $answer->submitted_at?->toISOString(),
-        ]);
+        return $this->okResponse(SessionStatePresenter::myAnswer($answer, $slideRun, $participant));
     }
 }

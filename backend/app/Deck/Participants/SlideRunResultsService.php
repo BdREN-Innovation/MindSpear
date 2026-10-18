@@ -4,6 +4,7 @@ namespace App\Deck\Participants;
 
 use App\Deck\Broadcasts\BroadcastPayload;
 use App\Deck\Exceptions\DeckException;
+use App\Deck\Sessions\QuizRuntime;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Deck\Slides\Types\Quest\OpenEndedSlideType;
 use App\Models\Deck\DeckSessionSlideRun;
@@ -19,7 +20,9 @@ use Illuminate\Support\Facades\Cache;
  * with show_results_to_participants on), the same rule the broadcasts follow,
  * and only for a run the host has reached (the session's current run, or one
  * that left `waiting`): otherwise 403 `results_hidden`, so participants
- * cannot read ahead (type, option ids) of slides not shown yet. The
+ * cannot read ahead (type, option ids) of slides not shown yet. Quiz runs
+ * (hidden_until_reveal) are host-only until they are revealed, then public
+ * (correct answers included). The
  * aggregate is computed from the run's
  * snapshots and answers; a closed run accepts no more answers (see
  * AnswerSubmissionService), so its aggregate is the frozen final one.
@@ -60,7 +63,7 @@ class SlideRunResultsService
             throw new DeckException('Results are not shown to participants for this slide.', 403, self::CODE_RESULTS_HIDDEN);
         }
 
-        if ($run->state !== DeckSessionSlideRun::STATE_CLOSED) {
+        if (! $run->isFinal()) {
             return $this->snapshot($run, $page);
         }
 
@@ -96,6 +99,9 @@ class SlideRunResultsService
 
         if (! $type) {
             $aggregate = [];
+        } elseif ($run->isRevealed() && $page === null) {
+            // Quiz / spinner after the reveal: the frozen reveal aggregate (cached, spin result included).
+            $aggregate = app(QuizRuntime::class)->aggregate($run);
         } else {
             $answers = $run->answers()->orderBy('id')->get();
             $aggregate = $page !== null && $type instanceof OpenEndedSlideType
@@ -109,7 +115,7 @@ class SlideRunResultsService
             'state' => $run->state,
             'state_version' => $run->state_version,
             'closed_at' => $run->closed_at?->toISOString(),
-            'final' => $run->state === DeckSessionSlideRun::STATE_CLOSED,
+            'final' => $run->isFinal(),
             'visibility' => $this->visibility($run),
             'total_responses' => $aggregate['total_responses'] ?? null,
             'aggregate' => $aggregate === [] ? (object) [] : $aggregate,

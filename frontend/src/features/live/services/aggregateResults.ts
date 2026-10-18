@@ -11,7 +11,8 @@ type LiveTask = {
 };
 
 export type LiveResultDatum =
-	| { quest_id: number; task_type: string; id: number; number: number[] }
+	// total: how many players answered (several picks each on a multiple-answer question).
+	| { quest_id: number; task_type: string; id: number; number: number[]; total?: number }
 	| {
 			quest_id: number;
 			task_type: string;
@@ -124,7 +125,12 @@ export function aggregatePayloadToResult(
 	for (const [key, countValue] of Object.entries(answers)) {
 		const count = Number(countValue) || 0;
 		const parsed = parseAggregateKey(key);
-		const values = Array.isArray(parsed) ? parsed : [parsed];
+		// A multiple-answer pick arrives as "0,2,3": each picked option gets the count.
+		const values = Array.isArray(parsed)
+			? parsed
+			: typeof parsed === "string" && parsed.includes(",")
+				? parsed.split(",")
+				: [parsed];
 
 		values.forEach((value, position) => {
 			const index = taskType === "scales" ? position : numericIndex(value);
@@ -135,5 +141,12 @@ export function aggregatePayloadToResult(
 		});
 	}
 
-	return { quest_id: questId, task_type: taskType, id: taskId, number };
+	const total = Number(payload.total_answers);
+	return {
+		quest_id: questId,
+		task_type: taskType,
+		id: taskId,
+		number,
+		...(Number.isFinite(total) && total > 0 ? { total } : {}),
+	};
 }

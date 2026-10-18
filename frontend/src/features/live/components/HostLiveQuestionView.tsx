@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import DOMPurify from "dompurify";
 import {
@@ -29,17 +29,35 @@ type HostLiveQuestionViewProps = {
 	chartType: "bar" | "donut" | "dots" | "pie";
 	viewModel: HostLiveViewModel;
 	participantCount?: number;
+	/** Quiz only: shown once the question's time is up. */
+	correctAnswers?: string[];
+	/** "Question" for a quiz, "Slide" for a quest. */
+	itemLabel?: string;
 };
 
+const VIEW_LABELS: Record<string, string> = {
+	single_choice: "Single choice",
+	multiple_choice: "Multiple choice",
+	truefalse: "True / False",
+	shortanswer: "Short answer",
+	longanswer: "Long answer",
+	wordcloud: "Word cloud",
+	quick_form: "Quick form",
+};
+
+// Readable type names ("shortanswer" was shown as is).
 const formatViewLabel = (value: string) =>
-	String(value || "question").replaceAll("_", " ");
+	VIEW_LABELS[value] ?? String(value || "question").replaceAll("_", " ");
 
 export default function HostLiveQuestionView({
 	isFullscreen,
 	chartType = "bar",
 	viewModel,
 	participantCount,
+	correctAnswers,
+	itemLabel = "Slide",
 }: HostLiveQuestionViewProps) {
+	const [timeUp, setTimeUp] = useState(false);
 	const {
 		showLeaderboard,
 		currentSlideIndex,
@@ -61,6 +79,8 @@ export default function HostLiveQuestionView({
 		() => (questId && questionId ? `timer_${questId}_${questionId}` : null),
 		[questId, questionId],
 	);
+	// A new question starts with its answer hidden.
+	useEffect(() => setTimeUp(false), [storageKey]);
 
 	const getCachedTime = useCallback(() => {
 		if (!storageKey) return null;
@@ -183,6 +203,8 @@ export default function HostLiveQuestionView({
 			progressRef.current.style.transition = "none";
 			progressRef.current.style.width = "100%";
 			timeRef.current.textContent = "0:00";
+			// Already over (e.g. the page was reloaded): the answer stays revealed.
+			setTimeUp(true);
 			return;
 		}
 
@@ -235,6 +257,7 @@ export default function HostLiveQuestionView({
 			if (currentTime < endTime) {
 				rafId = requestAnimationFrame(tick);
 			} else {
+				setTimeUp(true);
 				saveCurrentTime(startTime, total, true);
 				if (progressRef.current) {
 					progressRef.current.style.width = "100%";
@@ -403,12 +426,34 @@ export default function HostLiveQuestionView({
 				viewLabel={formatViewLabel(viewModel.currentView)}
 				responseCount={viewModel.responseTotal}
 				totalSlidesLabel={
-					totalSlides ? `Slide ${currentSlideIndex + 1} of ${totalSlides}` : undefined
+					totalSlides ? `${itemLabel} ${currentSlideIndex + 1} of ${totalSlides}` : undefined
 				}
 				progressRef={progressRef}
 				timeRef={timeRef}
 				timeLabel={formatMMSS(total)}
 			/>
+
+			{viewModel.imageUrl && viewModel.displayKind !== "content" && (
+				// eslint-disable-next-line @next/next/no-img-element
+				<img
+					src={viewModel.imageUrl}
+					alt=""
+					className="mx-auto mb-3 max-h-40 w-auto max-w-full rounded-xl object-contain"
+				/>
+			)}
+
+			{timeUp && correctAnswers && correctAnswers.length > 0 && (
+				<div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-900">
+					<span className="text-sm font-bold uppercase tracking-wide">
+						{correctAnswers.length > 1 ? "Correct answers" : "Correct answer"}
+					</span>
+					{correctAnswers.map((answer) => (
+						<span key={answer} className="rounded-full bg-white px-3 py-1 text-base font-semibold shadow-sm">
+							{answer}
+						</span>
+					))}
+				</div>
+			)}
 
 			<QuestHostResponsePanel>
 				<AnimatePresence mode="wait">

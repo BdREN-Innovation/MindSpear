@@ -2,6 +2,9 @@
 
 namespace App\Deck\Authoring;
 
+use App\Deck\Sessions\QuizRuntime;
+use App\Models\Deck\Deck;
+
 /**
  * Deck-wide settings (plan §5.6 "Per deck"), stored whole in decks.settings.
  *
@@ -14,6 +17,10 @@ namespace App\Deck\Authoring;
  * Every write stores all five keys (defaults filled in), so clients always
  * read the full object. A key sent as null goes back to its default; any
  * other key is rejected (422 on `settings`).
+ *
+ * Defaults are per product (defaults()): a quiz deck's get_ready_seconds
+ * defaults to config deck.quiz.get_ready_seconds (5, the Quiz "Get ready"
+ * countdown); everything else is DEFAULTS.
  */
 final class DeckSettings
 {
@@ -56,18 +63,29 @@ final class DeckSettings
         ];
     }
 
-    /**
-     * The full settings object: defaults, then the stored values, then the
-     * (validated) changes. Unknown stored keys are dropped.
-     */
-    public static function normalise(?array $stored, array $changes = []): array
+    /** DEFAULTS for $product (null = the shared defaults). */
+    public static function defaults(?string $product = null): array
     {
-        $settings = self::DEFAULTS;
+        if ($product === Deck::PRODUCT_QUIZ) {
+            return ['get_ready_seconds' => QuizRuntime::defaultGetReadySeconds()] + self::DEFAULTS;
+        }
+
+        return self::DEFAULTS;
+    }
+
+    /**
+     * The full settings object: defaults (of $product), then the stored
+     * values, then the (validated) changes. Unknown stored keys are dropped.
+     */
+    public static function normalise(?array $stored, array $changes = [], ?string $product = null): array
+    {
+        $defaults = self::defaults($product);
+        $settings = $defaults;
 
         foreach ([(array) $stored, $changes] as $layer) {
             foreach (self::KEYS as $key) {
                 if (array_key_exists($key, $layer)) {
-                    $settings[$key] = $layer[$key] ?? self::DEFAULTS[$key];
+                    $settings[$key] = $layer[$key] ?? $defaults[$key];
                 }
             }
         }
@@ -77,7 +95,7 @@ final class DeckSettings
             'get_ready_seconds' => (int) $settings['get_ready_seconds'],
             'theme' => (string) $settings['theme'],
             'show_qr_sidebar' => (bool) $settings['show_qr_sidebar'],
-            'default_qa_sort' => in_array($settings['default_qa_sort'], self::QA_SORTS, true) ? $settings['default_qa_sort'] : self::DEFAULTS['default_qa_sort'],
+            'default_qa_sort' => in_array($settings['default_qa_sort'], self::QA_SORTS, true) ? $settings['default_qa_sort'] : $defaults['default_qa_sort'],
         ];
     }
 }

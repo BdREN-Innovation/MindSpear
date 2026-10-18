@@ -9,9 +9,11 @@ use App\Deck\Http\Middleware\EnsureDeckFeatureEnabled;
 use App\Deck\Http\Middleware\ResolveDeckParticipant;
 use App\Deck\Policies\DeckPolicy;
 use App\Deck\Slides\SlideTypeRegistry;
+use App\Deck\Support\DeckFeature;
 use App\Deck\Support\ProfanityFilter;
 use App\Models\Deck\Deck;
 use App\Models\Deck\DeckSession;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Request;
@@ -64,7 +66,12 @@ class DeckServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(database_path('migrations/Deck'));
 
         // Private host channel; `.v2` keeps it apart from legacy host.{module}.{id}.
+        // Like the host HTTP routes (deck.feature), it needs the product's v2 rollout flag.
         Broadcast::channel('host.{product}.v2.{sessionId}', function ($user, string $product, int $sessionId): bool {
+            if (! $user instanceof User || ! in_array($product, Deck::PRODUCTS, true) || ! DeckFeature::enabled($user, $product)) {
+                return false;
+            }
+
             $session = DeckSession::with('deck')->find($sessionId);
 
             return (bool) $session?->deck

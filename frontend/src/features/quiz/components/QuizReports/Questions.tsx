@@ -157,6 +157,8 @@ function Questions() {
 										alt="quest"
 										width={50}
 										height={50}
+										// Question images live on the API host (My Files), which next.config doesn't list.
+										unoptimized
 										className="text-[#f79a46] border border-[#2222] rounded-[10px] transition-colors duration-500 ease-in-out group-hover:text-white"
 									/>
 								</TableCell>

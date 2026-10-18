@@ -40,6 +40,12 @@ const P1I_CONTENT_TYPES = [
     'heading', 'paragraph', 'bullets', 'numbered', 'quote', 'image', 'video', 'big_text', 'qr_code',
 ];
 
+// Quiz v2 types (tests/Feature/Deck/Quiz cover them); listed so the registry check below stays exact.
+const P1I_QUIZ_TYPES = [
+    'pick_answer_single', 'pick_answer_multi', 'short_answer', 'match_pairs', 'correct_order', 'categorise',
+    'spinner_wheel', 'leaderboard',
+];
+
 function p1iType(string $key): SlideTypeContract
 {
     return app(SlideTypeRegistry::class)->for($key);
@@ -133,9 +139,9 @@ it('registers exactly the 11 Quest types and 9 content types, shared with Quiz w
     $all = array_merge(P1I_QUEST_TYPES, P1I_CONTENT_TYPES);
     sort($all);
 
-    expect($registry->keys())->toBe($all)
+    expect($registry->keys())->toBe(collect([...$all, ...P1I_QUIZ_TYPES])->sort()->values()->all())
         ->and(array_keys($registry->forProduct('quest')))->toBe($all)
-        ->and(array_keys($registry->forProduct('quiz')))->toBe(collect(P1I_CONTENT_TYPES)->sort()->values()->all());
+        ->and(array_keys($registry->forProduct('quiz')))->toBe(collect([...P1I_CONTENT_TYPES, ...P1I_QUIZ_TYPES])->sort()->values()->all());
 
     foreach (P1I_QUEST_TYPES as $key) {
         expect(p1iType($key)->products())->toBe(['quest']);

@@ -15,7 +15,7 @@ import {
 	DropdownContent,
 	DropdownTrigger,
 } from "@/components/ui/Dropdown";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import {
 	setHoveredItem,
 	clearHoveredItem,
@@ -24,9 +24,10 @@ import {
 import { setDropdownOpen } from "@/features/dashboard/store/dropdownSlice";
 // import { RootState } from '@/services/redux/store';
 import axiosInstance from "@/utils/axiosInstance";
-import { Quiz } from "@/types/types";
+import { transformQuestionData } from "@/utils/quizUtils";
 import Image from "next/image";
 import PdfModal from "@/features/quiz/components/PdfQuiz/PdfModal";
+import { type QuizQuestionKey, useAddQuizQuestion } from "@/features/quiz/hooks/useAddQuizQuestion";
 
 interface MenuItem {
 	key: string;
@@ -35,14 +36,6 @@ interface MenuItem {
 	icon: React.ReactNode;
 }
 
-interface QuizState {
-	quiz: Quiz;
-}
-interface QuizDataType {
-	quizInformation: {
-		quizInformation: QuizState;
-	};
-}
 // Define interfaces for question bank data
 interface OptionData {
 	choices: string[];
@@ -114,7 +107,7 @@ interface QuestionBankModalProps {
 	dispatch: (action: any) => void; // Dispatch function from parent
 }
 
-const QuestionBankModal: React.FC<QuestionBankModalProps> = ({
+export const QuestionBankModal: React.FC<QuestionBankModalProps> = ({
 	isOpen,
 	onClose,
 	quizId,
@@ -200,39 +193,16 @@ const QuestionBankModal: React.FC<QuestionBankModalProps> = ({
 				response.status === 201
 			) {
 				const q = response.data.data.question;
+				// Map it like questions loaded from the API ("quiz_single_choice" -> "quiz", options,
+				// correct answers); the raw question_type matched no editor and the text/options were dropped.
+				const [item] = transformQuestionData([q]);
+				if (!item?.key) {
+					toast.error("This question type can't be used in a quiz.");
+					return;
+				}
 
 				// Dispatch the new item to Redux to update the state immediately
-				dispatch(
-					addNewItem({
-						key: q.question_type.toLowerCase(), // Normalize question type to lowercase to match expected keys
-						id: q.id.toString(), // Ensure id is a string
-						quiz_id: `${q.quiz_id}`,
-						title: q.question_text,
-						options:
-							q.options?.choices?.map(
-								(choice: string, index: number) => ({
-									id: `option_${q.id}_${index}`, // Create a unique ID for the option
-									text: choice,
-									placeholder: choice, // Set placeholder to choice text for consistency
-									isSelected: Array.isArray(
-										q.options?.correct_answer
-									)
-										? q.options.correct_answer.includes(
-											index
-										)
-										: q.options?.correct_answer === index ||
-										false,
-								})
-							) || [],
-						maxOptions: 0,
-						minOptions: 0,
-						allowDuplicates: false,
-						isMultipleSelection: false,
-						timeLimit: q.time_limit_seconds?.toString() || "",
-						points: q.points?.toString() || "1",
-						position: q.serial_number || 1,
-					})
-				);
+				dispatch(addNewItem(item));
 
 				toast.success("Successfully added question to quiz!");
 				onClose(); // Close the modal after successful addition
@@ -432,13 +402,10 @@ const CreateQuizSidebarContant: React.FC = () => {
 	const [showPdfModal, setShowPdfModal] = useState(false);
 	const [showQuestionBankModal, setShowQuestionBankModal] = useState(false);
 
-	const quizresponse = useSelector(
-		(state: QuizDataType) => state.quizInformation.quizInformation
-	);
-
 	const dispatch = useDispatch();
 	const params = useParams();
 	const qId = params?.quizId as string;
+	const { addQuestion } = useAddQuizQuestion(qId);
 	const items = [
 		{
 			key: "quiz",
@@ -533,12 +500,21 @@ const CreateQuizSidebarContant: React.FC = () => {
 			setIsDropDownOpen((prev) => {
 				const next = value(prev);
 				dispatch(setDropdownOpen(next));
+				if (!next) dispatch(clearHoveredItem());
 				return next;
 			});
 		} else {
 			setIsDropDownOpen(value);
 			dispatch(setDropdownOpen(value));
+			if (!value) dispatch(clearHoveredItem());
 		}
+	};
+
+	/** Closes the menu. The hovered item unmounts without a mouseleave, so its hover preview is cleared here. */
+	const closeMenu = () => {
+		setIsDropDownOpen(false);
+		dispatch(setDropdownOpen(false));
+		dispatch(clearHoveredItem());
 	};
 
 	useEffect(() => {
@@ -569,34 +545,20 @@ const CreateQuizSidebarContant: React.FC = () => {
 	};
 
 	const handleItemClick = async (item: MenuItem) => {
-		const response = await axiosInstance.post(`/quiz/questions/store`, {
-			quiz_id: quizresponse?.quiz?.id,
-			question_text: ".",
-			visibility: "public",
-		});
-		console.log(item.key, "item.keyitem.keyitem.key");
+		closeMenu();
 
-		if (item.key !== "import_from_bank") {
-			dispatch(
-				addNewItem({
-					key: item.key,
-					id: response.data.data.question.id,
-					quiz_id: `${qId}`,
-					title: "",
-					options: [],
-					maxOptions: 0,
-					minOptions: 0,
-					allowDuplicates: false,
-					isMultipleSelection: false,
-					timeLimit: "",
-					position: 1,
-				})
-			);
-		} else {
-			setShowQuestionBankModal(true)
+		// These two open a dialog; they used to also create an empty "." question on the server
+		// (and "Generate using File" added a blank, unusable card).
+		if (item.key === "import_from_bank") {
+			setShowQuestionBankModal(true);
+			return;
+		}
+		if (item.key === "generate_using_file") {
+			setShowPdfModal(true);
+			return;
 		}
 
-		setIsDropDownOpen(false);
+		await addQuestion(item.key as QuizQuestionKey);
 	};
 
 	const handleMouseLeave = () => {
@@ -631,7 +593,7 @@ const CreateQuizSidebarContant: React.FC = () => {
 								</Tooltip>
 							</span>
 							<IoIosClose
-								onClick={() => setIsDropDownOpen(false)}
+								onClick={closeMenu}
 								className="cursor-pointer"
 								size={30}
 							/>{" "}
@@ -703,7 +665,7 @@ const CreateQuizSidebarContant: React.FC = () => {
 			<SelectedQuizList />
 			{/* Show PDF Modal */}
 			{showPdfModal && (
-				<PdfModal onClose={() => setShowPdfModal(false)} />
+				<PdfModal initialOpen appendToQuiz onClose={() => setShowPdfModal(false)} />
 			)}
 			{/* Show Question Bank Modal */}
 			{showQuestionBankModal && (

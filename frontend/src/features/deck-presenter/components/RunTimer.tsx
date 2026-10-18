@@ -1,12 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Clock, Radio } from "lucide-react";
+import { CheckCircle2, Clock, Eye, Radio } from "lucide-react";
 import type { RunStateInfo } from "@/features/deck/live/channelState";
 import { useServerClock } from "@/features/deck/live/useServerClock";
 import { cn } from "@/lib/utils";
 import { formatClock } from "../lib/format";
-import type { RunKind } from "../lib/runKind";
+import { isNavigationOnly, type RunKind } from "../lib/runKind";
 
 // Plan §6.5. The server owns every deadline (ends_at); useServerClock counts
 // down against the server clock. Untimed voting (most Quest slides) shows a
@@ -18,7 +18,11 @@ export interface RunTimerChipProps {
 	runState: RunStateInfo | null;
 }
 
-/** Top-right chip on the stage: countdown, "Voting open", "Q&A open" or "Voting closed". */
+/**
+ * Top-right chip on the stage: countdown, "Voting open", "Q&A open" or "Voting closed";
+ * quiz runs: countdown / "Answering" / "Answer revealed". The spinner shows none (its
+ * voting timer is the spin itself), leaderboard and content slides neither.
+ */
 export function RunTimerChip({ kind, runState }: RunTimerChipProps) {
 	const state = runState?.state ?? null;
 	const timed = state === "voting" && !!runState?.ends_at;
@@ -27,7 +31,7 @@ export function RunTimerChip({ kind, runState }: RunTimerChipProps) {
 		durationSeconds: runState?.duration_seconds ?? null,
 	});
 
-	if (!kind || kind === "content" || !state || state === "waiting" || state === "get_ready") return null;
+	if (!kind || isNavigationOnly(kind) || kind === "spin" || !state || state === "waiting" || state === "get_ready") return null;
 
 	const base =
 		"pointer-events-none inline-flex items-center gap-2 rounded-full border px-4 py-2 text-lg font-semibold shadow-sm backdrop-blur";
@@ -64,7 +68,16 @@ export function RunTimerChip({ kind, runState }: RunTimerChipProps) {
 		return (
 			<div className={cn(base, "border-[var(--deck-success)] bg-[var(--deck-surface)] text-[var(--deck-success)]")}>
 				<Radio className="h-5 w-5" aria-hidden />
-				{state === "open" ? "Q&A open" : "Voting open"}
+				{state === "open" ? "Q&A open" : kind === "quiz" ? "Answering" : "Voting open"}
+			</div>
+		);
+	}
+
+	if (state === "reveal") {
+		return (
+			<div className={cn(base, "border-[var(--deck-border)] bg-[var(--deck-surface)] text-[var(--deck-text-muted)]")}>
+				<Eye className="h-5 w-5" aria-hidden />
+				Answer revealed
 			</div>
 		);
 	}
@@ -77,8 +90,8 @@ export function RunTimerChip({ kind, runState }: RunTimerChipProps) {
 	);
 }
 
-/** Full-stage "get ready" countdown before voting opens. */
-export function GetReadyOverlay({ runState }: { runState: RunStateInfo | null }) {
+/** Full-stage "get ready" countdown before voting (quiz: answering) opens. */
+export function GetReadyOverlay({ runState, kind = null }: { runState: RunStateInfo | null; kind?: RunKind | null }) {
 	const active = runState?.state === "get_ready";
 	const clock = useServerClock({ endsAt: active ? runState?.ends_at : null, tickMs: 100 });
 	const reduceMotion = useReducedMotion();
@@ -97,20 +110,32 @@ export function GetReadyOverlay({ runState }: { runState: RunStateInfo | null })
 				Get ready
 			</p>
 			<div className="relative flex h-[min(40vh,320px)] w-[min(40vh,320px)] items-center justify-center">
-				<AnimatePresence mode="popLayout" initial={false}>
+				{/* mode="wait" + a quick exit: one digit at a time, never two overlapping. */}
+				<AnimatePresence mode="wait" initial={false}>
 					<motion.span
 						key={seconds ?? "…"}
 						initial={reduceMotion ? false : { scale: 1.6, opacity: 0 }}
-						animate={{ scale: 1, opacity: 1 }}
-						exit={reduceMotion ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
-						transition={{ duration: reduceMotion ? 0 : 0.35, ease: "easeOut" }}
+						animate={{ scale: 1, opacity: 1, transition: { duration: reduceMotion ? 0 : 0.28, ease: "easeOut" } }}
+						exit={
+							reduceMotion
+								? { opacity: 0, transition: { duration: 0 } }
+								: { scale: 0.6, opacity: 0, transition: { duration: 0.12, ease: "easeIn" } }
+						}
 						className="absolute text-[min(30vh,240px)] font-black leading-none tabular-nums text-[var(--deck-primary)]"
 					>
 						{seconds !== null && seconds > 0 ? seconds : "Go!"}
 					</motion.span>
 				</AnimatePresence>
 			</div>
-			<span className="sr-only">{seconds ? `Voting opens in ${seconds} seconds` : "Voting is opening"}</span>
+			<span className="sr-only">
+				{kind === "quiz"
+					? seconds
+						? `Answering opens in ${seconds} seconds`
+						: "Answering is opening"
+					: seconds
+						? `Voting opens in ${seconds} seconds`
+						: "Voting is opening"}
+			</span>
 		</div>
 	);
 }

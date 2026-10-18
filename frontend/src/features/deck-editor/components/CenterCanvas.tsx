@@ -3,11 +3,14 @@
 import { ArrowDown, ArrowUp, Copy, HelpCircle, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
-import type { Slide } from "@/features/deck/types";
+import type { DeckProduct, Slide } from "@/features/deck/types";
 import { getSlideType } from "../slideRegistry";
+import { productCopy } from "./productCopy";
 import { ScaledSlide, SlidePresenterPreview } from "./SlidePreview";
 
 export interface CenterCanvasProps {
+	/** Copy only; default quest. */
+	product?: DeckProduct;
 	slide: Slide | null;
 	index: number;
 	total: number;
@@ -22,11 +25,11 @@ const toolButton =
 	"inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-dark transition hover:bg-gray-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:pointer-events-none disabled:opacity-40 dark:text-white dark:hover:bg-dark-3";
 
 /** Middle column: the selected slide exactly as the presenter will render it, scaled to fit 16:9. */
-export function CenterCanvas({ slide, index, total, theme, onAdd, onDuplicate, onDelete, onMove }: CenterCanvasProps) {
+export function CenterCanvas({ product = "quest", slide, index, total, theme, onAdd, onDuplicate, onDelete, onMove }: CenterCanvasProps) {
 	if (!slide) {
 		return (
 			<section aria-label="Slide preview" className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 bg-gray-2 p-6 dark:bg-dark">
-				<p className="text-base font-medium text-dark dark:text-white">This quest has no slides yet.</p>
+				<p className="text-base font-medium text-dark dark:text-white">This {productCopy(product).noun} has no slides yet.</p>
 				<button
 					type="button"
 					onClick={onAdd}

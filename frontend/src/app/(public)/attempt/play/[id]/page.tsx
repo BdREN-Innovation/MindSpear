@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import QuizComponent from "../QuizComponent";
 import TrueFalseComponent from "../TrueFalseComponent";
 import { QuizData, QuizQuestion } from "@/types/public";
@@ -11,7 +11,7 @@ import SortAnswerBlanksComponent from "../SortAnswerBlanksComponent";
 import moment from "@/lib/dayjs";
 import { AxiosError } from "axios";
 import { useRouter } from "next/navigation";
-import ThankYouComponent from "../ThankYouComponent";
+import ThankYouComponent, { type ResultStatus } from "../ThankYouComponent";
 import QuizDateClose from "@/components/ErrorComponent/QuizDateClose";
 import { toast } from "react-toastify";
 
@@ -41,6 +41,7 @@ const QuizPlayPage = () => {
 	const quizid = params.id || searchParams.get("qid");
 	const attempId = searchParams.get("aid");
 	const joinid = searchParams.get("jid");
+	const previewQuizId = searchParams.get("id");
 	const jCod = params.id;
 	const qId = searchParams.get("qid");
 
@@ -71,13 +72,38 @@ const QuizPlayPage = () => {
 		string | undefined
 	>();
 	const [quizErrorStatus, setQuizErrorStatus] = useState<boolean>(false);
+	const [quizTitle, setQuizTitle] = useState("");
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [resultStatus, setResultStatus] = useState<ResultStatus>(preview === "true" ? "preview" : "loading");
+
+	// Seconds spent on each question (Previous/Next can revisit one), sent as time_taken_seconds
+	// (it used to send the time left, which made the "fastest correct answer" the slowest).
+	const spentSeconds = useRef<Record<number, number>>({});
+	const questionStartedAt = useRef<{ index: number; at: number } | null>(null);
+	// Latest values for the timers, whose callbacks outlive a render.
+	const questionsRef = useRef<QuizQuestion[]>([]);
+	const currentIndexRef = useRef(0);
+	const hasSelectedAnswerRef = useRef(false);
+	const timeUpHandled = useRef<number | null>(null);
+	const totalTimeUpHandled = useRef(false);
+	// A typed (short) answer counts as soon as there is text. It used to wait for the next
+	// timer tick (an effect kept resetting it), so a quick click on Next/Finish did nothing.
+	const answerReady =
+		questions[currentQuestionIndex]?.key === "sortanswer"
+			? newItemText.trim().length > 0
+			: hasSelectedAnswer;
+	questionsRef.current = questions;
+	currentIndexRef.current = currentQuestionIndex;
+	hasSelectedAnswerRef.current = answerReady;
 
 	const parseTime = useCallback((timeString: string) => {
 		const minutes = parseInt(timeString.replace("m", ""));
 		return minutes * 60;
 	}, []);
 
+	// "Leave site?" only while a real attempt is in progress, not in a preview or after finishing.
 	useEffect(() => {
+		if (quizCompleted || preview === "true") return;
 		const handleBeforeUnload = (event: BeforeUnloadEvent) => {
 			event.preventDefault();
 			event.returnValue = "";
@@ -86,7 +112,7 @@ const QuizPlayPage = () => {
 		return () => {
 			window.removeEventListener("beforeunload", handleBeforeUnload);
 		};
-	}, []);
+	}, [quizCompleted, preview]);
 
 	const loadSavedState = useCallback(() => {
 		if (!quizid) return null;
@@ -127,8 +153,12 @@ const QuizPlayPage = () => {
 		const dataFetch = async () => {
 			try {
 				setIsLoading(true);
+				// The editor's Preview links here with the quiz's own join link, which no session has
+				// ("Quiz not found or not available."), so a preview loads the quiz itself for its owner.
 				const responselist = await axiosInstance.get(
-					`/quiz-attempts-url/show/${joinid}`
+					preview === "true" && previewQuizId
+						? `/quizes/show/${previewQuizId}`
+						: `/quiz-attempts-url/show/${joinid}`
 				);
 				const datalist = await transformQuestionData(
 					responselist?.data?.data?.quiz?.questions
@@ -138,8 +168,10 @@ const QuizPlayPage = () => {
 				const savedQuestions = savedState?.questions;
 
 				const apiQuizData: QuizData = {
-					quiztime:
-						`${responselist?.data?.data?.quiz?.duration}` || "10m",
+					// `${null}` is "null" (truthy), which made the quiz timer NaN when no duration was set.
+					quiztime: responselist?.data?.data?.quiz?.duration
+						? `${responselist?.data?.data?.quiz?.duration}`
+						: "10m",
 					quiztimeStatus: responselist?.data?.data?.quiz
 						?.quiztime_mode
 						? true
@@ -165,6 +197,7 @@ const QuizPlayPage = () => {
 				};
 				setQuizData(apiQuizData);
 				setQuestions(apiQuizData.questions);
+				setQuizTitle(responselist?.data?.data?.quiz?.title ?? "");
 
 				if (savedState) {
 					setCurrentQuestionIndex(savedState.currentIndex);
@@ -195,13 +228,41 @@ const QuizPlayPage = () => {
 			}
 		};
 		dataFetch();
-	}, [quizid, loadSavedState, joinid]);
+	}, [quizid, loadSavedState, joinid, preview, previewQuizId]);
 
 
 
 	useEffect(() => {
 		saveState();
 	}, [saveState]);
+
+	// The typed answer belongs to the question shown (the short-answer box keeps it per question).
+	useEffect(() => {
+		const question = questionsRef.current[currentQuestionIndex];
+		if (!question || question.key !== "sortanswer") {
+			setNewItemText("");
+			return;
+		}
+		try {
+			setNewItemText(localStorage.getItem(`quiz-${question.quiz_id}-q${question.id}-text`) ?? "");
+		} catch {
+			setNewItemText("");
+		}
+	}, [currentQuestionIndex, questions.length]);
+
+	// Time on a question runs from when it is shown until another one is shown.
+	useEffect(() => {
+		if (isLoading || quizCompleted || questions.length === 0) return;
+		const now = Date.now();
+		const running = questionStartedAt.current;
+		if (running && running.index === currentQuestionIndex) return;
+		if (running) {
+			spentSeconds.current[running.index] =
+				(spentSeconds.current[running.index] ?? 0) + (now - running.at) / 1000;
+		}
+		questionStartedAt.current = { index: currentQuestionIndex, at: now };
+		timeUpHandled.current = null;
+	}, [currentQuestionIndex, isLoading, quizCompleted, questions.length]);
 
 	useEffect(() => {
 		if (questions.length > 0 && currentQuestionIndex < questions.length) {
@@ -240,7 +301,7 @@ const QuizPlayPage = () => {
 		const timer = setInterval(() => {
 			setTotalTimeLeft((prev) => {
 				if (prev <= 1) {
-					completeQuiz();
+					handleTotalTimeUp();
 					return 0;
 				}
 				return prev - 1;
@@ -269,15 +330,7 @@ const QuizPlayPage = () => {
 						]);
 					}
 
-					if (currentQuestionIndex < questions.length - 1) {
-						setTimeout(() => {
-							const nextIndex = currentQuestionIndex + 1;
-							setCurrentQuestionIndex(nextIndex);
-							setHasSelectedAnswer(false);
-						}, 1000);
-					} else {
-						completeQuiz();
-					}
+					handleQuestionTimeUp(currentQuestionIndex);
 					return 0;
 				}
 
@@ -302,11 +355,14 @@ const QuizPlayPage = () => {
 	]);
 
 	const handleNextQuestion = async () => {
+		if (isSubmitting) return;
 		const currentQuestion = questions[currentQuestionIndex];
 
 		if (preview !== "true") {
-			if (hasSelectedAnswer) {
+			if (answerReady) {
+				setIsSubmitting(true);
 				await saveAnswer(currentQuestion);
+				setIsSubmitting(false);
 			}
 		}
 
@@ -346,16 +402,19 @@ const QuizPlayPage = () => {
 	};
 
 	const completeQuiz = useCallback(() => {
-		localStorage.setItem(`rediract_pages`, "true");
+		// Sends a reload of a finished attempt back to the join page. Not for a preview: there is no
+		// session to join, and the flag made the owner's next Preview open "Quiz not found".
+		if (preview !== "true") localStorage.setItem(`rediract_pages`, "true");
 		clearSavedState();
 		handleClearQuizData();
 		setQuizCompleted(true);
 		complitedApiCall();
 		setIsDisabled(true);
-	}, [clearSavedState]);
+	}, [clearSavedState, preview]);
 
 	const complitedApiCall = async () => {
 		if (preview !== "true") {
+			setResultStatus("loading");
 			try {
 				const payload = { status: "Completed" };
 				const response = await axiosInstance.put(
@@ -367,8 +426,10 @@ const QuizPlayPage = () => {
 				);
 				setUserScore(response?.data?.data?.attempt?.score);
 				setUserTotalScore(response?.data?.data?.attempt?.total_score);
+				setResultStatus("ready");
 				clearSavedState();
 			} catch (error) {
+				setResultStatus("error");
 				const axiosError = error as AxiosError<{ message?: string }>;
 				if (axiosError.response) {
 					console.error(
@@ -501,20 +562,64 @@ const QuizPlayPage = () => {
 		const ldata = localStorage.getItem(`rediract_pages`);
 		if (ldata === "true") {
 			localStorage.removeItem("rediract_pages");
-			router.push(
-				`/attempt/${jCod}?jid=${joinid}&qid=${qId}&aid=${attempId}`
-			);
+			if (preview !== "true") {
+				router.push(
+					`/attempt/${jCod}?jid=${joinid}&qid=${qId}&aid=${attempId}`
+				);
+			}
 		}
-	}, [jCod, joinid, qId, attempId, router]);
+	}, [jCod, joinid, qId, attempId, router, preview]);
+
+	const secondsSpentOn = (index: number, limit: number) => {
+		const running = questionStartedAt.current;
+		const live = running && running.index === index ? (Date.now() - running.at) / 1000 : 0;
+		const seconds = Math.max(1, Math.round((spentSeconds.current[index] ?? 0) + live));
+		// A question's own timer can't have run longer than its limit.
+		return limit > 0 ? Math.min(seconds, limit) : seconds;
+	};
+
+	/** Saves what the player picked on a question whose time ran out (it used to be dropped). */
+	const saveIfAnswered = async (index: number) => {
+		if (preview === "true" || index !== currentIndexRef.current || !hasSelectedAnswerRef.current) return;
+		const question = questionsRef.current[index];
+		if (question) await saveAnswerRef.current(question);
+	};
+
+	function handleQuestionTimeUp(index: number) {
+		if (timeUpHandled.current === index) return;
+		timeUpHandled.current = index;
+		setTimeout(async () => {
+			await saveIfAnswered(index);
+			if (index < questionsRef.current.length - 1) {
+				setCurrentQuestionIndex(index + 1);
+				setHasSelectedAnswer(false);
+			} else {
+				completeQuizRef.current();
+			}
+		}, 1000);
+	}
+
+	function handleTotalTimeUp() {
+		if (totalTimeUpHandled.current) return;
+		totalTimeUpHandled.current = true;
+		setTimeout(async () => {
+			await saveIfAnswered(currentIndexRef.current);
+			completeQuizRef.current();
+		}, 0);
+	}
 
 	const saveAnswer = async (question: QuizQuestion) => {
 		if (!quizid) return;
 		try {
 			const result = getSelectedData(question);
 			if (!result || !isSingleSelection(result)) return;
-			console.log(result, "questionquestionquestionquestionquestion");
 
 			const currentTime = moment().format("YYYY-MM-DD HH:mm:ss");
+			const index = questions.findIndex((q) => q.id === question.id);
+			const timeTaken = secondsSpentOn(
+				index,
+				quizData.quiztimeStatus ? 0 : parseInt(question.timeLimit || "0") || 0
+			);
 
 			const payload = {
 				...(question.key === "quiz" && {
@@ -523,7 +628,7 @@ const QuizPlayPage = () => {
 						start_time: currentTime,
 						selected_option: result.indexNumber,
 					},
-					time_taken_seconds: totalTimeLeft,
+					time_taken_seconds: timeTaken,
 				}),
 				...(question.key === "truefalse" && {
 					question_id: result.questionId,
@@ -531,7 +636,7 @@ const QuizPlayPage = () => {
 						start_time: currentTime,
 						selected_option: result.indexNumber,
 					},
-					time_taken_seconds: totalTimeLeft,
+					time_taken_seconds: timeTaken,
 				}),
 				...(question.key === "fillintheblanks" && {
 					question_id: result.questionId,
@@ -539,7 +644,7 @@ const QuizPlayPage = () => {
 						start_time: currentTime,
 						selected_option: result.indexNumber,
 					},
-					time_taken_seconds: totalTimeLeft,
+					time_taken_seconds: timeTaken,
 				}),
 				...(question.key === "sortanswer" && {
 					question_id: result.questionId,
@@ -547,7 +652,7 @@ const QuizPlayPage = () => {
 						start_time: currentTime,
 						selected_option: newItemText,
 					},
-					time_taken_seconds: totalTimeLeft,
+					time_taken_seconds: timeTaken,
 				}),
 			};
 
@@ -559,6 +664,11 @@ const QuizPlayPage = () => {
 			console.error("Error saving answer:", error);
 		}
 	};
+
+	const saveAnswerRef = useRef(saveAnswer);
+	saveAnswerRef.current = saveAnswer;
+	const completeQuizRef = useRef(completeQuiz);
+	completeQuizRef.current = completeQuiz;
 
 	const currentQuestion = questions[currentQuestionIndex];
 
@@ -581,6 +691,9 @@ const QuizPlayPage = () => {
 					userQuizAnswersData={userQuizAnswers}
 					userScore={userScore}
 					total_score={userTotalScore}
+					totalQuestions={questions.length}
+					quizTitle={quizTitle}
+					status={resultStatus}
 				/>
 			</div>
 		);
@@ -704,7 +817,8 @@ const QuizPlayPage = () => {
 					/>
 				)}
 
-				<div className="flex justify-between">
+				{/* Under the question (the buttons sat at the far screen edges), with where the player is. */}
+				<div className="mx-auto flex w-full items-center justify-between gap-3 md:w-2/3">
 					<button
 						onClick={handlePreviousQuestion}
 						disabled={currentQuestionIndex === 0}
@@ -717,11 +831,15 @@ const QuizPlayPage = () => {
 						Previous
 					</button>
 
+					<span className="text-sm font-medium text-white/80">
+						Question {currentQuestionIndex + 1} of {questions.length}
+					</span>
+
 					<button
 						onClick={handleNextQuestion}
-						disabled={!hasSelectedAnswer}
+						disabled={!answerReady || isSubmitting}
 						className={`bg-purple-600 text-white font-bold py-2 px-4 rounded ${
-							!hasSelectedAnswer
+							!answerReady || isSubmitting
 								? "opacity-50 cursor-not-allowed"
 								: "hover:bg-purple-700"
 						}`}

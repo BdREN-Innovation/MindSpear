@@ -12,13 +12,16 @@ use App\Models\User;
  *
  * Quest: users.quest_v2_enabled (set by admins in Filament), or everyone
  * while config('deck.quest_v2_default_enabled') (QUEST_V2_DEFAULT_ENABLED)
- * is on. A product without an entry in USER_FLAGS has no rollout flag.
+ * is on. Quiz: users.quiz_v2_enabled / config('deck.quiz_v2_default_enabled')
+ * (QUIZ_V2_DEFAULT_ENABLED), the same way. A product without an entry in
+ * USER_FLAGS has no rollout flag.
  */
 final class DeckFeature
 {
     /** product => users column that turns its v2 on for one account. */
     public const USER_FLAGS = [
         Deck::PRODUCT_QUEST => 'quest_v2_enabled',
+        Deck::PRODUCT_QUIZ => 'quiz_v2_enabled',
     ];
 
     public static function enabled(?User $user, string $product): bool

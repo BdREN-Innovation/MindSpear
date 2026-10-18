@@ -96,22 +96,13 @@ const HostLater: React.FC = () => {
 			reset({
 				title: quizresponse.quiz.title,
 				is_published: quizresponse.quiz.is_published,
+				// UTC ISO strings from the API: new Date() gives the local time (see QuizeSetting).
 				open_datetime: quizresponse.quiz.open_datetime
-					? new Date(
-							new Date(
-								quizresponse.quiz.open_datetime
-							).getTime() +
-								new Date().getTimezoneOffset() * 60000
-					  )
+					? new Date(quizresponse.quiz.open_datetime)
 					: new Date(),
 
 				close_datetime: quizresponse.quiz.close_datetime
-					? new Date(
-							new Date(
-								quizresponse.quiz.close_datetime
-							).getTime() +
-								new Date().getTimezoneOffset() * 60000
-					  )
+					? new Date(quizresponse.quiz.close_datetime)
 					: new Date(Date.now() + 24 * 60 * 60 * 1000),
 
 				quiztime_mode: Boolean(quizresponse.quiz.quiztime_mode),
@@ -143,6 +134,8 @@ const HostLater: React.FC = () => {
 	const HostLiveSubmith = async (data: QuizFormValues) => {
 		const obj = {
 			...data,
+			// Sharing it is publishing it (the old "Private" switch here only flipped this flag).
+			is_published: true,
 			open_datetime: moment(data.open_datetime).format(
 				"YYYY-MM-DD HH:mm:ss"
 			),
@@ -150,12 +143,12 @@ const HostLater: React.FC = () => {
 				"YYYY-MM-DD HH:mm:ss"
 			),
 			quiztime_mode: data.quiztime_mode ? 1 : 0,
+			// The pickers show local time; without it the server read these dates as UTC.
+			timezone: currentTimeZone,
 		};
 		try {
-			const response = axiosInstance.post(
-				`/quizes/update/${params?.id}`,
-				obj
-			);
+			// Awaited (it wasn't): the quiz is re-read and the session created right after.
+			await axiosInstance.post(`/quizes/update/${params?.id}`, obj);
 			// console.log(response, "responseData?.data");
 			const responseData = await axiosInstance.get(
 				`/quizes/show/${params?.id}`
@@ -167,7 +160,7 @@ const HostLater: React.FC = () => {
 			const time = moment(endDateTimeString).format(
 				"YYYY-MM-DD HH:mm:ss"
 			);
-			hostLiveApiCall(time);
+			await hostLiveApiCall(time);
 
 			router.push(`/quiz-reports/${params?.id}`);
 		} catch (error) {
@@ -178,14 +171,17 @@ const HostLater: React.FC = () => {
 					"Error verifying token:",
 					axiosError.response.data
 				);
+				toast.error(axiosError.response.data?.message || "The quiz could not be scheduled.");
 			} else {
 				console.error("Unexpected error:", axiosError.message);
+				toast.error("Unexpected error occurred. Please try again.");
 			}
 		}
 	};
 
 	const hostLiveApiCall = async (endDate: any) => {
-		const titleList = "Hose letter title";
+		// A name the host can recognise in the session list (it was always "Host later").
+		const titleList = `Self-paced · ${moment().format("D MMM YYYY, HH:mm")}`;
 		const now = moment();
 		const formatted = now.format("YYYY-MM-DD HH:mm:ss");
 		const obj = {
@@ -228,8 +224,7 @@ const HostLater: React.FC = () => {
 				<div className="flex flex-col">
 					<h5 className="text-[17px] font-bold"> Host Later </h5>
 					<p className="text-[#858585]">
-						{" "}
-						Display from a big screen{" "}
+						Share a link players can open any time
 					</p>
 				</div>
 			</div>
@@ -251,25 +246,22 @@ const HostLater: React.FC = () => {
 									className="mb-6"
 								/>
 								<h3 className="text-[20px] font-bold pb-[10px] text-[#fff]">
-									{" "}
-									Assigning MindSpear{" "}
+									Self-paced quiz
 								</h3>
 								<p className="text-[0.875rem] text-[#fff]">
-									Create a self-paced MindSpear with questions
-									and answers displayed on the participant s
-									device. Perfect for on the go, or for those
-									who can t join the live game.
+									Players answer on their own device at their own
+									pace. Perfect for homework, or for anyone who
+									can&apos;t join a live game.
 								</p>
 							</div>
 						</div>
 
 						<div className="md:col-span-7">
 							<h3 className="text-[20px] font-bold pb-[10px] text-[#222]">
-								{" "}
-								Create an assigned MindSpear
+								Share a self-paced quiz
 							</h3>
 
-							<p> Participants should complete it before: </p>
+							<p className="text-sm text-[#666]">Players can join and finish it between these times.</p>
 
 							<div className="grid relative grid-cols-1 md:grid-cols-12 gap-2 mt-[10px]">
 								<div className="md:col-span-6">
@@ -346,10 +338,15 @@ const HostLater: React.FC = () => {
 							<div className="pt-[10px]">
 								<div className="mb-3">
 									<label className="flex items-center justify-between cursor-pointer">
-										<span className="text-[#222] font-bold text-sm">
-											{isQuizTime
-												? "Quiz Time"
-												: "Question Time"}
+										<span>
+											<span className="block text-[#222] font-bold text-sm">
+												Time limit for the whole quiz
+											</span>
+											<span className="block text-xs text-[#888]">
+												{isQuizTime
+													? "Players get this many minutes in total."
+													: "Off: each question uses its own time limit."}
+											</span>
 										</span>
 										<Controller
 											name="quiztime_mode"
@@ -389,18 +386,23 @@ const HostLater: React.FC = () => {
 								</div>
 
 								{isQuizTime && (
-									<div>
+									<div className="relative mb-[15px]">
 										<input
 											type="number"
+											min={1}
+											aria-label="Quiz time in minutes"
 											{...register("duration", {
 												valueAsNumber: true,
 												required: isQuizTime
 													? true
 													: false,
 											})}
-											placeholder="Enter quiz time (min)"
-											className="w-full border mb-[15px] px-3 py-2 rounded-md focus:outline-none focus:ring focus:border-[#bc5eb3]"
+											placeholder="Minutes"
+											className="w-full border pl-3 pr-20 py-2 rounded-md focus:outline-none focus:ring focus:border-[#bc5eb3]"
 										/>
+										<span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#888]">
+											minutes
+										</span>
 										{/* {errors.duration && (
                         <p className="text-red-500 text-sm mt-[-10px] mb-2">
                           {errors.duration.message}
@@ -451,28 +453,6 @@ const HostLater: React.FC = () => {
 											)}
 										/>
 									</label>
-								</div>
-							</div>
-
-							<div className="pt-[5px]">
-								<div className="mb-3">
-									<Controller
-										name="is_published"
-										control={control}
-										render={({ field }) => (
-											<div className="flex gap-3 items-center font-bold">
-												<Switch
-													checked={field.value}
-													onChange={field.onChange}
-												/>
-												<span className="text-sm text-dark dark:text-white">
-													{field.value
-														? "Published"
-														: "Private"}
-												</span>
-											</div>
-										)}
-									/>
 								</div>
 							</div>
 

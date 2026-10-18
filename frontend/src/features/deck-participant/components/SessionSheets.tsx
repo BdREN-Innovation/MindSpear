@@ -24,7 +24,7 @@ export function LeaveSessionSheet({
 			open={open}
 			onClose={onStay}
 			title="Leave session?"
-			description="You'll lose your place. You can join again with the code, but as a new participant."
+			description="You'll leave the room. Join again with the code on this device to pick up where you left off."
 			initialFocusRef={stayRef}
 			footer={
 				<div className="flex flex-col gap-2">

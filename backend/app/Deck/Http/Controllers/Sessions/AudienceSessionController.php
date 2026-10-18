@@ -34,4 +34,26 @@ class AudienceSessionController extends DeckController
 
         return $this->okResponse(SessionStatePresenter::lookup($session));
     }
+
+    /**
+     * GET /play/by-code/{code}: the join page's lookup. Join codes are unique
+     * across products, so one request finds a live Quest or Quiz session and
+     * reports its product (no per-product misses against the 404 limiter).
+     */
+    public function byCodeAnyProduct(string $code): JsonResponse
+    {
+        $joinCode = JoinCodeGenerator::normalise($code);
+
+        $session = $joinCode === null ? null : DeckSession::query()
+            ->with('deck')
+            ->where('join_code', $joinCode)
+            ->live()
+            ->first();
+
+        if (! $session) {
+            throw DeckException::notFound('Session not found.');
+        }
+
+        return $this->okResponse(SessionStatePresenter::lookup($session));
+    }
 }

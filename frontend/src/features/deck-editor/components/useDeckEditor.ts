@@ -68,7 +68,17 @@ function patchErrorKeys(patch: SlidePatch): string[] {
 	return keys;
 }
 
-const PATCH_ERROR_PREFIXES = ["title", "body", "config", "time_limit_seconds", "get_ready_seconds", "slides"];
+const PATCH_ERROR_PREFIXES = [
+	"title",
+	"body",
+	"config",
+	"time_limit_seconds",
+	"get_ready_seconds",
+	"points_min",
+	"points_max",
+	"speed_bonus_enabled",
+	"slides",
+];
 
 export interface DeckEditor {
 	loadState: "loading" | "ready" | "error";
@@ -416,7 +426,10 @@ export function useDeckEditor(
 					const { option, slide } = await track(() => api.updateOption(deckId, slideId, optionId, input));
 					removeLayer(slideId, key);
 					receiveSlide(slide);
-					clearSlideErrors(slideId, (k) => k.startsWith("options") || k === "label" || k === "payload");
+					clearSlideErrors(
+						slideId,
+						(k) => k.startsWith("options") || k === "label" || k === "payload" || k.startsWith("payload.") || k === "is_correct"
+					);
 					waiters.forEach((w) => w.resolve(option));
 				} catch (reason) {
 					const error = toDeckApiError(reason);
@@ -762,8 +775,8 @@ export function useDeckEditor(
 			const meta = metaRef.current;
 			if (!meta) return;
 			const { title, ...rest } = summary;
-			metaRef.current = { ...meta, ...rest, title: keepLocalTitle ? meta.title : title, settings: resolveDeckSettings(summary.settings) };
-			confirmedMetaRef.current = { title, settings: resolveDeckSettings(summary.settings) };
+			metaRef.current = { ...meta, ...rest, title: keepLocalTitle ? meta.title : title, settings: resolveDeckSettings(summary.settings, api.product) };
+			confirmedMetaRef.current = { title, settings: resolveDeckSettings(summary.settings, api.product) };
 		};
 
 		const saveTitle = async () => {
@@ -815,7 +828,7 @@ export function useDeckEditor(
 			if (!meta) return;
 			const before = meta.settings;
 			const optimistic = { ...before } as Record<string, unknown>;
-			const defaults = resolveDeckSettings(null) as unknown as Record<string, unknown>;
+			const defaults = resolveDeckSettings(null, api.product) as unknown as Record<string, unknown>;
 			for (const [key, value] of Object.entries(patch)) optimistic[key] = value === null ? defaults[key] : value;
 			metaRef.current = { ...meta, settings: optimistic as unknown as DeckSettings };
 			bump();
@@ -848,8 +861,8 @@ export function useDeckEditor(
 
 		const init = (deck: Deck) => {
 			const { slides, ...meta } = deck;
-			metaRef.current = { ...meta, settings: resolveDeckSettings(meta.settings) };
-			confirmedMetaRef.current = { title: meta.title, settings: resolveDeckSettings(meta.settings) };
+			metaRef.current = { ...meta, settings: resolveDeckSettings(meta.settings, api.product) };
+			confirmedMetaRef.current = { title: meta.title, settings: resolveDeckSettings(meta.settings, api.product) };
 			confirmedRef.current = new Map(slides.map((s) => [s.id, s]));
 			localRef.current = new Map(slides.map((s) => [s.id, s]));
 			layersRef.current = new Map();

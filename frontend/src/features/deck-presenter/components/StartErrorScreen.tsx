@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, ImageOff, Lock, RefreshCw } from "lucide-react";
 import type { DeckApiError } from "@/features/deck/api/errors";
-import type { Deck } from "@/features/deck/types";
+import type { Deck, DeckProduct } from "@/features/deck/types";
+import { productCopy } from "@/features/deck-editor/components/productCopy";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
 
 // Why a session could not start, with a way out:
-// - 403 feature_disabled: Quest v2 is off for this account;
+// - 403 feature_disabled: Quest v2 / Quiz v2 is off for this account;
 // - 422 slides.{pos}.media*: a slide (pin on image) needs an image;
 // - 422 unsupported_type / slides.{pos}.type: a slide type this product lacks;
 // - 409 conflict without session_id: the deck has no slides;
@@ -48,13 +49,16 @@ function slideProblems(error: DeckApiError, deck: Deck | null): SlideProblem[] {
 
 export interface StartErrorScreenProps {
 	deckId: number;
+	/** Default quest. */
+	product?: DeckProduct;
 	deck: Deck | null;
 	error: DeckApiError;
 	onRetry: () => void;
 }
 
-export function StartErrorScreen({ deckId, deck, error, onRetry }: StartErrorScreenProps) {
-	const editorHref = `/quests/${deckId}/edit`;
+export function StartErrorScreen({ deckId, product = "quest", deck, error, onRetry }: StartErrorScreenProps) {
+	const copy = productCopy(product);
+	const editorHref = copy.editHref(deckId);
 	const problems = error.status === 422 ? slideProblems(error, deck) : [];
 	const mediaMissing = problems.length > 0 && Object.keys(error.validationErrors).some((key) => /\.media/.test(key));
 
@@ -66,7 +70,7 @@ export function StartErrorScreen({ deckId, deck, error, onRetry }: StartErrorScr
 
 	if (error.code === "feature_disabled") {
 		Icon = Lock;
-		title = "Quest v2 isn't enabled for your account";
+		title = `${copy.v2} isn't enabled for your account`;
 		showEditor = false;
 	} else if (mediaMissing) {
 		Icon = ImageOff;
@@ -78,7 +82,7 @@ export function StartErrorScreen({ deckId, deck, error, onRetry }: StartErrorScr
 	} else if (error.status === 409) {
 		title = "Nothing to present yet";
 	} else if (error.status === 404) {
-		title = "Quest not found";
+		title = `${copy.Noun} not found`;
 		message = "It may have been deleted, or it belongs to another account.";
 		showEditor = false;
 	} else {
@@ -136,7 +140,7 @@ export function StartErrorScreen({ deckId, deck, error, onRetry }: StartErrorScr
 						</Link>
 					)}
 					<Link
-						href="/my-library/quest-page"
+						href={copy.libraryHref}
 						className="inline-flex min-h-12 items-center rounded-xl px-5 font-semibold text-dark-4 hover:bg-gray-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-dark-7 dark:hover:bg-dark-3"
 					>
 						My Library

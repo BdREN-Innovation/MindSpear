@@ -6,7 +6,10 @@ use App\Deck\Broadcasts\BroadcastPayload;
 use App\Deck\Broadcasts\DeckChannels;
 use App\Deck\Broadcasts\Payloads\ParticipantCountUpdatedPayload;
 use App\Deck\Broadcasts\Payloads\SlideStateChangedPayload;
+use App\Deck\Sessions\QuizRuntime;
 use App\Deck\Slides\SlideTypeRegistry;
+use App\Deck\Slides\Types\Quiz\AbstractQuizType;
+use App\Models\Deck\Deck;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckParticipantAnswer;
 use App\Models\Deck\DeckSession;
@@ -21,15 +24,30 @@ use App\Services\Live\LiveAggregateService;
  *   Owner only: every run, the current run's presenter view WITH the live
  *   aggregate, participant count and join info.
  * - participant(): GET state with X-Participant-Token (or the
- *   participant-state alias). The current run's participant view (never an
- *   aggregate or answer key inside it) as `current_run` and, under the plan
- *   §7.6 name, `current_slide_run`; the participant's own answer to it as
- *   `my_submission_for_current_slide` (null when none); `aggregate` only
- *   when LiveAggregateService::resultsVisibility() says public.
+ *   participant-state alias). The current run's participant view for this
+ *   participant (never an aggregate or answer key inside it; quiz runs in
+ *   their own keyed option order, `options: []` + `options_hidden: true`
+ *   until voting, AbstractQuizType::serializeForViewer) as `current_run`
+ *   and, under the plan §7.6 name, `current_slide_run`; the participant's
+ *   own answer to it as `my_submission_for_current_slide` (null when none);
+ *   `aggregate` only when LiveAggregateService::resultsVisibility() says
+ *   public.
  *
  * Timer fields (seconds_remaining, ends_at, duration_seconds) are derived
  * like slide.state.changed and are null for untimed states; clients count
  * down from ends_at corrected by server_time.
+ *
+ * Quiz sessions add `quiz` to both views: {submitted_count (answers on the
+ * current run by participants still in the room), spin (spinner result
+ * {option_id, target_angle} or null), leaderboard (top N when the current
+ * run is a leaderboard slide, else null)}; the participant view's `quiz`
+ * also has participant_count (participants in the room, left_at null; the
+ * host view has it top-level), plus `standing` {participant_id, total_points,
+ * rank, points_delta}. Totals only move when a run is revealed, so standing
+ * and leaderboards never change while a run takes answers. Before a quiz run is revealed a participant still never sees
+ * its aggregate or correct answer; afterwards `aggregate` is the public
+ * reveal aggregate and `my_submission_for_current_slide` carries
+ * correctness (myAnswer()).
  */
 class SessionStatePresenter
 {
@@ -73,10 +91,12 @@ class SessionStatePresenter
                 'host' => $channels->hostChannel($session),
             ],
             'participant_count' => ParticipantCountUpdatedPayload::countFor($session),
-            'runs' => $runs->map(fn (DeckSessionSlideRun $run) => self::participantRun($run))->values()->all(),
+            // The host's run list keeps quiz options in every state (they are only hidden from phones).
+            'runs' => $runs->map(fn (DeckSessionSlideRun $run) => self::participantRun($run, null, false))->values()->all(),
             'current_run' => $current ? self::presenterRun($current) : null,
             'results_visibility' => $current ? self::visibility($current) : null,
             ...self::timer($current),
+            ...self::quiz($session, $current),
             'server_time' => now()->toISOString(),
         ];
     }
@@ -90,8 +110,7 @@ class SessionStatePresenter
         $current?->setRelation('session', $session);
 
         $visibility = $current ? self::visibility($current) : null;
-        $registry = app(SlideTypeRegistry::class);
-        $currentRun = $current ? self::participantRun($current) : null;
+        $currentRun = $current ? self::participantRun($current, $participant) : null;
         $answer = $current === null ? null : DeckParticipantAnswer::query()
             ->where('deck_participant_id', $participant->id)
             ->where('slide_run_id', $current->id)
@@ -110,22 +129,77 @@ class SessionStatePresenter
             'current_run' => $currentRun,
             'current_slide_run' => $currentRun,
             'has_answered' => $answer !== null,
-            'my_submission_for_current_slide' => $answer ? self::submission($answer) : null,
+            'my_submission_for_current_slide' => $answer ? self::myAnswer($answer, $current, $participant) : null,
             'results_visibility' => $visibility,
             // Same rule as the aggregate broadcasts: hidden results never reach participants.
-            'aggregate' => $visibility === BroadcastPayload::VISIBILITY_PUBLIC ? $registry->aggregate($current) : null,
+            'aggregate' => $visibility === BroadcastPayload::VISIBILITY_PUBLIC ? self::publicAggregate($current) : null,
             ...self::timer($current),
+            ...self::quiz($session, $current, $participant),
             'server_time' => now()->toISOString(),
         ];
     }
 
-    /** The run as participants see it (SlideTypeContract::serializeForParticipant; no aggregate, no answer keys). */
-    public static function participantRun(DeckSessionSlideRun $run): array
+    /**
+     * GET .../my-answer for $participant's $answer on $run: submission(),
+     * plus {is_correct, points_awarded, correct_answer, total_points, rank}
+     * once a scored quiz run is revealed (never before).
+     */
+    public static function myAnswer(DeckParticipantAnswer $answer, DeckSessionSlideRun $run, DeckParticipant $participant): array
+    {
+        $quiz = app(QuizRuntime::class);
+
+        return self::submission($answer) + ($quiz->showsCorrectness($run) ? $quiz->answerExtras($answer, $run, $participant) : []);
+    }
+
+    /** The aggregate participants may see (visibility public): revealed quiz runs come from the reveal cache. */
+    private static function publicAggregate(DeckSessionSlideRun $run): array
+    {
+        return $run->isRevealed() ? app(QuizRuntime::class)->aggregate($run) : app(SlideTypeRegistry::class)->aggregate($run);
+    }
+
+    /** Quiz-only state keys (see the class docblock); [] for other products. */
+    private static function quiz(DeckSession $session, ?DeckSessionSlideRun $current, ?DeckParticipant $participant = null): array
+    {
+        if ($session->deck?->product !== Deck::PRODUCT_QUIZ) {
+            return [];
+        }
+
+        $quiz = app(QuizRuntime::class);
+        $block = [
+            'submitted_count' => $current ? ParticipantCountUpdatedPayload::answeredCountFor($current) : 0,
+            'spin' => $current ? QuizRuntime::spinResult($current) : null,
+            'leaderboard' => $current && $quiz->isLeaderboard($current)
+                ? $quiz->leaderboard($session, $quiz->leaderboardSize($current))
+                : null,
+        ];
+
+        if (! $participant) {
+            return ['quiz' => $block];
+        }
+
+        // Phones rebuild "x / y answered" and the lobby count from here after a reload.
+        $block['participant_count'] = ParticipantCountUpdatedPayload::countFor($session);
+
+        return ['quiz' => $block, 'standing' => $quiz->standing($session, $participant)];
+    }
+
+    /**
+     * The run as participants see it (SlideTypeContract::serializeForParticipant;
+     * no aggregate, no answer keys). Quiz types (AbstractQuizType) serialise
+     * for $participant (their own keyed option order; null = the run-level
+     * order public broadcasts carry) and hide the options until voting
+     * unless $hideUntilVoting is false (host run list, post-session review).
+     */
+    public static function participantRun(DeckSessionSlideRun $run, ?DeckParticipant $participant = null, bool $hideUntilVoting = true): array
     {
         $registry = app(SlideTypeRegistry::class);
 
         if ($registry->has((string) $run->type_snapshot)) {
-            return $registry->for($run->type_snapshot)->serializeForParticipant($run);
+            $type = $registry->for($run->type_snapshot);
+
+            return $type instanceof AbstractQuizType
+                ? $type->serializeForViewer($run, $participant ? (int) $participant->id : null, $hideUntilVoting)
+                : $type->serializeForParticipant($run);
         }
 
         // A type the registry no longer knows: identity and state only, no config.

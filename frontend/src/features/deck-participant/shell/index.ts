@@ -1,8 +1,8 @@
 // Participant PWA shell primitives (plan §4.2). Shared with Quiz v2 later.
-export { AppShell, useAnnounce, useParticipantShell } from "./AppShell";
+export { AppShell, useAnnounce, useAnnouncer, useParticipantShell } from "./AppShell";
 export { markNavigation } from "./navDirection";
 export type { NavDirection } from "./navDirection";
-export type { AppShellProps, ParticipantShellContextValue } from "./AppShell";
+export type { Announcer, AppShellProps, ParticipantShellContextValue } from "./AppShell";
 export { TopBar } from "./TopBar";
 export type { TopBarProps } from "./TopBar";
 export { SheetModal } from "./SheetModal";

@@ -10,11 +10,13 @@ import type {
 	DeckPublicEvent,
 	DeckSessionState,
 	ParticipantRunView,
+	QuizStanding,
 	ResultsVisibility,
 	SessionStatus,
 	SlideAggregate,
 	SlimRunView,
 } from "../types";
+import { QUIZ_PUBLIC_EVENT_NAMES } from "../types";
 import type { DeckApiError } from "../api/errors";
 import {
 	channelReducer,
@@ -24,6 +26,7 @@ import {
 	type DeckChannelEvent,
 	type DeckConnectionStatus,
 	type DeckQaEvent,
+	type QuizLiveState,
 	type RunStateInfo,
 } from "./channelState";
 import { acquireChannel, type AcquiredChannel } from "./echoChannels";
@@ -53,6 +56,15 @@ import { msUntil, noteServerTime } from "./useServerClock";
 // With hostSessionId the hook also listens on the private host channel for
 // host-only aggregates (results hidden from participants) and the full Q&A
 // moderation payloads, merged into the same state.
+//
+// Quiz sessions (product 'quiz') also listen for slide.submitted_count.updated,
+// slide.revealed, spin.started and leaderboard.updated (merged into `quiz`,
+// `standing`, the aggregate and the run state; see channelState.ts). Their slim
+// copies (refetch: true) resync like a slim slide.changed, and a run that shows
+// `reveal` without its public results for a few seconds (slide.revealed lost)
+// is re-read too. A scored quiz run hides its options from phones until
+// voting (options_hidden): when it opens for answers the phone reads its own
+// state (its own option order) within 0–0.4 s.
 
 const PUBLIC_EVENTS: DeckPublicEvent["event"][] = [
 	"slide.changed",
@@ -73,10 +85,21 @@ const HOST_STATE_EVENTS: DeckHostEvent["event"][] = [
 	"qa.question.moderated",
 ];
 
+/** Quiz sessions add these public events. */
+const QUIZ_EVENTS: DeckPublicEvent["event"][] = [...QUIZ_PUBLIC_EVENT_NAMES];
+
 /** After a deadline, wait this long for the server's own transition event before reading state. */
 const EXPIRY_GRACE_MS = 1500;
+/** A quiz run in `reveal` whose slide.revealed has not arrived after this long is re-read. */
+const REVEAL_GRACE_MS = 3000;
 /** Participants: spread event-driven resyncs over this window. */
 const RESYNC_JITTER_MS = 2000;
+/**
+ * Participants: a quiz run that opened for answers with its options hidden is
+ * read within this window instead (answering time counts from voting start,
+ * so the spread stays short).
+ */
+const OPTIONS_JITTER_MS = 400;
 /** Participants: disconnected polling backs off up to this interval (±20 % jitter). */
 const POLL_MAX_MS = 60_000;
 
@@ -145,6 +168,15 @@ export interface DeckSessionChannel<S extends DeckSessionState> {
 	isResyncing: boolean;
 	/** Last resync failure (cleared by the next success). A participant 401 usually means the session ended. */
 	error: DeckApiError | null;
+	/**
+	 * Quiz sessions: the current run's submitted count, participant count, spin, leaderboard rows and
+	 * reveal delta (null for Quest). Pass it to Presenter / Participant as `quiz`.
+	 */
+	quiz: QuizLiveState | null;
+	/** Quiz participant: my total points + rank (state `standing`, my slide.revealed delta row). null for the host / Quest. */
+	standing: QuizStanding | null;
+	/** Record a standing read elsewhere (my-answer total_points / rank, GET leaderboard `me`). */
+	noteStanding: (standing: QuizStanding) => void;
 	/** Read the state endpoint now (coalesced with one in flight). */
 	resync: () => Promise<void>;
 }
@@ -282,6 +314,20 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		if (active && resyncRequests > 0) resyncSoon();
 	}, [active, resyncRequests, resyncSoon]);
 
+	// Quiz: answering opened on a run whose options were hidden — read them (short spread).
+	const optionsRequests = state.optionsRequests;
+	useEffect(() => {
+		if (!active || optionsRequests === 0) return;
+		if (!jitterRef.current) {
+			void read();
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			if (mountedRef.current) void read();
+		}, Math.random() * OPTIONS_JITTER_MS);
+		return () => window.clearTimeout(timer);
+	}, [active, optionsRequests, read]);
+
 	// Public channel + socket status.
 	useEffect(() => {
 		if (!active || !publicChannelKey) return;
@@ -332,7 +378,7 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 				if (!justRead()) void read();
 			}
 
-			for (const name of PUBLIC_EVENTS) {
+			for (const name of product === "quiz" ? [...PUBLIC_EVENTS, ...QUIZ_EVENTS] : PUBLIC_EVENTS) {
 				channel.listen<DeckPublicEvent>(name, (payload) => {
 					const event = { ...payload, event: payload.event ?? name } as DeckPublicEvent;
 					if ("server_time" in event) noteServerTime(event.server_time);
@@ -398,6 +444,24 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		return () => window.clearTimeout(timer);
 	}, [active, endsAt, runId, runVersion, hostSessionId, read]);
 
+	// Quiz: the run reached `reveal` (slide.state.changed) but slide.revealed
+	// never came (its broadcast can fail after the commit): read state, which
+	// carries the public reveal aggregate. Participants add jitter.
+	const revealPending = state.runState?.state === "reveal" && state.resultsVisibility !== "public";
+	useEffect(() => {
+		if (!active || !revealPending || runId === null) return;
+		const timer = window.setTimeout(
+			() => {
+				const current = stateRef.current;
+				if (current.runState?.slide_run_id === runId && current.resultsVisibility !== "public") void read();
+			},
+			REVEAL_GRACE_MS + (hostSessionId ? 0 : Math.random() * RESYNC_JITTER_MS)
+		);
+		return () => window.clearTimeout(timer);
+	}, [active, revealPending, runId, hostSessionId, read]);
+
+	const noteStanding = useCallback((standing: QuizStanding) => dispatch({ type: "standing", standing }), []);
+
 	// Optional polling while the socket is down: backoff for participants
 	// (5 s → 60 s, jittered), fixed for the host; a 429 waits for retry_after.
 	const disconnected = state.status === "disconnected";
@@ -439,8 +503,18 @@ export function useDeckSessionChannel<S extends DeckSessionState>(
 		latestState: state.latestState,
 		isResyncing: state.isResyncing,
 		error: state.error,
+		quiz: state.quiz,
+		standing: state.standing,
+		noteStanding,
 		resync,
 	};
 }
 
-export type { DeckChannelEvent, DeckConnectionStatus, DeckQaEvent, RunStateInfo } from "./channelState";
+export type {
+	DeckChannelEvent,
+	DeckConnectionStatus,
+	DeckQaEvent,
+	QuizLiveState,
+	QuizSpinState,
+	RunStateInfo,
+} from "./channelState";

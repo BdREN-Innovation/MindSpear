@@ -4,11 +4,12 @@ import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { Pencil } from "lucide-react";
-import { questParticipantApi } from "@/features/deck/api/participantApi";
+import { participantApiFor } from "@/features/deck/api/participantApi";
 import { toDeckApiError } from "@/features/deck/api/errors";
 import { emojiLabel, useEmojiAvatars } from "@/features/deck/api/metaApi";
 import {
 	clearJoinDraft,
+	loadDeviceParticipant,
 	loadRememberedIdentity,
 	saveParticipantSession,
 	saveRememberedIdentity,
@@ -17,15 +18,16 @@ import { EmojiGrid } from "../components/EmojiGrid";
 import { JoinStepStatus } from "../components/JoinStepStatus";
 import { Notice } from "../components/Notice";
 import { friendlyError } from "../lib/errors";
-import { PARTICIPANT_PRODUCT } from "../lib/joinCode";
 import { useJoinDraft, type JoinDraftResult } from "../lib/useJoinDraft";
 import { markInstallEligible } from "../pwa/installPrompt";
 import { AppShell, LoadingDots, PlayButton, SheetModal, TapFeedback, TopBar, markNavigation, pulse, useAnnounce } from "../shell";
 
 // /play/[code]/avatar — step 3 (plan §4.5 / §7.1): pick an emoji in a bottom
-// sheet (opens by itself), then join: POST .../participants/join, store the
-// token (saveParticipantSession) and replace this page with the live screen
-// so Back never lands on a finished join step.
+// sheet (opens by itself), then join: POST .../participants/join on the
+// draft's product (quest or quiz routes), store the token with that product
+// (saveParticipantSession) and replace this page with the live screen so Back
+// never lands on a finished join step. A device that joined this session
+// before sends its stored token (same-device rejoin: the same participant).
 
 type JoinFailure = { message: string; kind: "name" | "emoji" | "gone" | "other" };
 
@@ -102,17 +104,25 @@ function AvatarForm({ join }: { join: JoinDraftResult }) {
 		setJoining(true);
 		setFailure(null);
 		try {
-			const result = await questParticipantApi.join(draft.sessionId, {
-				join_code: draft.joinCode,
-				display_name: draft.displayName!,
-				emoji_avatar: emoji,
-			});
-			saveParticipantSession(PARTICIPANT_PRODUCT, result, { joinCode: draft.joinCode, deckTitle: draft.deckTitle });
+			const { product } = draft;
+			// Joined this session on this device before (another tab, after leaving): the
+			// stored token brings back the same participant instead of a second one.
+			const device = loadDeviceParticipant(product, draft.sessionId);
+			const result = await participantApiFor(product).join(
+				draft.sessionId,
+				{
+					join_code: draft.joinCode,
+					display_name: draft.displayName!,
+					emoji_avatar: emoji,
+				},
+				{ token: device?.participantToken ?? null }
+			);
+			saveParticipantSession(product, result, { joinCode: draft.joinCode, deckTitle: draft.deckTitle });
 			saveRememberedIdentity({ displayName: draft.displayName!, emojiAvatar: emoji });
-			clearJoinDraft(PARTICIPANT_PRODUCT, draft.joinCode);
+			clearJoinDraft(product, draft.joinCode);
 			markInstallEligible();
 			pulse("success");
-			announce("You're in!");
+			announce(result.rejoined ? "Welcome back! You're in." : "You're in!");
 			setSheetOpen(false);
 			markNavigation(1);
 			router.replace(`/play/live/${encodeURIComponent(result.public_channel_key)}`);

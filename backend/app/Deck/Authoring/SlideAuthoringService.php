@@ -82,7 +82,8 @@ class SlideAuthoringService
 
     /**
      * Partial update: title, body, config (merged onto the stored config,
-     * server-managed keys dropped), time_limit_seconds, get_ready_seconds.
+     * server-managed keys dropped), time_limit_seconds, get_ready_seconds and,
+     * on quiz decks, points_min / points_max / speed_bonus_enabled.
      * All field errors are reported together. Runs under the deck row lock
      * and merges onto the slide row as it is now (re-read FOR UPDATE), so two
      * overlapping partial PATCHes both land. The result must fit the
@@ -127,6 +128,7 @@ class SlideAuthoringService
             }
 
             $changes += SlideInput::collect($errors, '', fn () => $this->input->timing($type, $data)) ?? [];
+            $changes += SlideInput::collect($errors, '', fn () => $this->scoring($deck, $type, $data, $fresh->only(SlideInput::SCORING_FIELDS))) ?? [];
 
             if ($errors !== []) {
                 throw ValidationException::withMessages($errors);
@@ -266,7 +268,12 @@ class SlideAuthoringService
                     'title' => $this->input->title(isset($data['title']) ? (string) $data['title'] : null),
                     'body' => SlideInput::collect($errors, $prefix, fn () => $this->input->body($type, $data['body'] ?? null)),
                     'config' => SlideInput::collect($errors, '', fn () => $this->input->config($type, (array) ($data['config'] ?? []), $this->input->seedConfig($type, $deck->settings), "{$prefix}.config")),
-                ],
+                ] + (SlideInput::collect($errors, $prefix, fn () => $this->scoring(
+                    $deck,
+                    $type,
+                    $data,
+                    array_intersect_key($this->input->seedTiming($type, $deck->settings, $deck->product), array_flip(SlideInput::SCORING_FIELDS)),
+                )) ?? []),
                 'options' => SlideInput::collect($errors, $prefix, fn () => $this->input->options($type, $data['options'] ?? null)),
             ];
         }
@@ -325,7 +332,7 @@ class SlideAuthoringService
             'title' => null,
             'body' => null,
             'config' => $this->input->seedConfig($type, $deck->settings),
-        ], $this->input->seedTiming($type, $deck->settings), $attributes));
+        ], $this->input->seedTiming($type, $deck->settings, $deck->product), $attributes));
 
         self::insertOptions(self::optionRows($slide->id, $options ?? $this->input->options($type, null)));
 
@@ -392,6 +399,26 @@ class SlideAuthoringService
         foreach (array_chunk($rows, 500) as $chunk) {
             SlideOption::query()->insert($chunk);
         }
+    }
+
+    /**
+     * Quiz scoring columns from $data (SlideInput::scoring). The requests
+     * only let them through on quiz routes; a deck of another product
+     * refuses them here too (422 per field).
+     */
+    private function scoring(Deck $deck, SlideTypeContract $type, array $data, array $stored): array
+    {
+        $sent = array_intersect_key($data, array_flip(SlideInput::SCORING_FIELDS));
+
+        if ($sent === []) {
+            return [];
+        }
+
+        if ($deck->product !== Deck::PRODUCT_QUIZ) {
+            throw ValidationException::withMessages(array_fill_keys(array_keys($sent), 'Points are only available on quiz slides.'));
+        }
+
+        return $this->input->scoring($type, $sent, $stored);
     }
 
     /** $slide's position read under the deck lock (404 when it was deleted meanwhile). */

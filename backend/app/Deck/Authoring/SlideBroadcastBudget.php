@@ -6,6 +6,7 @@ use App\Deck\Broadcasts\Payloads\SlideChangedPayload;
 use App\Deck\Http\DeckValidation;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\TakesMedia;
+use App\Deck\Slides\Types\Quiz\AbstractQuizType;
 use App\Events\Live\LiveBroadcastEvent;
 use App\Models\Deck\DeckSessionSlideRun;
 use App\Models\Deck\Slide;
@@ -73,7 +74,9 @@ final class SlideBroadcastBudget
         ]);
 
         try {
-            $payload = SlideChangedPayload::fromRun($run, $type->serializeForParticipant($run), 99_999);
+            // Quiz views hide their options until voting; size the full view (the larger one).
+            $view = $type instanceof AbstractQuizType ? $type->serializeForViewer($run, null, false) : $type->serializeForParticipant($run);
+            $payload = SlideChangedPayload::fromRun($run, $view, 99_999);
             $channel = 'session.' . $slide->deck?->product . '.' . str_repeat('x', 32);
             $event = LiveBroadcastEvent::fromPayload($payload, $channel, [
                 'module' => (string) $slide->deck?->product,

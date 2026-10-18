@@ -98,7 +98,8 @@ class Quiz extends Model
 
     public function questions()
     {
-        return $this->hasMany(Question::class);
+        // In the editor's order (they came back unsorted, e.g. in the quiz page's question list).
+        return $this->hasMany(Question::class)->orderBy('serial_number')->orderBy('id');
     }
 
     public function quizParticipants()

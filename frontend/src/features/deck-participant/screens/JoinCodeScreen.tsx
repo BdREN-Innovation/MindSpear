@@ -2,18 +2,20 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { questParticipantApi } from "@/features/deck/api/participantApi";
+import { lookupSessionByCode } from "@/features/deck/api/participantApi";
 import { toDeckApiError } from "@/features/deck/api/errors";
 import { saveJoinDraft } from "@/features/deck/live/participantSession";
 import { CodeInput } from "../components/CodeInput";
 import { Notice } from "../components/Notice";
 import { friendlyError } from "../lib/errors";
-import { JOIN_CODE_LENGTH, PARTICIPANT_PRODUCT, rejectedCharactersHint, sanitizeJoinCode } from "../lib/joinCode";
+import { JOIN_CODE_LENGTH, rejectedCharactersHint, sanitizeJoinCode } from "../lib/joinCode";
 import { AppShell, LoadingDots, PlayButton, markNavigation, pulse, useAnnounce } from "../shell";
 
 // /play — step 1 of joining (plan §7.1): the 6-character code. Auto-submits
-// at 6 characters: GET by-code, keep the lookup as a join draft (so the next
-// step needs no second lookup) and go to /play/[code].
+// at 6 characters: GET /play/by-code/{code} (product-neutral: finds a live
+// Quest or Quiz session and says which), keep the lookup as a join draft of
+// that product (so the next step needs no second lookup and joins through the
+// right API) and go to /play/[code].
 
 // A Map, not an object literal: ?reason= is user input, and a plain lookup
 // would hand back Object.prototype members for "__proto__" / "constructor".
@@ -58,9 +60,10 @@ function JoinCodeForm({ initialCode, reason }: JoinCodeScreenProps) {
 			setLoading(true);
 			setError(null);
 			try {
-				const session = await questParticipantApi.lookupByCode(value, controller.signal);
+				const session = await lookupSessionByCode(value, { signal: controller.signal });
 				if (controller.signal.aborted) return;
-				saveJoinDraft(PARTICIPANT_PRODUCT, {
+				saveJoinDraft(session.product, {
+					product: session.product,
 					sessionId: session.session_id,
 					joinCode: session.join_code || value,
 					deckTitle: session.deck_title,
@@ -86,12 +89,17 @@ function JoinCodeForm({ initialCode, reason }: JoinCodeScreenProps) {
 
 	useEffect(() => () => abortRef.current?.abort(), []);
 
-	// A ?code= link (QR, legacy /join redirect) looks up at once.
+	// A ?code= link (QR, legacy /join redirect) looks up at once. The cleanup
+	// re-arms it: StrictMode's dev remount aborts the first lookup (above), and
+	// the second mount must start it again instead of spinning forever.
 	const autoLooked = useRef(false);
 	useEffect(() => {
 		if (autoLooked.current || code.length !== JOIN_CODE_LENGTH) return;
 		autoLooked.current = true;
 		void lookup(code);
+		return () => {
+			autoLooked.current = false;
+		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 

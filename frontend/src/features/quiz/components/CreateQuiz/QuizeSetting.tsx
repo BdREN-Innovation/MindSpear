@@ -1,10 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Modal } from "@/components/ui";
-import {
-	//   CallIcon,
-	PencilSquareIcon,
-	UserIcon,
-} from "@/assets/icons";
+import { PencilSquareIcon } from "@/assets/icons";
 import InputGroup from "@/components/FormElements/InputGroup";
 import { TextAreaGroup } from "@/components/FormElements/InputGroup/text-area";
 
@@ -22,6 +18,7 @@ import { toast } from "react-toastify";
 import { setQuiz } from "@/features/quiz/store/quizInformationSlice";
 import moment from "@/lib/dayjs";
 import { DatePicker } from "antd";
+import { Pencil, Type } from "lucide-react";
 import dayjs from "dayjs";
 
 interface QuizState {
@@ -49,18 +46,16 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 		(state: RootState) => state.quizInformation.quizInformation
 	);
 	const currentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-	console.log(response, "responseresponseresponseresponse");
 
 	const quiz = response?.quiz;
 	const visibilityStatus = quiz?.visibility === "private" ? false : true;
-	console.log(quiz, "quiz");
 
 	const formSchema = z.object({
 		title: z.string().min(1, "Title is required"),
 		description: z.string().optional(),
 		open_datetime: z.date().nullable().optional(),
 		close_datetime: z.date().nullable().optional(),
-		is_published: z.boolean(),
+		is_public: z.boolean(),
 	});
 
 	type FormData = z.infer<typeof formSchema>;
@@ -78,7 +73,7 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 			description: "",
 			open_datetime: null,
 			close_datetime: null,
-			is_published: false,
+			is_public: false,
 		},
 	});
 
@@ -87,28 +82,29 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 			reset({
 				title: quiz.title === "My Quiz" ? "" : quiz.title,
 				description: quiz.description ?? "",
+				// The API sends UTC ISO strings ("...Z"), so new Date() already gives the local time that the
+				// pickers show and that is sent back with the local timezone. Adding the timezone offset
+				// showed UTC wall-clock times and moved the dates by that offset on every save.
 				open_datetime: quiz.open_datetime
-					? new Date(
-							new Date(quiz.open_datetime).getTime() +
-								new Date().getTimezoneOffset() * 60000
-					  )
+					? new Date(quiz.open_datetime)
 					: new Date(),
 
 				close_datetime: quiz.close_datetime
-					? new Date(
-							new Date(quiz.close_datetime).getTime() +
-								new Date().getTimezoneOffset() * 60000
-					  )
+					? new Date(quiz.close_datetime)
 					: new Date(Date.now() + 24 * 60 * 60 * 1000),
 
-				is_published: visibilityStatus ?? false,
+				is_public: visibilityStatus,
 			});
 		}
 	}, [quiz, reset, visibilityStatus]);
 
 	const onSubmit = async (data: FormData) => {
+		// "Public" shares the quiz as a template (its visibility). It used to set is_published,
+		// which unpublished the quiz (players couldn't join) and left it listed as public.
+		const { is_public, ...fields } = data;
 		const formattedData = {
-			...data,
+			...fields,
+			visibility: is_public ? "public" : "private",
 			open_datetime: moment(data.open_datetime).format(
 				"YYYY-MM-DD HH:mm:ss"
 			),
@@ -158,17 +154,27 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 
 	return (
 		<div className="w-full">
-			<div onClick={() => setIsModalOpen(true)} className="w-full">
-				<button className="flex !w-[300px] !h-[50px] font-bold cursor-pointer items-center gap-3.5 rounded-[10px] border bg-white py-3 pl-5 pr-[100px] outline-none transition-colors focus-visible:border-primary dark:border-dark-3 dark:bg-dark-2 dark:hover:border-dark-4 dark:hover:bg-dark-3 dark:hover:text-dark-6 dark:focus-visible:border-primary mr-[20px]">
-					{" "}
-					{defailtValueUse === "My Quiz" ? "" : defailtValueUse}{" "}
-				</button>
-				<button className="rounded-sm py-[8px] px-[20px] bg-[#f2f2f2] absolute right-7 top-1/2 -translate-y-1/2 max-[1015px]:size-5 z-999">
-					Quiz Title
-				</button>
-			</div>
+			{/* One clear control: the quiz's name (or a prompt to name it) that opens its settings. */}
+			<button
+				type="button"
+				onClick={() => setIsModalOpen(true)}
+				title="Edit the quiz title and settings"
+				className="group flex h-[50px] w-[300px] max-w-full items-center gap-3 rounded-[10px] border border-[#e5e5e5] bg-white pl-4 pr-3 text-left outline-none transition hover:border-primary focus-visible:border-primary dark:border-dark-3 dark:bg-dark-2"
+			>
+				<span className="min-w-0 flex-1 truncate">
+					{defailtValueUse && defailtValueUse !== "My Quiz" ? (
+						<span className="font-semibold text-[#222] dark:text-white">{defailtValueUse}</span>
+					) : (
+						<span className="text-[#999]">Untitled quiz</span>
+					)}
+				</span>
+				<span className="flex flex-shrink-0 items-center gap-1 rounded-md bg-[#f5f5f5] px-2 py-1 text-xs font-medium text-[#555] group-hover:bg-[#fff3e8] group-hover:text-primary">
+					<Pencil className="h-3.5 w-3.5" aria-hidden />
+					Edit
+				</span>
+			</button>
 			<Modal
-				title="MindSpear Setting"
+				title="Quiz settings"
 				open={isModalOpen}
 				onClose={() => setIsModalOpen(false)}
 			>
@@ -179,7 +185,7 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 							type="text"
 							label="Title"
 							placeholder="Enter Quiz Name"
-							icon={<UserIcon />}
+							icon={<Type className="h-5 w-5" aria-hidden />}
 							iconPosition="left"
 							height="sm"
 							{...register("title")}
@@ -257,7 +263,7 @@ function QuizeSetting({ defailtValueUse }: QuizeSettingProps) {
 
 						<div className="mb-5.5 flex items-center gap-4">
 							<Controller
-								name="is_published"
+								name="is_public"
 								control={control}
 								render={({ field }) => (
 									<>

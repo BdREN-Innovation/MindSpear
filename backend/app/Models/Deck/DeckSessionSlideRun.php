@@ -31,12 +31,26 @@ class DeckSessionSlideRun extends Model
 
     public const STATE_CLOSED = 'closed';
 
+    /**
+     * Quiz (hidden_until_reveal) and spinner runs end here instead of
+     * `closed`: answers are no longer accepted and the correct answer,
+     * aggregate and leaderboard delta are public. Terminal, like `closed`.
+     */
+    public const STATE_REVEAL = 'reveal';
+
     public const STATES = [
         self::STATE_WAITING,
         self::STATE_GET_READY,
         self::STATE_VOTING,
         self::STATE_OPEN,
         self::STATE_CLOSED,
+        self::STATE_REVEAL,
+    ];
+
+    /** States after which a run never takes answers again (its aggregate is final). */
+    public const FINAL_STATES = [
+        self::STATE_CLOSED,
+        self::STATE_REVEAL,
     ];
 
     protected $table = 'deck_session_slide_runs';
@@ -109,6 +123,17 @@ class DeckSessionSlideRun extends Model
     public function acceptsSubmissions(): bool
     {
         return in_array($this->state, [self::STATE_VOTING, self::STATE_OPEN], true);
+    }
+
+    /** closed or reveal: no more answers, the aggregate is final. */
+    public function isFinal(): bool
+    {
+        return in_array($this->state, self::FINAL_STATES, true);
+    }
+
+    public function isRevealed(): bool
+    {
+        return $this->state === self::STATE_REVEAL;
     }
 
     /** Runs that are the current slide of their session. */

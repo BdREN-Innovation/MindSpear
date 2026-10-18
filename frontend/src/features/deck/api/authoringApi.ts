@@ -25,14 +25,22 @@ import { deckRequest } from "./errors";
 import { authoringBase, DECK_TIMEOUTS } from "./routes";
 
 // Deck authoring (owner only, Sanctum via axiosInstance). Backend:
-// routes/deck/quest_authoring.php + quest_media.php, responses camelCase
-// (DeckPresenter / SlidePresenter / OptionPresenter). Every function throws
-// DeckApiError. There is no upload endpoint here: upload through
+// routes/deck/{quest,quiz}_authoring.php + {quest,quiz}_media.php, responses
+// camelCase (DeckPresenter / SlidePresenter / OptionPresenter). Every function
+// throws DeckApiError. There is no upload endpoint here: upload through
 // /library/files (features/file-library) and attach the returned file id.
 //
 // Every route answers 403 code `feature_disabled` when the user's
-// quest_v2_enabled flag is off; adding slides past the cap answers 422
-// `slide_limit_reached` (data.max_slides).
+// quest_v2_enabled / quiz_v2_enabled flag is off; adding slides past the cap
+// answers 422 `slide_limit_reached` (data.max_slides).
+//
+// Quiz (/quizzes): new decks are "Untitled quiz" with settings.get_ready_seconds 5;
+// addSlide offers quiz + content types only (422 unsupported_type otherwise) and
+// seeds timeLimitSeconds / getReadySeconds / pointsMin 50 / pointsMax 100 /
+// speedBonusEnabled true; updateSlide also takes points_min / points_max /
+// speed_bonus_enabled (scored types only); addOption / updateOption / bulk
+// options also take is_correct and validate quiz payloads (422 payload.<key>).
+// Quest routes answer 422 on every quiz-only field.
 
 type Id = number | string;
 
@@ -40,7 +48,7 @@ export interface AuthoringApi {
 	readonly product: DeckProduct;
 	/** GET / — the user's decks of this product, paginated. */
 	listDecks(params?: ListDecksParams, signal?: AbortSignal): Promise<DeckPage>;
-	/** POST / — 201, seeded with one qr_code slide at position 1. */
+	/** POST / — 201, seeded with one qr_code slide at position 1 (quiz: "Untitled quiz", get_ready_seconds 5). */
 	createDeck(input?: CreateDeckInput): Promise<Deck>;
 	/** GET /{deck} — detail with slides + options in position order. */
 	getDeck(deckId: Id, signal?: AbortSignal): Promise<Deck>;
@@ -61,7 +69,7 @@ export interface AuthoringApi {
 	reorderSlides(deckId: Id, order: SlideOrderEntry[]): Promise<SlideOrderEntry[]>;
 	/** GET /{deck}/slides/{slide} */
 	getSlide(deckId: Id, slideId: Id, signal?: AbortSignal): Promise<Slide>;
-	/** PATCH /{deck}/slides/{slide} — config merges recursively (lists replace). */
+	/** PATCH /{deck}/slides/{slide} — config merges recursively (lists replace). Quiz: also points_min / points_max / speed_bonus_enabled. */
 	updateSlide(deckId: Id, slideId: Id, patch: SlidePatch): Promise<Slide>;
 	/** DELETE /{deck}/slides/{slide} — later slides close up. */
 	deleteSlide(deckId: Id, slideId: Id): Promise<SlideOrderEntry[]>;
@@ -74,7 +82,7 @@ export interface AuthoringApi {
 
 	/** POST /{deck}/slides/{slide}/options — 201, appended last. */
 	addOption(deckId: Id, slideId: Id, input?: OptionInput): Promise<OptionWithSlide>;
-	/** PATCH /{deck}/slides/{slide}/options/{option} */
+	/** PATCH /{deck}/slides/{slide}/options/{option} — quiz: also is_correct; payload validated per type (422 payload.<key>). */
 	updateOption(deckId: Id, slideId: Id, optionId: Id, input: OptionInput): Promise<OptionWithSlide>;
 	/** DELETE /{deck}/slides/{slide}/options/{option} — 422 `options` below the minimum. Returns the slide. */
 	deleteOption(deckId: Id, slideId: Id, optionId: Id): Promise<Slide>;
@@ -291,3 +299,30 @@ export function createAuthoringApi(product: DeckProduct): AuthoringApi {
 
 /** Quest v2 authoring (/api/v1/quests/v2). */
 export const questAuthoringApi = createAuthoringApi("quest");
+
+/** Quiz v2 authoring (/api/v1/quizzes). */
+export const quizAuthoringApi = createAuthoringApi("quiz");
+
+/** The authoring API of a product (shared instances). */
+export function authoringApiFor(product: DeckProduct): AuthoringApi {
+	return product === "quiz" ? quizAuthoringApi : questAuthoringApi;
+}
+
+/**
+ * Deletes a deck created for an AI run that never got its slides (the wizard
+ * was closed after a failed bulk save). Only while the deck still holds
+ * nothing but the seeded qr_code slide, so a bulk save that went through
+ * server-side after a client timeout is never thrown away. Best effort:
+ * resolves true when the deck was deleted, false otherwise (never throws).
+ */
+export async function discardSeedOnlyDeck(api: AuthoringApi, deckId: Id): Promise<boolean> {
+	try {
+		const deck = await api.getDeck(deckId);
+		const seedOnly = deck.slides.length === 0 || (deck.slides.length === 1 && deck.slides[0].type === "qr_code");
+		if (!seedOnly) return false;
+		await api.deleteDeck(deckId);
+		return true;
+	} catch {
+		return false;
+	}
+}

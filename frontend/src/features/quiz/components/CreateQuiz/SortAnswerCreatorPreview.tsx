@@ -3,7 +3,7 @@
 
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { Bookmark } from "lucide-react";
+import { Bookmark, Plus, X } from "lucide-react";
 import type { RootState } from "@/stores/store";
 import {
 	updateSortAnswerOption,
@@ -12,6 +12,7 @@ import {
 	updateLimitedTimeTitle,
 	removeSelectedItem,
 	updatePoints,
+	removeSortAnswerOption,
 } from "@/features/quiz/store/quizItems/quizSlice";
 
 import StylableInput from "@/lib/StylableInput";
@@ -119,114 +120,61 @@ const SortAnswerCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({
 							}
 						/>
 					</div>
-					{options?.length >= 1 && (
-						<div
-							key={options[0].color}
-							className={`mb-4 px-4 py-6 border rounded shadow flex flex-col justify-between cursor-pointer relative bg-white`}
-						>
-							<div
-								className="w-full h-[5px] rounded-full absolute top-0 left-0"
-								style={{ backgroundColor: options[0].color }}
-							></div>
-							<input
-								type="color"
-								value={options[0].color}
-								onChange={(e) =>
-									dispatch(
-										updateSortAnswerOption({
-											id: options[0].id,
-											changes: { color: e.target.value },
-										})
-									)
-								}
-								className="h-5 text-[0.875rem] w-5 cursor-pointer absolute left-2 top-8 border border-white"
-							/>
-							<input
-								type="text"
-								placeholder={options[0].placeholder}
-								value={options[0].text}
-								onChange={(e) =>
-									dispatch(
-										updateSortAnswerOption({
-											id: options[0].id,
-											changes: { text: e.target.value },
-										})
-									)
-								}
-								onClick={(e) => e.stopPropagation()}
-								className={`w-full p-2 rounded pl-7 text-black ${options[0].isSelected
-									? "bg-white"
-									: "bg-white"
-									}  focus:ring-[#fff] focus:outline-none text-[0.875rem]`}
-								maxLength={70}
-							/>
-						</div>
-					)}
-
-					<div className="w-full flex justify-center items-center">
-						<button
-							onClick={() => dispatch(addSortAnswerOption())}
-							disabled={options.length >= 4}
-							className="py-[10px] px-[20px] bg-[#f2f1f0] mb-[15px] rounded-[10px] font-bold text-[#6b7280] hover:bg-primary hover:text-[#fff] disabled:opacity-50"
-						>
-							{options.length < 2
-								? "Add accepted answers"
-								: `Other accepted answers ${options.length === 4
-									? ""
-									: `(${4 - options.length})`
-								} `}
-						</button>
-					</div>
-
-					<div className="grid grid-cols-3 gap-4">
-						{options.slice(1).map((option) => (
-							<div
-								key={option.id}
-								className={`px-4 py-6 border rounded shadow flex flex-col justify-between cursor-pointer relative bg-white`}
+					{/* One clear list (the old layout put extra answers under a button, with colour pickers). */}
+					<div className="rounded-xl border border-[#eee] bg-white p-4">
+						<h3 className="text-sm font-bold text-[#222]">Accepted answers</h3>
+						<p className="mb-3 text-xs text-[#888]">
+							Players type their answer. It counts when it matches any of these; capital letters and
+							extra spaces don&apos;t matter.
+						</p>
+						<ul className="space-y-2">
+							{options.map((option, index) => (
+								<li key={option.id} className="flex items-center gap-2">
+									<span className="w-5 flex-shrink-0 text-center text-xs font-semibold text-[#999]">
+										{index + 1}
+									</span>
+									<input
+										type="text"
+										aria-label={`Accepted answer ${index + 1}`}
+										placeholder={index === 0 ? "e.g. Paris" : "Another accepted answer"}
+										value={option.text}
+										onChange={(e) =>
+											dispatch(
+												updateSortAnswerOption({
+													id: option.id,
+													changes: { text: e.target.value },
+												})
+											)
+										}
+										className="min-w-0 flex-1 rounded-lg border border-[#e5e5e5] px-3 py-2 text-[0.875rem] text-black focus:border-primary focus:outline-none"
+										maxLength={70}
+									/>
+									{options.length > 1 && (
+										<button
+											type="button"
+											aria-label={`Remove accepted answer ${index + 1}`}
+											title="Remove"
+											onClick={() => dispatch(removeSortAnswerOption({ id: option.id }))}
+											className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-[#999] hover:bg-red-50 hover:text-red-500"
+										>
+											<X className="h-4 w-4" />
+										</button>
+									)}
+								</li>
+							))}
+						</ul>
+						<div className="mt-3 flex items-center gap-3">
+							<button
+								type="button"
+								onClick={() => dispatch(addSortAnswerOption())}
+								disabled={options.length >= 4}
+								className="inline-flex items-center gap-1 rounded-lg bg-[#f2f1f0] px-3 py-2 text-sm font-semibold text-[#555] hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#f2f1f0] disabled:hover:text-[#555]"
 							>
-								<div
-									className="w-full h-[5px] rounded-full absolute top-0 left-0"
-									style={{ backgroundColor: option.color }}
-								></div>
-
-								<input
-									type="color"
-									value={option.color}
-									onChange={(e) =>
-										dispatch(
-											updateSortAnswerOption({
-												id: option.id,
-												changes: {
-													color: e.target.value,
-												},
-											})
-										)
-									}
-									className="h-5 w-5 cursor-pointer absolute left-3 top-8 border border-white"
-								/>
-								<input
-									type="text"
-									placeholder={option.placeholder}
-									value={option.text}
-									onChange={(e) =>
-										dispatch(
-											updateSortAnswerOption({
-												id: option.id, // <-- use current option.id here
-												changes: {
-													text: e.target.value,
-												},
-											})
-										)
-									}
-									onClick={(e) => e.stopPropagation()}
-									className={`w-full p-2 rounded pl-7 text-black ${option.isSelected
-										? "bg-white"
-										: "bg-white"
-										}  focus:ring-[#fff] focus:outline-none text-[0.875rem]`}
-									maxLength={70}
-								/>
-							</div>
-						))}
+								<Plus className="h-4 w-4" aria-hidden />
+								Add another accepted answer
+							</button>
+							{options.length >= 4 && <span className="text-xs text-[#999]">Up to 4 accepted answers.</span>}
+						</div>
 					</div>
 				</div>
 
@@ -268,8 +216,8 @@ const SortAnswerCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({
 						className="mt-[15px] !text-[0.875rem]"
 						label="Points"
 						items={[
-							{ label: "Single Points", value: "1" },
-							{ label: "Multiple Points", value: "2" },
+							{ label: "Standard (1 point)", value: "1" },
+							{ label: "Double (2 points)", value: "2" },
 						]}
 						prefixIcon={<VscActivateBreakpoints />}
 						onChange={(e) =>

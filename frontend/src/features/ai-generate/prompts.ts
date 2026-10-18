@@ -54,6 +54,74 @@ OUTPUT SCHEMA
 }`;
 }
 
+/** Quiz v2: the rule and the output shape of each question type (only the allowed ones go into the prompt). */
+const QUIZ_V2_TYPES: { type: string; rule: string; shape: string }[] = [
+	{
+		type: "pick_answer_single",
+		rule: `"pick_answer_single": exactly 4 options, exactly ONE with "correct": true and the others "correct": false; plausible distractors, correct option at a random position.`,
+		shape: `{ "type": "pick_answer_single", "title": "string", "options": [{ "text": "string", "correct": true }, { "text": "string", "correct": false }, { "text": "string", "correct": false }, { "text": "string", "correct": false }] }`,
+	},
+	{
+		type: "pick_answer_multi",
+		rule: `"pick_answer_multi": 4–6 options, at least TWO with "correct": true and at least one with "correct": false; the title says that several answers are correct (e.g. "Select all …"). Players score only when they pick every correct option and no wrong one.`,
+		shape: `{ "type": "pick_answer_multi", "title": "string", "options": [{ "text": "string", "correct": true }, { "text": "string", "correct": true }, { "text": "string", "correct": false }, { "text": "string", "correct": false }] }`,
+	},
+	{
+		type: "true_false",
+		rule: `"true_false": the title is a statement that is clearly true or clearly false according to the material; "answer" is true or false. Mix true and false statements.`,
+		shape: `{ "type": "true_false", "title": "string", "answer": true }`,
+	},
+	{
+		type: "short_answer",
+		rule: `"short_answer": a question whose answer is one to three words; "accepted_answers" lists 1–5 accepted spellings or synonyms of that one answer, each under 100 characters (matching ignores letter case).`,
+		shape: `{ "type": "short_answer", "title": "string", "accepted_answers": ["string", "string"] }`,
+	},
+	{
+		type: "correct_order",
+		rule: `"correct_order": 3–6 distinct "items" listed in the CORRECT order, first = top (steps of a process, events by date, values by size …); the title says what to order by.`,
+		shape: `{ "type": "correct_order", "title": "string", "items": ["first", "second", "third", "fourth"] }`,
+	},
+	{
+		type: "match_pairs",
+		rule: `"match_pairs": 3–6 "pairs"; each "left" matches exactly one "right" (term ↔ definition, person ↔ achievement …); all lefts distinct and all rights distinct.`,
+		shape: `{ "type": "match_pairs", "title": "string", "pairs": [{ "left": "string", "right": "string" }, { "left": "string", "right": "string" }, { "left": "string", "right": "string" }] }`,
+	},
+	{
+		type: "categorise",
+		rule: `"categorise": 2–4 short "categories" and 4–10 distinct "items"; each item's "category" is copied exactly from "categories", every category gets at least one item, and no item could belong to two categories.`,
+		shape: `{ "type": "categorise", "title": "string", "categories": ["string", "string"], "items": [{ "text": "string", "category": "string" }, { "text": "string", "category": "string" }, { "text": "string", "category": "string" }, { "text": "string", "category": "string" }] }`,
+	},
+];
+
+/** Quiz v2 (slide-based, scored): backend slide type keys plus true_false, each with its correct answer. */
+export function quizV2Prompt(req: GenerateRequest): string {
+	const allowed = QUIZ_V2_TYPES.filter((t) => req.questionTypes.includes(t.type));
+	const types = allowed.length > 0 ? allowed : QUIZ_V2_TYPES;
+	return `You are QuizGen AI, an expert question-writer for a live, slide-based quiz game in which players score points for correct answers.
+Reply with a single valid JSON object that matches the schema below — no markdown, no comments, no extra keys.
+
+${material(req)}
+
+${requirements(req, "question types")}
+
+CONSTRUCTION RULES
+1. Every question must be answerable solely from the input material, and every answer marked correct must be unambiguously correct according to it.
+2. Use clear language suited to the audience and difficulty. ${LANGUAGE_RULE}
+3. Use only the allowed question types and spread the questions across them.
+4. "title" is the question shown on the big screen, under 25 words. Options, answers and items are short (under 10 words each) and distinct.
+5. Do not repeat questions.
+
+QUESTION TYPES
+${types.map((t) => `• ${t.rule}`).join("\n")}
+
+OUTPUT SCHEMA (every item of "questions" has exactly one of these shapes)
+{
+  "questions": [
+    ${types.map((t) => t.shape).join(",\n    ")}
+  ]
+}`;
+}
+
 export function funGamePrompt(req: GenerateRequest): string {
 	return `You write fast-paced quiz game questions. Each question has exactly ONE correct option.
 Reply with a single valid JSON object that matches the schema below — no markdown, no comments, no extra keys.
@@ -141,6 +209,8 @@ export function buildPrompt(req: GenerateRequest): string {
 			return questPrompt(req);
 		case "quest_v2":
 			return questV2Prompt(req);
+		case "quiz_v2":
+			return quizV2Prompt(req);
 		case "fungame":
 			return funGamePrompt(req);
 		default:

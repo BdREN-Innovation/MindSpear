@@ -1,10 +1,11 @@
-// Shared slide engine (Quest v2, later Quiz v2): every shape the deck API and
-// the realtime channels send. Derived from the backend code, which is the
-// contract (QUEST_REDESIGN_PLAN.md "Implementation notes"):
+// Shared slide engine (Quest v2 + Quiz v2): every shape the deck API and the
+// realtime channels send. Derived from the backend code, which is the
+// contract (QUEST_REDESIGN_PLAN.md / QUIZ_REDESIGN_PLAN.md "Implementation notes"):
 //   - authoring responses: backend/app/Deck/Http/Resources/{Deck,Slide,Option,Media}Presenter.php (camelCase)
 //   - live responses + broadcasts: SessionStatePresenter, QaQuestionPresenter,
-//     SlideRunResultsService, app/Deck/Broadcasts/Payloads/* (snake_case)
-//   - per-type config / answer / aggregate: app/Deck/Slides/Types/{Quest,Content}/*SlideType.php
+//     SlideRunResultsService, LeaderboardController, app/Deck/Broadcasts/Payloads/* (snake_case)
+//   - per-type config / answer / aggregate: app/Deck/Slides/Types/{Quest,Quiz,Content}/*SlideType.php
+//   - quiz scoring / ranking: app/Deck/Scoring/*, app/Deck/Sessions/QuizRuntime.php
 // Request bodies are snake_case everywhere.
 
 /* ------------------------------------------------------------------ */
@@ -20,8 +21,12 @@ export type SlideCategory = "poll" | "interactive" | "content";
 
 export type RevealModel = "live_aggregate" | "hidden_until_reveal" | "moderated_feed" | "none";
 
-/** Run state machine: polls waiting → [get_ready →] voting → closed; Q&A waiting → open → closed; content stays waiting. */
-export type RunState = "waiting" | "get_ready" | "voting" | "open" | "closed";
+/**
+ * Run state machine: polls waiting → [get_ready →] voting → closed; Q&A waiting → open → closed;
+ * quiz questions waiting → [get_ready →] voting (= answering) → reveal; spinner waiting → voting (spinning) → reveal;
+ * content and leaderboard stay waiting. `reveal` is terminal (never reopened).
+ */
+export type RunState = "waiting" | "get_ready" | "voting" | "open" | "closed" | "reveal";
 
 export type SessionStatus = "pending" | "live" | "ended";
 
@@ -52,10 +57,27 @@ export type ContentSlideTypeKey =
 	| "big_text"
 	| "qr_code";
 
-export type SlideTypeKey = QuestionSlideTypeKey | ContentSlideTypeKey;
+/** Quiz v2 types (products ['quiz']). The scored ones take answers; spinner_wheel and leaderboard do not. */
+export type QuizSlideTypeKey =
+	| "pick_answer_single"
+	| "pick_answer_multi"
+	| "short_answer"
+	| "match_pairs"
+	| "correct_order"
+	| "categorise"
+	| "spinner_wheel"
+	| "leaderboard";
 
-/** Types that take answers through POST .../answers (qa_audience and content types do not). */
-export type AnswerSlideTypeKey = Exclude<QuestionSlideTypeKey, "qa_audience">;
+/** Scored quiz types (AbstractQuizType: hidden_until_reveal, answers scored on submit). */
+export type ScoredQuizSlideTypeKey = Exclude<QuizSlideTypeKey, "spinner_wheel" | "leaderboard">;
+
+/** Quiz types whose participant options, answers and aggregates use OPAQUE string ids (QuizOptions::key), not option ids. */
+export type OpaqueOptionSlideTypeKey = "match_pairs" | "correct_order" | "categorise";
+
+export type SlideTypeKey = QuestionSlideTypeKey | QuizSlideTypeKey | ContentSlideTypeKey;
+
+/** Types that take answers through POST .../answers (qa_audience, spinner_wheel, leaderboard and content types do not). */
+export type AnswerSlideTypeKey = Exclude<QuestionSlideTypeKey, "qa_audience"> | ScoredQuizSlideTypeKey;
 
 export const QUESTION_SLIDE_TYPE_KEYS: readonly QuestionSlideTypeKey[] = [
 	"poll_single",
@@ -71,6 +93,28 @@ export const QUESTION_SLIDE_TYPE_KEYS: readonly QuestionSlideTypeKey[] = [
 	"pin_on_image",
 ];
 
+export const QUIZ_SLIDE_TYPE_KEYS: readonly QuizSlideTypeKey[] = [
+	"pick_answer_single",
+	"pick_answer_multi",
+	"short_answer",
+	"match_pairs",
+	"correct_order",
+	"categorise",
+	"spinner_wheel",
+	"leaderboard",
+];
+
+export const SCORED_QUIZ_SLIDE_TYPE_KEYS: readonly ScoredQuizSlideTypeKey[] = [
+	"pick_answer_single",
+	"pick_answer_multi",
+	"short_answer",
+	"match_pairs",
+	"correct_order",
+	"categorise",
+];
+
+export const OPAQUE_OPTION_SLIDE_TYPE_KEYS: readonly OpaqueOptionSlideTypeKey[] = ["match_pairs", "correct_order", "categorise"];
+
 export const CONTENT_SLIDE_TYPE_KEYS: readonly ContentSlideTypeKey[] = [
 	"heading",
 	"paragraph",
@@ -83,10 +127,28 @@ export const CONTENT_SLIDE_TYPE_KEYS: readonly ContentSlideTypeKey[] = [
 	"qr_code",
 ];
 
-export const SLIDE_TYPE_KEYS: readonly SlideTypeKey[] = [...QUESTION_SLIDE_TYPE_KEYS, ...CONTENT_SLIDE_TYPE_KEYS];
+export const SLIDE_TYPE_KEYS: readonly SlideTypeKey[] = [
+	...QUESTION_SLIDE_TYPE_KEYS,
+	...QUIZ_SLIDE_TYPE_KEYS,
+	...CONTENT_SLIDE_TYPE_KEYS,
+];
 
 export function isSlideTypeKey(value: unknown): value is SlideTypeKey {
 	return typeof value === "string" && (SLIDE_TYPE_KEYS as readonly string[]).includes(value);
+}
+
+export function isQuizSlideTypeKey(value: unknown): value is QuizSlideTypeKey {
+	return typeof value === "string" && (QUIZ_SLIDE_TYPE_KEYS as readonly string[]).includes(value);
+}
+
+/** Scored quiz type: answers earn points, results stay hidden until `reveal`. */
+export function isScoredQuizSlideTypeKey(value: unknown): value is ScoredQuizSlideTypeKey {
+	return typeof value === "string" && (SCORED_QUIZ_SLIDE_TYPE_KEYS as readonly string[]).includes(value);
+}
+
+/** match_pairs / correct_order / categorise: run option ids are opaque strings. */
+export function usesOpaqueOptionIds(value: unknown): value is OpaqueOptionSlideTypeKey {
+	return typeof value === "string" && (OPAQUE_OPTION_SLIDE_TYPE_KEYS as readonly string[]).includes(value);
 }
 
 /** Backend limits worth mirroring in the UI (config/deck.php, *SlideType constants, SlideInput). */
@@ -105,12 +167,81 @@ export const DECK_LIMITS = {
 	maxDisplayName: 40,
 	joinCodeLength: 6,
 	maxAnswerBodyKb: 32,
-	/** Option caps (config/deck.php option_limits): default max 30; ranking 12; scales 20. */
-	optionMax: { default: 30, ranking: 12, scales: 20 } as Record<string, number>,
-	optionMin: { poll_single: 2, poll_multi: 2, ranking: 2, scales: 1 } as Record<string, number>,
+	/** Option caps (config/deck.php option_limits): default max 30; ranking 12; scales 20; quiz rows (match_pairs counts cells, 2 per pair). */
+	optionMax: {
+		default: 30,
+		ranking: 12,
+		scales: 20,
+		pick_answer_single: 10,
+		pick_answer_multi: 10,
+		short_answer: 5,
+		match_pairs: 16,
+		correct_order: 8,
+		categorise: 20,
+		spinner_wheel: 12,
+	} as Record<string, number>,
+	optionMin: {
+		poll_single: 2,
+		poll_multi: 2,
+		ranking: 2,
+		scales: 1,
+		pick_answer_single: 2,
+		pick_answer_multi: 2,
+		short_answer: 1,
+		match_pairs: 4,
+		correct_order: 3,
+		categorise: 4,
+		spinner_wheel: 2,
+	} as Record<string, number>,
 	qaFeedDefaultLimit: 100,
 	qaFeedMaxLimit: 500,
 	openEndedPageSize: 20,
+} as const;
+
+/** Quiz v2 limits and defaults (config/deck.php `quiz`, SlideInput, Quiz/*SlideType constants). */
+export const QUIZ_LIMITS = {
+	/** slides.points_min / points_max: 0..maxPoints, min ≤ max. */
+	maxPoints: 1000,
+	defaultPointsMin: 50,
+	defaultPointsMax: 100,
+	defaultSpeedBonus: true,
+	/** Quiz decks seed get_ready_seconds 5 (settings.get_ready_seconds; 0 = off). */
+	defaultGetReadySeconds: 5,
+	/** time_limit_seconds a new slide is seeded with (unless the deck sets default_time_limit). */
+	defaultTimeLimitSeconds: {
+		pick_answer_single: 20,
+		pick_answer_multi: 30,
+		short_answer: 30,
+		correct_order: 30,
+		match_pairs: 45,
+		categorise: 45,
+	} as Record<ScoredQuizSlideTypeKey, number>,
+	/** short_answer config.max_length 1..200 (default 100). */
+	shortAnswerMaxLength: 200,
+	shortAnswerDefaultMaxLength: 100,
+	/** short_answer aggregate lists at most this many answers. */
+	shortAnswerTopAnswers: 10,
+	/** categorise config.categories 2..5, label ≤ 100. */
+	minCategories: 2,
+	maxCategories: 5,
+	maxCategoryLabel: 100,
+	/** match_pairs 2..8 pairs. */
+	minPairs: 2,
+	maxPairs: 8,
+	/** pair_key / category key: a letter, then letters, digits, '_' or '-' (≤ 32). */
+	authorKeyPattern: /^[A-Za-z][A-Za-z0-9_-]{0,31}$/,
+	/** spinner option payload.weight 0.1..100 (default 1). */
+	minSpinnerWeight: 0.1,
+	maxSpinnerWeight: 100,
+	/** Default spin length (config deck.quiz.spin_seconds). */
+	spinSeconds: 3,
+	/** leaderboard config.top_n 1..50 (default 10); show_all_participants shows 50. */
+	leaderboardMaxTopN: 50,
+	leaderboardDefaultTopN: 10,
+	/** GET .../leaderboard?limit=1..100 (default 10). */
+	leaderboardMaxLimit: 100,
+	/** slide.revealed leaderboard_delta rows. */
+	revealLeaderboardLimit: 10,
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -315,6 +446,72 @@ export interface QrCodeConfig {
 	show_join_code: boolean;
 }
 
+/* --- Quiz v2 --------------------------------------------------------- */
+
+/**
+ * A type without settings. PHP sends an empty config as `[]` (authoring config
+ * goes through MediaPresenter::object and arrives as `{}`); read keys, never iterate.
+ */
+export type EmptyConfig = Record<never, never>;
+
+/**
+ * Run snapshot `config.scoring` of a scored quiz run (QuizRuntime::scoringSnapshot):
+ * the slide's points (defaults 50 / 100 / on) and the run's time limit, which the
+ * speed bonus counts down from. Public: drives the participant "50p ── 100p" bar.
+ * Never in authoring config (there the slide columns pointsMin / pointsMax / speedBonusEnabled hold it).
+ */
+export interface QuizScoringConfig {
+	points_min: number;
+	points_max: number;
+	speed_bonus_enabled: boolean;
+	/** null = untimed (then a correct answer always earns points_max). */
+	time_limit_seconds: number | null;
+}
+
+/** pick_answer_single: no settings; the correct option(s) are option `isCorrect` (several may be marked: any of them is right). */
+export type PickAnswerSingleConfig = EmptyConfig;
+
+/** pick_answer_multi: no settings (a legacy `partial_credit` is dropped). ALL OR NOTHING: the selected set must equal the correct set. */
+export type PickAnswerMultiConfig = EmptyConfig;
+
+/** short_answer: accepted answers are the option labels (1..5), never shown to participants. */
+export interface ShortAnswerConfig {
+	/** Default false: answers are case-folded before comparing. */
+	case_sensitive: boolean;
+	/** 1..200 characters per answer, default 100. */
+	max_length: number;
+	/** Masks wrong submitted answers in the aggregate; default true. */
+	profanity_filter_enabled: boolean;
+}
+
+/** match_pairs: pairs live in the options (payload {side, pair_key}). */
+export type MatchPairsConfig = EmptyConfig;
+
+/** correct_order: the author order (option position) is the correct order. */
+export type CorrectOrderConfig = EmptyConfig;
+
+export interface QuizCategory {
+	/** QUIZ_LIMITS.authorKeyPattern, distinct; items name it in payload.correct_category_key. */
+	key: string;
+	/** ≤ 100, null = unlabelled. */
+	label: string | null;
+}
+
+export interface CategoriseConfig {
+	/** 2..5 categories (seeded c1, c2). Public in the run view. */
+	categories: QuizCategory[];
+}
+
+/** spinner_wheel: entries are the options (payload {weight?}); spin length is a session setting. */
+export type SpinnerWheelConfig = EmptyConfig;
+
+export interface LeaderboardConfig {
+	/** 1..50, default 10. */
+	top_n: number;
+	/** true = everyone, up to 50 rows. */
+	show_all_participants: boolean;
+}
+
 export interface SlideConfigMap {
 	poll_single: PollSingleConfig;
 	poll_multi: PollMultiConfig;
@@ -336,9 +533,22 @@ export interface SlideConfigMap {
 	video: VideoConfig;
 	big_text: BigTextConfig;
 	qr_code: QrCodeConfig;
+	pick_answer_single: PickAnswerSingleConfig;
+	pick_answer_multi: PickAnswerMultiConfig;
+	short_answer: ShortAnswerConfig;
+	match_pairs: MatchPairsConfig;
+	correct_order: CorrectOrderConfig;
+	categorise: CategoriseConfig;
+	spinner_wheel: SpinnerWheelConfig;
+	leaderboard: LeaderboardConfig;
 }
 
 export type SlideConfig<K extends SlideTypeKey = SlideTypeKey> = SlideConfigMap[K];
+
+/** Run snapshot config: the authoring config, plus `scoring` on scored quiz runs (quiz sessions only). */
+export type RunConfigOf<K extends SlideTypeKey> = K extends ScoredQuizSlideTypeKey
+	? SlideConfigMap[K] & { scoring: QuizScoringConfig }
+	: SlideConfigMap[K];
 
 /** Keys the server owns; PATCH drops them (media goes through PUT .../media). */
 export type ServerManagedConfigKey = "media" | "video_url" | "video_provider" | "video_id" | "embed_url";
@@ -380,7 +590,24 @@ export interface PointsAllocationEntry {
 	points: number;
 }
 
-/** What a participant POSTs as `answer_payload`. Option ids are run option `id`s. */
+/** An opaque participant-facing option id (QuizOptions::key, e.g. "k3f9a0c12b7de"): match_pairs, correct_order, categorise. */
+export type OpaqueOptionId = string;
+
+export interface MatchPairConnection {
+	/** Opaque id of a left cell. */
+	left_id: OpaqueOptionId;
+	/** Opaque id of a right cell. */
+	right_id: OpaqueOptionId;
+}
+
+export interface CategorisePlacement {
+	/** Opaque item id. */
+	item_id: OpaqueOptionId;
+	/** One of config.categories[].key. */
+	category_key: string;
+}
+
+/** What a participant POSTs as `answer_payload`. Option ids are run option `id`s (opaque strings for match_pairs / correct_order / categorise). */
 export interface AnswerPayloadMap {
 	poll_single: { option_id: number };
 	poll_multi: { option_ids: number[] };
@@ -403,6 +630,21 @@ export interface AnswerPayloadMap {
 	video: never;
 	big_text: never;
 	qr_code: never;
+	/** An option of the run. */
+	pick_answer_single: { option_id: number };
+	/** 1..n distinct option ids. */
+	pick_answer_multi: { option_ids: number[] };
+	/** 1..config.max_length characters after cleaning (trim, whitespace collapsed). */
+	short_answer: { text: string };
+	/** 1..pair count connections, each left / right id used at most once; unmatched cells allowed. */
+	match_pairs: { pairs: MatchPairConnection[] };
+	/** Every item id exactly once, first = top. */
+	correct_order: { order: OpaqueOptionId[] };
+	/** 1..item count placements, each item at most once; unplaced items count as wrong. */
+	categorise: { placements: CategorisePlacement[] };
+	/** Takes no answers (409 invalid_state reason no_answers). */
+	spinner_wheel: never;
+	leaderboard: never;
 }
 
 export type AnswerPayload<K extends SlideTypeKey = AnswerSlideTypeKey> = AnswerPayloadMap[K];
@@ -438,9 +680,36 @@ export interface StoredAnswerMap {
 	video: never;
 	big_text: never;
 	qr_code: never;
+	pick_answer_single: { option_id: number };
+	/** In option order. */
+	pick_answer_multi: { option_ids: number[] };
+	/** Cleaned: control / invisible characters removed, whitespace collapsed, trimmed. */
+	short_answer: { text: string };
+	/** In the participant's order. */
+	match_pairs: { pairs: MatchPairConnection[] };
+	correct_order: { order: OpaqueOptionId[] };
+	/** In the participant's order. */
+	categorise: { placements: CategorisePlacement[] };
+	spinner_wheel: never;
+	leaderboard: never;
 }
 
 export type StoredAnswer<K extends SlideTypeKey = AnswerSlideTypeKey> = StoredAnswerMap[K];
+
+/**
+ * What a revealed scored quiz run adds to my-answer (QuizRuntime::answerExtras),
+ * never before the reveal. total_points / rank are the participant's standing
+ * after this run (ties share a rank; null when not ranked).
+ */
+export interface QuizAnswerResult<C = QuizCorrectAnswer> {
+	/** Fully correct (partial credit is still false). */
+	is_correct: boolean | null;
+	points_awarded: number;
+	/** The aggregate's `correct` block (opaque ids for match_pairs / correct_order / categorise). */
+	correct_answer: C | null;
+	total_points: number;
+	rank: number | null;
+}
 
 /** GET .../my-answer, state.my_submission_for_current_slide, review run.my_answer. */
 export interface MySubmission<P = StoredAnswer> {
@@ -449,6 +718,31 @@ export interface MySubmission<P = StoredAnswer> {
 	answer_payload: P;
 	time_to_answer_ms: number | null;
 	submitted_at: IsoDateTime | null;
+	/** Quiz, revealed scored runs only (QuizAnswerResult). */
+	is_correct?: boolean | null;
+	points_awarded?: number;
+	correct_answer?: QuizCorrectAnswer | null;
+	total_points?: number;
+	rank?: number | null;
+}
+
+/** True when a my-answer / submission carries the quiz reveal keys (the run was revealed). */
+export function hasQuizResult<P>(submission: MySubmission<P> | null | undefined): submission is MySubmission<P> & QuizAnswerResult {
+	return !!submission && typeof submission.points_awarded === "number";
+}
+
+/** The QuizAnswerResult part of a revealed submission, or null before the reveal / without an answer. */
+export function quizResultOf<C = QuizCorrectAnswer>(
+	submission: MySubmission<unknown> | null | undefined
+): QuizAnswerResult<C> | null {
+	if (!hasQuizResult(submission)) return null;
+	return {
+		is_correct: submission.is_correct ?? null,
+		points_awarded: submission.points_awarded,
+		correct_answer: (submission.correct_answer ?? null) as C | null,
+		total_points: submission.total_points ?? 0,
+		rank: submission.rank ?? null,
+	};
 }
 
 /* ------------------------------------------------------------------ */
@@ -627,6 +921,142 @@ export interface PinOnImageAggregate {
 /** Content types: `[]` inside a presenter run, `{}` from GET .../aggregate. */
 export type EmptyAggregate = Record<string, never> | never[];
 
+/* --- Quiz v2 aggregates ---------------------------------------------- */
+/* Hidden from participants until `reveal` (403 results_hidden); the host
+   gets them live on the host channel. Every scored aggregate ends with
+   `correct` (the answer key). */
+
+/** The answer key of a scored quiz run: aggregate.correct, my-answer correct_answer, host run answer_key. */
+export interface QuizCorrectAnswerMap {
+	/** Correct option ids in option order (several may be marked). */
+	pick_answer_single: { option_ids: number[] };
+	pick_answer_multi: { option_ids: number[] };
+	/** Accepted answers (cleaned option labels) in option order. */
+	short_answer: { accepted_answers: string[]; case_sensitive: boolean };
+	/** One entry per valid pair, left (author) order. */
+	match_pairs: { pairs: MatchPairConnection[] };
+	/** Item ids in the correct order. */
+	correct_order: { order: OpaqueOptionId[] };
+	/** Every category (config order) with its item ids (author order). */
+	categorise: { categories: { key: string; item_ids: OpaqueOptionId[] }[] };
+}
+
+export type QuizCorrectAnswer<K extends ScoredQuizSlideTypeKey = ScoredQuizSlideTypeKey> = QuizCorrectAnswerMap[K];
+
+/** The correct-answer block of type K (never for non-scored types). */
+export type CorrectAnswerOf<K extends SlideTypeKey> = K extends ScoredQuizSlideTypeKey ? QuizCorrectAnswerMap[K] : never;
+
+/** Fields every scored quiz aggregate starts with (AbstractQuizType::aggregate). Malformed stored answers are skipped. */
+export interface QuizAggregateBase {
+	total_responses: number;
+	/** Fully correct. */
+	correct_responses: number;
+	/** 0 < credit < 1 (match_pairs / correct_order / categorise only; always 0 for pick / short answer). */
+	partially_correct_responses: number;
+	/** Credit 0. */
+	incorrect_responses: number;
+	/** correct_responses / total_responses × 100, 2 dp. */
+	correct_percentage: number;
+}
+
+export interface QuizOptionCount {
+	option_id: number;
+	count: number;
+	/** Of total_responses, 2 dp (multi: share that picked it; can add up to > 100). */
+	percentage: number;
+	is_correct: boolean;
+}
+
+export interface PickAnswerSingleAggregate extends QuizAggregateBase {
+	/** In option order. */
+	options: QuizOptionCount[];
+	correct: QuizCorrectAnswerMap["pick_answer_single"];
+}
+
+export interface PickAnswerMultiAggregate extends QuizAggregateBase {
+	options: QuizOptionCount[];
+	correct: QuizCorrectAnswerMap["pick_answer_multi"];
+}
+
+export interface ShortAnswerRow {
+	/** Most common spelling of answers that normalise the same; masked when wrong and filtered; ≤ 100 chars. */
+	text: string;
+	count: number;
+	percentage: number;
+	is_correct: boolean;
+}
+
+export interface ShortAnswerAggregate extends QuizAggregateBase {
+	distinct_answers: number;
+	/** Top 10 by count desc, then text. */
+	answers: ShortAnswerRow[];
+	/** A text or a row was cut to fit the reveal broadcast. */
+	answers_truncated: boolean;
+	correct: QuizCorrectAnswerMap["short_answer"];
+}
+
+export interface MatchPairResult {
+	left_id: OpaqueOptionId;
+	right_id: OpaqueOptionId;
+	/** Responses that connected this pair correctly. */
+	correct_count: number;
+	correct_percentage: number;
+}
+
+export interface MatchPairsAggregate extends QuizAggregateBase {
+	/** Left (author) order. */
+	pairs: MatchPairResult[];
+	/** [i][j] = responses that connected pairs[i].left_id to pairs[j].right_id (the diagonal is correct). */
+	connection_counts: number[][];
+	correct: QuizCorrectAnswerMap["match_pairs"];
+}
+
+export interface CorrectOrderItemResult {
+	id: OpaqueOptionId;
+	/** 1-based. */
+	correct_position: number;
+	/** Responses with this item in its correct slot. */
+	correct_count: number;
+	correct_percentage: number;
+}
+
+export interface CorrectOrderAggregate extends QuizAggregateBase {
+	/** In the correct order. */
+	items: CorrectOrderItemResult[];
+	/** null with no responses; ties: the smallest key sequence with `tied: true` (don't call it "most common" then). */
+	most_common_order: { order: OpaqueOptionId[]; count: number; tied?: boolean } | null;
+	correct: QuizCorrectAnswerMap["correct_order"];
+}
+
+export interface CategoriseItemResult {
+	id: OpaqueOptionId;
+	correct_category_key: string;
+	correct_count: number;
+	correct_percentage: number;
+	/** Placements per category, aligned with category_keys. */
+	category_counts: number[];
+}
+
+export interface CategoriseAggregate extends QuizAggregateBase {
+	/** Config order. */
+	category_keys: string[];
+	/** Author order. */
+	items: CategoriseItemResult[];
+	correct: QuizCorrectAnswerMap["categorise"];
+}
+
+/** Where the wheel lands (server-picked, weighted). Rotate so target_angle ends under the 12 o'clock pointer. */
+export interface QuizSpinResult {
+	option_id: number;
+	/** Degrees clockwise from 12 o'clock, inside the winning segment. */
+	target_angle: number;
+}
+
+/** spinner_wheel takes no answers: `[]` before the spin, `{spin}` after it (QuizRuntime::aggregate). */
+export interface SpinnerWheelAggregate {
+	spin?: QuizSpinResult;
+}
+
 export interface SlideAggregateMap {
 	poll_single: PollSingleAggregate;
 	poll_multi: PollMultiAggregate;
@@ -648,9 +1078,21 @@ export interface SlideAggregateMap {
 	video: EmptyAggregate;
 	big_text: EmptyAggregate;
 	qr_code: EmptyAggregate;
+	pick_answer_single: PickAnswerSingleAggregate;
+	pick_answer_multi: PickAnswerMultiAggregate;
+	short_answer: ShortAnswerAggregate;
+	match_pairs: MatchPairsAggregate;
+	correct_order: CorrectOrderAggregate;
+	categorise: CategoriseAggregate;
+	spinner_wheel: SpinnerWheelAggregate;
+	/** The ranking itself comes from state `quiz.leaderboard` / leaderboard.updated / GET .../leaderboard. */
+	leaderboard: EmptyAggregate;
 }
 
 export type SlideAggregate<K extends SlideTypeKey = SlideTypeKey> = SlideAggregateMap[K];
+
+/** Any scored quiz aggregate. */
+export type QuizAggregate = SlideAggregateMap[ScoredQuizSlideTypeKey];
 
 /* ------------------------------------------------------------------ */
 /* Authoring (camelCase, owner only)                                   */
@@ -676,7 +1118,7 @@ export type DeckQaSort = "top" | "newest";
 export interface DeckSettings {
 	/** 5..3600 or null; seeds time_limit_seconds of NEW answer slides. */
 	default_time_limit: number | null;
-	/** 0..30; seeds get_ready_seconds of NEW answer slides (0 = no countdown). */
+	/** 0..30; seeds get_ready_seconds of NEW answer slides (0 = no countdown). Quiz decks default to 5. */
 	get_ready_seconds: number;
 	/** Palette preset key (features/deck/theme.ts); slug [a-z0-9][a-z0-9_-]*, ≤ 40. */
 	theme: string;
@@ -692,9 +1134,19 @@ export const DEFAULT_DECK_SETTINGS: DeckSettings = {
 	default_qa_sort: "top",
 };
 
+/** Per-product defaults (backend DeckSettings::defaults): a quiz deck's get_ready_seconds defaults to 5. */
+export function defaultDeckSettings(product?: DeckProduct | null): DeckSettings {
+	return product === "quiz"
+		? { ...DEFAULT_DECK_SETTINGS, get_ready_seconds: QUIZ_LIMITS.defaultGetReadySeconds }
+		: DEFAULT_DECK_SETTINGS;
+}
+
 /** Settings with defaults filled in (old rows may hold a partial object). */
-export function resolveDeckSettings(settings: Partial<DeckSettings> | null | undefined): DeckSettings {
-	return { ...DEFAULT_DECK_SETTINGS, ...(settings ?? {}) };
+export function resolveDeckSettings(
+	settings: Partial<DeckSettings> | null | undefined,
+	product?: DeckProduct | null
+): DeckSettings {
+	return { ...defaultDeckSettings(product), ...(settings ?? {}) };
 }
 
 /** PATCH body: settings merge onto the stored ones; null resets a key; unknown keys are 422. */
@@ -716,6 +1168,26 @@ export interface DeckSummary {
 
 /** Option payload (≤ 512 B JSON). `[]` (empty PHP array) or an object. */
 export type OptionPayload = Record<string, unknown>;
+
+/* Quiz option payloads (validateOptionPayload normalises them on add / edit / bulk; 422 payload.<key>). */
+
+export type MatchPairsSide = "left" | "right";
+
+/** match_pairs cell: a pair = the left and the right option sharing pair_key (QUIZ_LIMITS.authorKeyPattern). */
+export interface MatchPairsOptionPayload {
+	side: MatchPairsSide;
+	pair_key: string;
+}
+
+/** categorise item: names one of config.categories[].key. */
+export interface CategoriseOptionPayload {
+	correct_category_key: string;
+}
+
+/** spinner_wheel entry: weight 0.1..100 (missing = 1); a segment's size is proportional to it. */
+export interface SpinnerOptionPayload {
+	weight?: number;
+}
 
 export interface SlideOption {
 	id: number;
@@ -829,6 +1301,14 @@ export interface SlidePatch<K extends SlideTypeKey = SlideTypeKey> {
 	time_limit_seconds?: number | null;
 	/** 0..30 | null */
 	get_ready_seconds?: number | null;
+	/**
+	 * Quiz scored slides only (quiz routes; Quest answers 422 "only available on quiz slides";
+	 * unscored types 422 "This slide type is not scored."): 0..1000 | null (null = default at
+	 * session start). min ≤ max is checked against the stored values (422 on the field sent).
+	 */
+	points_min?: number | null;
+	points_max?: number | null;
+	speed_bonus_enabled?: boolean | null;
 }
 
 /** POST .../options/reorder entry: every option of the slide once, positions 1..n. */
@@ -840,8 +1320,10 @@ export interface OptionOrderEntry {
 export interface OptionInput {
 	/** ≤ 200 */
 	label?: string | null;
-	/** object ≤ 512 B */
+	/** object ≤ 512 B; quiz types validate it (match_pairs {side, pair_key}, categorise {correct_category_key}, spinner {weight?}). */
 	payload?: OptionPayload | null;
+	/** Quiz routes only (Quest answers 422): marks a pick_answer option correct. */
+	is_correct?: boolean | null;
 }
 
 export interface BulkSlideInput {
@@ -849,7 +1331,12 @@ export interface BulkSlideInput {
 	title?: string | null;
 	body?: RichTextDoc | null;
 	config?: Record<string, unknown> | null;
+	/** Options may carry is_correct on quiz routes (422 slides.N.options.M.is_correct on Quest). */
 	options?: OptionInput[] | null;
+	/** Quiz routes only: 422 slides.N.points_min etc. */
+	points_min?: number | null;
+	points_max?: number | null;
+	speed_bonus_enabled?: boolean | null;
 }
 
 export interface BulkSlidesInput {
@@ -877,14 +1364,60 @@ export interface OptionWithSlide {
 /* Live run views (snake_case)                                         */
 /* ------------------------------------------------------------------ */
 
-/** A run option as participants see it (no is_correct / answer keys). Answers reference `id`. */
-export interface RunOption {
-	id: number;
+/**
+ * A run option as participants see it (no is_correct / answer keys). Answers reference `id`
+ * (an opaque string for match_pairs / correct_order / categorise; then `position` is the display index).
+ */
+export interface RunOption<Id extends number | string = number, P = OptionPayload> {
+	id: Id;
 	position: number;
 	label: string | null;
 	image_url: string | null;
-	payload: OptionPayload;
+	payload: P;
 }
+
+/** Participant run options of the quiz types (everything else: RunOption). */
+export interface QuizRunOptionMap {
+	pick_answer_single: RunOption;
+	pick_answer_multi: RunOption;
+	/** Accepted answers are never shown: options is always []. */
+	short_answer: never;
+	/** Left cells first (author order), then the right cells shuffled per run; payload {side} only. */
+	match_pairs: RunOption<OpaqueOptionId, { side: MatchPairsSide }>;
+	/** Shuffled per run (never already in the correct order); payload {}. */
+	correct_order: RunOption<OpaqueOptionId, EmptyConfig>;
+	/** The scorable items shuffled per run; payload {} (no correct_category_key). */
+	categorise: RunOption<OpaqueOptionId, EmptyConfig>;
+	/** Wheel entries in option order; geometry is the run's `segments`. */
+	spinner_wheel: RunOption<number, SpinnerOptionPayload>;
+	/** No options. */
+	leaderboard: never;
+}
+
+export type RunOptionOf<K extends SlideTypeKey> = K extends keyof QuizRunOptionMap ? QuizRunOptionMap[K] : RunOption;
+
+/** spinner_wheel wheel geometry: degrees clockwise from 12 o'clock, size proportional to weight; the last ends at 360. */
+export interface SpinnerSegment {
+	option_id: number;
+	start_angle: number;
+	end_angle: number;
+}
+
+/** Type-specific participant-view fields (participantExtras). */
+export type RunViewExtrasOf<K extends SlideTypeKey> = K extends "spinner_wheel" ? { segments: SpinnerSegment[] } : unknown;
+
+/** What the host's presenter view adds to each option of a scored quiz run. */
+export interface QuizPresenterOptionExtraMap {
+	pick_answer_single: { option_id: number; payload: OptionPayload; is_correct: boolean };
+	pick_answer_multi: { option_id: number; payload: OptionPayload; is_correct: boolean };
+	short_answer: never;
+	match_pairs: { option_id: number; payload: MatchPairsOptionPayload };
+	correct_order: { option_id: number; payload: OptionPayload };
+	categorise: { option_id: number; payload: CategoriseOptionPayload };
+}
+
+/** A presenter-view option of a scored quiz run: participant row + the real `option_id` + the full payload (+ is_correct on pick types). */
+export type PresenterRunOptionOf<K extends ScoredQuizSlideTypeKey> = RunOptionOf<K> & QuizPresenterOptionExtraMap[K];
 
 interface RunViewBase<K extends SlideTypeKey> {
 	/** The slide run id (`slide_run_id` everywhere else). */
@@ -898,9 +1431,16 @@ interface RunViewBase<K extends SlideTypeKey> {
 	position: number;
 	title: string | null;
 	body: RichTextDoc | null;
-	/** Snapshot config: answer keys and `_`-prefixed keys stripped; image/pin_on_image/video add `media`. */
-	config: SlideConfigMap[K];
-	options: RunOption[];
+	/** Snapshot config: answer keys and `_`-prefixed keys stripped; image/pin_on_image/video add `media`; scored quiz runs add `scoring`. */
+	config: RunConfigOf<K>;
+	/** Participant views of scored quiz runs: [] while `options_hidden` (waiting / get_ready). */
+	options: RunOptionOf<K>[];
+	/**
+	 * Scored quiz runs, participant views only: true while the run is waiting / get_ready —
+	 * `options` is [] (and item data withheld) until voting starts; the title is still sent.
+	 * Absent or false everywhere else (the presenter always gets the options).
+	 */
+	options_hidden?: boolean;
 	state: RunState;
 	/** Per run: starts at 0 and goes up on every transition of THIS run. */
 	state_version: number;
@@ -912,12 +1452,21 @@ interface RunViewBase<K extends SlideTypeKey> {
 }
 
 /** serializeForParticipant(): what participants (and the host's `runs` list) get. Never an aggregate. */
-export type ParticipantRunView = { [K in SlideTypeKey]: RunViewBase<K> }[SlideTypeKey];
+export type ParticipantRunView = { [K in SlideTypeKey]: RunViewBase<K> & RunViewExtrasOf<K> }[SlideTypeKey];
 
 export type RunViewOf<K extends SlideTypeKey = SlideTypeKey> = Extract<ParticipantRunView, { type: K }>;
 
-/** serializeForPresenter(): participant view + the live aggregate. Host only. */
-export type PresenterRunView = { [K in SlideTypeKey]: RunViewBase<K> & { aggregate: SlideAggregateMap[K] } }[SlideTypeKey];
+type PresenterRunViewFor<K extends SlideTypeKey> = K extends ScoredQuizSlideTypeKey
+	? Omit<RunViewBase<K>, "options"> & {
+			options: PresenterRunOptionOf<K>[];
+			/** The correct answer (= aggregate.correct). Host only, from the start of the run. */
+			answer_key: QuizCorrectAnswerMap[K];
+			aggregate: SlideAggregateMap[K];
+		}
+	: RunViewBase<K> & RunViewExtrasOf<K> & { aggregate: SlideAggregateMap[K] };
+
+/** serializeForPresenter(): participant view + the live aggregate (scored quiz runs: + answer_key, per-option option_id / payload). Host only. */
+export type PresenterRunView = { [K in SlideTypeKey]: PresenterRunViewFor<K> }[SlideTypeKey];
 
 export type PresenterRunViewOf<K extends SlideTypeKey = SlideTypeKey> = Extract<PresenterRunView, { type: K }>;
 
@@ -992,6 +1541,8 @@ export interface HostSessionState extends TimerFields {
 	/** Presenter view (with the live aggregate) of the current run. */
 	current_run: PresenterRunView | null;
 	results_visibility: ResultsVisibility | null;
+	/** Quiz sessions only. */
+	quiz?: QuizStatePayload;
 	server_time: IsoDateTime;
 }
 
@@ -1013,12 +1564,71 @@ export interface ParticipantSessionState extends TimerFields {
 	has_answered: boolean;
 	my_submission_for_current_slide: MySubmission | null;
 	results_visibility: ResultsVisibility | null;
-	/** Only when results are public; else null. */
+	/** Only when results are public (quiz: after the reveal, incl. `correct`); else null. */
 	aggregate: SlideAggregate | null;
+	/** Quiz sessions only. */
+	quiz?: QuizStatePayload;
+	/** Quiz sessions only: my total points and rank. */
+	standing?: QuizStanding;
 	server_time: IsoDateTime;
 }
 
 export type DeckSessionState = HostSessionState | ParticipantSessionState;
+
+/* --- Quiz state ------------------------------------------------------ */
+
+/** One leaderboard row (LeaderboardService): ranked by total_points desc, then join time; ties share a rank (1, 2, 2, 4). */
+export interface LeaderboardEntry {
+	rank: number;
+	participant_id: number;
+	display_name: string | null;
+	emoji_avatar: string | null;
+	total_points: number;
+	/** Points earned on the latest revealed scored run at or before the current slide (the "+94"). */
+	points_delta: number;
+}
+
+/** slide.revealed leaderboard_delta row: the movement this run caused, best new_rank first. */
+export interface LeaderboardDeltaEntry {
+	participant_id: number;
+	points_delta: number;
+	new_total: number;
+	new_rank: number;
+}
+
+/** A participant's own place (QuizRuntime::standing). rank null when they are not ranked (e.g. left the table). */
+export interface QuizStanding {
+	participant_id: number;
+	total_points: number;
+	rank: number | null;
+	/** Points from the latest revealed scored run. */
+	points_delta: number;
+}
+
+/** state `quiz` (quiz sessions only, host and participant). */
+export interface QuizStatePayload {
+	/** Answers on the current run (the public "12 answered" count). */
+	submitted_count: number;
+	/** Participants in the room (joined, not left). Participant state; the host reads the top-level participant_count. */
+	participant_count?: number;
+	/** Spinner result once spun, else null. */
+	spin: QuizSpinResult | null;
+	/** Top N when the current run is a leaderboard slide, else null. */
+	leaderboard: LeaderboardEntry[] | null;
+}
+
+/** GET {session}/leaderboard?limit=1..100 (quiz; host with Sanctum, or participant with X-Participant-Token, also after the end). */
+export interface LeaderboardResponse {
+	session_id: number;
+	status: SessionStatus;
+	/** The limit applied (default 10). */
+	top_n: number;
+	participant_count: number;
+	leaderboard: LeaderboardEntry[];
+	/** The participant's own place (participant calls); null for the host. */
+	me: QuizStanding | null;
+	server_time: IsoDateTime;
+}
 
 export function isHostSessionState(state: DeckSessionState): state is HostSessionState {
 	return Array.isArray((state as HostSessionState).runs) && "channels" in state;
@@ -1034,6 +1644,11 @@ export interface SessionLookup {
 	public_channel_key: string;
 }
 
+/** lookupSessionByCode(): the lookup with the product whose routes found it (use that product's API from here on). */
+export interface ResolvedSessionLookup extends SessionLookup {
+	product: DeckProduct;
+}
+
 export interface JoinSessionInput {
 	join_code: string;
 	/** 1..40 */
@@ -1042,19 +1657,36 @@ export interface JoinSessionInput {
 	emoji_avatar: string;
 }
 
-/** 201 from POST .../participants/join. */
+/** 201 from POST .../participants/join (200 for a same-device rejoin). */
 export interface JoinSessionResult {
 	participant_id: number;
 	/** 64 chars; send as X-Participant-Token. */
 	participant_token: string;
 	public_channel_key: string;
 	session_id: number;
-	/** As stored (cleaned + masked). */
+	/** As stored (cleaned + masked). A rejoin keeps the stored name and avatar. */
 	display_name: string;
 	emoji_avatar: string;
+	/** true: the join carried this device's token and brought back the same participant (left_at cleared, points kept). */
+	rejoined?: boolean;
 }
 
-export type AdvanceAction = "start_voting" | "close_voting" | "next_slide" | "previous_slide" | "jump_to";
+/**
+ * `reveal` (quiz routes only; 422 on Quest): a quiz / spinner run in `voting` → reveal. On a quiz run
+ * close_voting does the same; on a spinner start_voting spins. 409 invalid_state elsewhere.
+ */
+export type AdvanceAction =
+	| "start_voting"
+	| "close_voting"
+	| "reveal"
+	| "next_slide"
+	| "previous_slide"
+	| "jump_to"
+	/**
+	 * Quiz host only: create a leaderboard run right after the current run and move to it
+	 * (later runs shift; broadcasts slide.changed + leaderboard.updated). Leaving an active quiz run reveals it first.
+	 */
+	| "insert_leaderboard";
 
 export interface AdvanceInput {
 	action: AdvanceAction;
@@ -1071,7 +1703,7 @@ export interface AggregateSnapshot<A = SlideAggregate> {
 	state: RunState;
 	state_version: number;
 	closed_at: IsoDateTime | null;
-	/** The run is closed: the aggregate is frozen. */
+	/** The run is closed / revealed: the aggregate is frozen. */
 	final: boolean;
 	visibility: ResultsVisibility;
 	total_responses: number | null;
@@ -1191,7 +1823,18 @@ export type DeckPublicEventName =
 	| "session.ended"
 	| "qa.question.submitted"
 	| "qa.question.upvoted"
-	| "qa.question.moderated";
+	| "qa.question.moderated"
+	| QuizPublicEventName;
+
+/** Public events only quiz sessions send. */
+export type QuizPublicEventName = "slide.submitted_count.updated" | "slide.revealed" | "spin.started" | "leaderboard.updated";
+
+export const QUIZ_PUBLIC_EVENT_NAMES: readonly QuizPublicEventName[] = [
+	"slide.submitted_count.updated",
+	"slide.revealed",
+	"spin.started",
+	"leaderboard.updated",
+];
 
 export type DeckHostEventName =
 	| "answer.submitted"
@@ -1234,7 +1877,7 @@ export interface SlideStateChangedEvent extends BroadcastMeta, TimerFields {
 	server_time: IsoDateTime;
 }
 
-/** Public only when results are public; otherwise on the host channel. */
+/** Public only when results are public; otherwise on the host channel (always host-only for quiz runs before the reveal). */
 export interface SlideAggregateUpdatedEvent<A = SlideAggregate> extends BroadcastMeta {
 	event: "slide.aggregate.updated";
 	slide_run_id: number;
@@ -1244,7 +1887,7 @@ export interface SlideAggregateUpdatedEvent<A = SlideAggregate> extends Broadcas
 	server_time: IsoDateTime;
 }
 
-/** Always public; aggregate null when participants may not see results (the host then gets a host-only slide.aggregate.updated). */
+/** Always public; aggregate null when participants may not see results (the host then gets a host-only slide.aggregate.updated). Never sent for quiz runs (they reveal). */
 export interface SlideClosedEvent<A = SlideAggregate> extends BroadcastMeta {
 	event: "slide.closed";
 	slide_run_id: number;
@@ -1337,6 +1980,71 @@ export type QaQuestionModeratedEvent = BroadcastMeta & { event: "qa.question.mod
 
 export type DeckQaEventPayload = QaQuestionSubmittedEvent | QaQuestionUpvotedEvent | QaQuestionModeratedEvent;
 
+/* --- Quiz events (public) -------------------------------------------- */
+
+/**
+ * While a quiz run takes answers the public channel only learns HOW MANY answered
+ * (debounced with the host aggregate). The aggregate and answer.submitted go to the host channel.
+ */
+export interface SubmittedCountUpdatedEvent extends BroadcastMeta {
+	event: "slide.submitted_count.updated";
+	slide_run_id: number;
+	submitted_count: number;
+	/** Participants in the room (joined, not left). */
+	participant_count: number;
+	server_time: IsoDateTime;
+}
+
+/**
+ * A quiz or spinner run moved to `reveal` (sent right after slide.state.changed → reveal).
+ * aggregate null + refetch true when it would not fit one publish: GET state / aggregate.
+ */
+export interface SlideRevealedEvent<A = SlideAggregate> extends BroadcastMeta {
+	event: "slide.revealed";
+	slide_run_id: number;
+	type: SlideTypeKey;
+	state: "reveal";
+	state_version: number;
+	closed_at: IsoDateTime | null;
+	/** Final aggregate incl. `correct` (spinner: {spin}); null when slim. */
+	aggregate: A | null;
+	/** This run's leaderboard movement, best new_rank first, ≤ 10 rows ([] for spinners). */
+	leaderboard_delta: LeaderboardDeltaEntry[];
+	/** More participants scored than listed (each reads their own through my-answer). */
+	leaderboard_truncated: boolean;
+	/** Spinner runs: where it landed; quiz runs null. */
+	spin: QuizSpinResult | null;
+	refetch: boolean;
+	server_time: IsoDateTime;
+}
+
+/** The host started a spinner (after slide.state.changed → voting): animate to target_angle over duration_seconds; it reveals at ends_at. */
+export interface SpinStartedEvent extends BroadcastMeta {
+	event: "spin.started";
+	slide_run_id: number;
+	state_version: number;
+	option_id: number;
+	target_angle: number;
+	duration_seconds: number | null;
+	ends_at: IsoDateTime | null;
+	server_time: IsoDateTime;
+}
+
+/**
+ * A leaderboard slide became current (after slide.changed + slide.state.changed).
+ * leaderboard null + refetch true when too large: GET state (quiz.leaderboard) / leaderboard.
+ */
+export interface LeaderboardUpdatedEvent extends BroadcastMeta {
+	event: "leaderboard.updated";
+	slide_run_id: number;
+	top_n: number;
+	leaderboard: LeaderboardEntry[] | null;
+	refetch: boolean;
+	server_time: IsoDateTime;
+}
+
+export type QuizPublicEvent = SubmittedCountUpdatedEvent | SlideRevealedEvent | SpinStartedEvent | LeaderboardUpdatedEvent;
+
 export type DeckPublicEvent =
 	| SlideChangedEvent
 	| SlideStateChangedEvent
@@ -1344,7 +2052,8 @@ export type DeckPublicEvent =
 	| SlideClosedEvent
 	| ParticipantCountUpdatedEvent
 	| SessionEndedEvent
-	| DeckQaEventPayload;
+	| DeckQaEventPayload
+	| QuizPublicEvent;
 
 export type DeckHostEvent = AnswerSubmittedEvent | ParticipantJoinedEvent | SlideAggregateUpdatedEvent | DeckQaEventPayload;
 
@@ -1383,7 +2092,10 @@ export type DeckErrorCode =
 	| "results_hidden"
 	| "too_many_requests"
 	| "payload_too_large"
-	/** 403: users.quest_v2_enabled is off (authoring + host routes). Profile `quest_v2_enabled` tells the UI up front. */
+	/**
+	 * 403: users.quest_v2_enabled / quiz_v2_enabled is off (authoring + host routes, incl. host leaderboard).
+	 * Profile `quest_v2_enabled` / `quiz_v2_enabled` tells the UI up front. Participants are never gated.
+	 */
 	| "feature_disabled"
 	/** 422: the deck would exceed max slides (data.max_slides; also validation_errors.slides). */
 	| "slide_limit_reached"
@@ -1395,7 +2107,13 @@ export type DeckErrorCode =
 	| "cancelled"
 	| "unknown";
 
-/** `data.reason` on 409 invalid_state. */
+/**
+ * `data.reason` on 409 invalid_state. Quiz: no_answers = answering a spinner / leaderboard slide.
+ * An illegal `reveal` (outside voting, on a content / leaderboard run, twice) is 409 invalid_state
+ * without a reason, with data {slide_run_id, state, state_version}. A quiz aggregate read before its
+ * reveal is 403 results_hidden. Quiz-only fields on Quest routes are 422 (points_min, points_max,
+ * speed_bonus_enabled, is_correct; also inside bulk); quiz option payloads 422 payload.<key>.
+ */
 export type InvalidStateReason =
 	| "no_answers"
 	| "session_not_live"
@@ -1404,7 +2122,9 @@ export type InvalidStateReason =
 	| "time_up"
 	| "not_qa_slide"
 	| "not_open"
-	| "session_not_ended";
+	| "session_not_ended"
+	/** Quiz scored runs: answers are final — a second submit is rejected (the first answer and its points stand). */
+	| "already_answered";
 
 /** Extra keys some errors carry in `data` next to `code`. */
 export interface DeckErrorData {

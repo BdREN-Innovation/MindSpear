@@ -11,26 +11,21 @@ import { AxiosError } from "axios";
 // import { RootState } from "@/services/redux/store";
 // import { selectAllAnswers  } from "@/services/redux/features/ledaerboardAnswersSlice";
 import { useSearchParams, useParams } from "next/navigation";
-import { useSelector } from "react-redux";
 interface LeaderboardProps {
 	scope: "entire" | "slide";
 	sessionData: any;
 }
 
 const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
-	const scope2222 = useSelector((state: any) => state?.leaderboard);
-	console.log(scope2222, "scope2222scope2222scope2222");
-	console.log(sessionData, "scope2222scope2222scope2222");
-	console.log(scope, "scope2222scope2222scope2222");
 
 	const searchParams = useSearchParams();
 	const params = useParams();
 	const quiz_id = searchParams.get("qid");
 	const sessionId = searchParams.get("sid");
-	const sectionId =
-		params.id === "quize" ? sessionData || sessionId : sessionData || params.id;
+	// The session id: the "sid" in the URL when there is one. A player's page has the join code
+	// as its route id, which the leaderboard API can't use (it answered 500).
+	const sectionId = sessionData || sessionId || (params.id === "quize" ? null : params.id);
 
-	console.log(sectionId, "params.id");
 	
 	// const answers = useSelector((state: RootState) => state.answers);
 	// const whole = useSelector((s:any) => s);
@@ -110,7 +105,7 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
 											}
 										</p>
 										<span className="text-[#d0d0e6] text-sm">
-											{topThree[2]?.total_score} score
+											{topThree[2]?.total_score} {Number(topThree[2]?.total_score) === 1 ? "point" : "points"}
 										</span>
 									</div>
 								</div>
@@ -133,7 +128,7 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
 											}
 										</p>
 										<span className="text-[#d0d0e6] text-sm">
-											{topThree[0]?.total_score} score
+											{topThree[0]?.total_score} {Number(topThree[0]?.total_score) === 1 ? "point" : "points"}
 										</span>
 									</div>
 								</div>
@@ -156,7 +151,7 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
 											}
 										</p>
 										<span className="text-[#d0d0e6] text-sm">
-											{topThree[1]?.total_score} score
+											{topThree[1]?.total_score} {Number(topThree[1]?.total_score) === 1 ? "point" : "points"}
 										</span>
 									</div>
 								</div>
@@ -185,7 +180,7 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
           </h3>
 
           <span className="bg-blue-100 text-blue-900 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-											Score : {item?.total_score} / {item?.total_questions_answered}
+											{item?.total_score} pts · {item?.correct_answers}/{item?.total_questions_answered} correct
 										</span>
         </div>
 
@@ -211,7 +206,7 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
 
 								<div className="flex gap-2">
 									<span className="bg-blue-100 text-blue-900 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-											Score : {user?.total_score} / {user?.total_questions_answered}
+											{user?.total_score} pts · {user?.correct_answers}/{user?.total_questions_answered} correct
 										</span>
 								</div>
 							</li>

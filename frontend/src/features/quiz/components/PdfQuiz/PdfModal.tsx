@@ -7,7 +7,8 @@ import { AxiosError } from "axios";
 import axiosInstance from "@/utils/axiosInstance";
 import moment from "@/lib/dayjs";
 import { transformQuestionData } from "@/utils/quizUtils";
-import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice";
+import { setMultipleSelectedItems, setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
+import type { RootState } from "@/stores/store";
 import { Quiz } from "@/types/types";
 import { DocumentToQuestionsModal } from "@/features/ai-generate/components/DocumentToQuestionsWizard";
 import { toQuizQuestions } from "@/features/ai-generate/mappers";
@@ -24,12 +25,18 @@ interface QuizInformationProps {
 	};
 }
 
-/** "AI Generate (From a File)" for quizzes: pick a document from My Files (or upload one) and generate questions. */
+/**
+ * "AI Generate (From a File)" for quizzes: pick a document from My Files (or upload one) and generate questions.
+ * appendToQuiz ("Generate using File" in the quiz editor): add the questions to the quiz being edited, keeping
+ * its title and the unsaved edits of its other questions, instead of naming a new quiz and reopening it.
+ */
 export default function PdfModal({
 	initialOpen = false,
+	appendToQuiz = false,
 	onClose,
 }: {
 	initialOpen?: boolean;
+	appendToQuiz?: boolean;
 	onClose?: () => void;
 }) {
 	const params = useParams();
@@ -40,6 +47,7 @@ export default function PdfModal({
 	const quizData = useSelector(
 		(state: QuizInformationProps) => state.quizInformation.quizInformation
 	);
+	const allItems = useSelector((state: RootState) => state.quiz.multypleselectedItem);
 	const [open, setOpen] = useState(false);
 
 	useEffect(() => {
@@ -61,12 +69,22 @@ export default function PdfModal({
 		{ options }: GeneratedContext
 	) => {
 		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const quizItems = allItems.filter((item) => `${item.quiz_id}` === quizId);
+		const nextSerial = quizItems.reduce((max, item) => Math.max(max, item.position || 0), 0) + 1;
 		try {
 			const response = await axiosInstance.post(
 				`/quiz/questions/store-multiple`,
-				{ questions: toQuizQuestions(result.questions, quizId) },
+				{ questions: toQuizQuestions(result.questions, quizId, appendToQuiz ? nextSerial : 1) },
 				{ timeout: 60_000 }
 			);
+
+			if (appendToQuiz) {
+				const added = transformQuestionData(response?.data.data.questions);
+				dispatch(setMultipleSelectedItems([...allItems, ...added]));
+				if (added[0]) dispatch(setSelectedItem(added[0]));
+				close();
+				return;
+			}
 
 			// Name the new quiz after the topic and open it for a day, as before.
 			await axiosInstance

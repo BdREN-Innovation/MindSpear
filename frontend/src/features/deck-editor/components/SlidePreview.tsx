@@ -14,7 +14,7 @@ import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { slideToRunView } from "@/features/deck/lib/previewRun";
 import { DeckThemeProvider, type DeckTheme } from "@/features/deck/theme";
-import type { RunState, Slide } from "@/features/deck/types";
+import { isScoredQuizSlideTypeKey, type RunState, type Slide } from "@/features/deck/types";
 import { getSlideType } from "../slideRegistry";
 import type { PresenterSessionInfo } from "../slides/types";
 
@@ -28,9 +28,14 @@ import type { PresenterSessionInfo } from "../slides/types";
 export const SLIDE_BASE_WIDTH = 1280;
 export const SLIDE_BASE_HEIGHT = 720;
 
-/** Polls preview with their (sample) results showing, Q&A open, content as-is. */
+/**
+ * Polls preview with their (sample) results showing, Q&A open, content as-is.
+ * Scored quiz slides preview revealed: hidden_until_reveal Presenters show no
+ * results while answering, and the author wants to see the marked answer.
+ */
 export function previewStateFor(slide: Slide): RunState {
 	if (slide.type === "qa_audience" || slide.revealModel === "moderated_feed") return "open";
+	if (isScoredQuizSlideTypeKey(slide.type)) return "reveal";
 	return slide.acceptsAnswers ? "voting" : "waiting";
 }
 

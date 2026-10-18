@@ -90,7 +90,7 @@ function QuizReport() {
 						Assigned MindSpear{" "}
 						<span className="border border-[#fa9b47] p-2 rounded-[10px] font-bold text-[#fa9b47] ml-[5px]">
 							{" "}
-							Ends in {daysLeft} days{" "}
+							Ends in {daysLeft} {Number(daysLeft) === 1 ? "day" : "days"}{" "}
 						</span>
 					</h4>
 					<h4 className="text-[#333333] border-[#2222] border-b-2 pt-[10px] pb-[10px] text-[0.875rem]">

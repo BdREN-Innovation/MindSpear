@@ -10,6 +10,9 @@ import axiosInstance from "@/utils/axiosInstance";
 import { AxiosError } from 'axios';
 import { useParams } from "next/navigation";
 import { setQuiz } from "@/features/quiz/store/quizInformationSlice";
+import { clearHoveredItem, setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
+import QuizEmptyState from '@/features/quiz/components/CreateQuiz/QuizEmptyState';
+import UnsupportedQuestion from '@/features/quiz/components/CreateQuiz/UnsupportedQuestion';
 import type { Quiz } from "@/types/types";
 import PdfModal from '@/features/quiz/components/PdfQuiz/PdfModal';
 import { toast } from 'react-toastify';
@@ -40,10 +43,26 @@ function QuizCreator() {
   const quizData = useSelector(
     (state: QuizInformationProps) => state.quizInformation.quizInformation
   );
-  const hoveredItem = useSelector((state: RootState) => state.quiz.hoveredItem);
   const selectedItem = useSelector((state: RootState) => state.quiz.selectedItem);
+  const items = useSelector((state: RootState) => state.quiz.multypleselectedItem);
+  const quizId = `${params?.quizId ?? ""}`;
+  const quizItems = items.filter((i) => `${i.quiz_id}` === quizId);
+
+  // Only a question of this quiz: the store can still hold the selection of a quiz opened earlier.
+  // Hovering a question in the list no longer swaps the editor; it always shows the selected one.
+  const activeItem: QuizItem | null =
+    selectedItem && quizItems.some((i) => `${i.id}` === `${selectedItem.id}`) ? selectedItem : null;
+
+  // Questions but none selected (e.g. the selection belonged to another quiz): open the first one.
+  useEffect(() => {
+    if (!activeItem && quizItems.length > 0) {
+      const first = [...quizItems].sort((a, b) => (a.position || 0) - (b.position || 0))[0];
+      dispatch(setSelectedItem(first));
+    }
+  }, [activeItem, quizItems, dispatch]);
+
   const renderPreview = (item: QuizItem | null) => {
-    if (!item) return <h3>Coming Soon</h3>;
+    if (!item) return quizItems.length === 0 ? <QuizEmptyState quizId={quizId} /> : null;
     switch (item.key) {
       case 'quiz':
         return <QuizCreatorPreview id={item.id} />;
@@ -54,13 +73,14 @@ function QuizCreator() {
       case 'fillintheblanks':
         return <FillInTheBlanksCreatorPreview id={item.id} />;
       default:
-        return <h3>Coming Soon</h3>;
+        return <UnsupportedQuestion />;
     }
   };
 
-  const activeItem = hoveredItem ?? selectedItem;
-
-  console.log(quizData, "selectedItem");
+  // A hover preview is never valid after a reload (it is persisted with the rest of the store).
+  useEffect(() => {
+    dispatch(clearHoveredItem());
+  }, [dispatch]);
 
   useEffect(() => {
     const dataFetch = async () => {

@@ -9,6 +9,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { HiUserGroup } from "react-icons/hi";
 import { toast } from "react-toastify";
+import { storeParticipantTokenBundle } from "@/features/live/services/liveStorage";
 interface QuizOption {
     color: string[];
     choices: (string | null)[];
@@ -93,6 +94,7 @@ function GlobalAttempFrom() {
     const joinid = searchParams.get("jid");
     // const qid = searchParams.get('qid');
     const [currentUserName, setCurrentUserName] = useState("");
+    const [joining, setJoining] = useState(false);
     const [quizData, setQuizData] = useState<QuizResponse | null>(null);
 
     const [quizErrorMessage, setQuizErrorMessage] = useState<
@@ -167,7 +169,12 @@ function GlobalAttempFrom() {
     const result = timeParts.join(", ") || "0 minute";
 
     const dataSubmit = async () => {
-        // currentUserName
+        if (joining) return;
+        if (!currentUserName.trim()) {
+            toast.info("Enter your name to join.");
+            return;
+        }
+        setJoining(true);
         try {
             const formattedDate = quizData?.quiz?.open_datetime
                 ? moment
@@ -175,16 +182,28 @@ function GlobalAttempFrom() {
                         .format("YYYY-MM-DD HH:mm:ss")
                 : null;
             const obj = {
-                anonymous_name: `${currentUserName}`,
+                anonymous_name: currentUserName.trim(),
                 start_time: `${formattedDate}`,
             };
             const response = await axiosInstance.post(
                 `/quiz-attempts-url/join/${joinid}`,
                 obj
             );
-            console.log(response, "response?.data.dataresponse?.data.data");
+            const joined = response?.data?.data;
+            const sessionId = joined?.session?.id;
+            // Anonymous answers need this token (X-Participant-Token, looked up by the sid in the URL);
+            // it was never kept, so every answer and the final submit came back 401 and no score was saved.
+            if (joined?.participant_token && sessionId) {
+                storeParticipantTokenBundle({
+                    module: "quiz",
+                    sessionId: Number(sessionId),
+                    attemptId: Number(joined?.attempt?.id),
+                    participantToken: joined.participant_token,
+                    publicChannelKey: joined?.public_channel_key ?? "",
+                });
+            }
             router.push(
-                `/attempt/play/${response?.data?.data.session?.join_code}?jid=${response?.data?.data.session?.join_link}&qid=${response?.data?.data.quiz.id}&aid=${response?.data?.data?.attempt.id}`
+                `/attempt/play/${joined?.session?.join_code}?jid=${joined?.session?.join_link}&qid=${joined?.quiz.id}&aid=${joined?.attempt.id}&sid=${sessionId}`
             );
         } catch (error) {
             const axiosError = error as AxiosError<{ message?: string }>;
@@ -195,16 +214,14 @@ function GlobalAttempFrom() {
                     axiosError.response.data
                 );
                 toast.error(
-                    `Error: ${
-                        axiosError.response.data?.message ||
-                        "Verification failed."
-                    }`
+                    axiosError.response.data?.message ||
+                        "You couldn't join this quiz. Please try again."
                 );
             } else {
                 console.error("Unexpected error:", axiosError.message);
                 toast.error("Unexpected error occurred. Please try again.");
             }
-        } finally {
+            setJoining(false);
         }
     };
     
@@ -256,7 +273,14 @@ function GlobalAttempFrom() {
                 <div className="md:h-[200px]"></div>
 
                 <div className=" flex  bg-[#fff] w-full md:w-[500px] rounded-[5px] mt-[30px] ">
-                    <div className="flex gap-3 justify-between w-full p-[15px]">
+                    {/* A form, so Enter joins too. */}
+                    <form
+                        className="flex gap-3 justify-between items-end w-full p-[15px]"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            dataSubmit();
+                        }}
+                    >
                         {/* <input
                         type="text"
                         // onChange={(e) => setUserName(e.target.value)}
@@ -270,19 +294,23 @@ function GlobalAttempFrom() {
                             className=" font-bold text-[#333] w-[90%] "
                             type="text"
                             label=""
-                            placeholder="Enter Name"
+                            placeholder="Enter your name"
                             iconPosition="left"
                             height="sm"
                         />
 
+                        {/* It was white text on a white button ("Okay" was invisible). */}
                         <button
-                            onClick={dataSubmit}
-                            className="border-primary mt-3 font-bold px-[20px] rounded-[10px] text-[#fff] shadow-3 "
+                            type="submit"
+                            disabled={joining}
+                            className="h-[46px] flex-shrink-0 inline-flex items-center gap-2 bg-primary px-6 font-bold rounded-[10px] text-white shadow-3 transition hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
                         >
-                            {" "}
-                            Okay{" "}
+                            {joining && (
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                            )}
+                            Join
                         </button>
-                    </div>
+                    </form>
                 </div>
             </div>
         </div>

@@ -6,7 +6,10 @@ use App\Deck\Broadcasts\DeckBroadcaster;
 use App\Deck\Broadcasts\Payloads\AnswerSubmittedPayload;
 use App\Deck\Exceptions\DeckException;
 use App\Deck\Http\DeckValidation;
+use App\Deck\Sessions\QuizRuntime;
+use App\Deck\Sessions\SessionStateMachine;
 use App\Deck\Slides\AppendsSubmissions;
+use App\Deck\Slides\ScoreResult;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Models\Deck\DeckParticipant;
@@ -17,6 +20,7 @@ use App\Services\Live\LiveAggregateService;
 use App\Services\Live\LiveSessionService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * POST /slide-runs/{run}/answers (plan §3.3 + the AppendsSubmissions flow).
@@ -36,6 +40,23 @@ use Illuminate\Support\Facades\DB;
  *    `answer.submitted` (total_responses counted after the commit) whose
  *    `answer` is this submission only, cut to fit a Reverb publish
  *    (AnswerBroadcastPreview); the stored row may hold several appended ones.
+ *
+ * Quiz sessions (QuizRuntime::scores): answers are final. A participant's
+ * first answer is scored in the same transaction (ScoringService, from
+ * config_snapshot.scoring and the time since voting opened) into
+ * is_correct / points_awarded; a second one is 409 invalid_state with
+ * data.reason already_answered (checked before validation and again by the
+ * unique row under the run lock), and the first answer and its points stay.
+ * deck_participants.total_points is NOT touched here: the reveal adds the
+ * run's points (QuizRuntime::applyRevealedPoints), so nothing a player can
+ * read during voting (standing, leaderboard) depends on correctness. After
+ * the commit, SessionStateMachine::revealIfAllAnswered() reveals the run
+ * once every participant still in the room has answered. The response
+ * stays 204: correctness is only shown after the reveal (my-answer). Quest
+ * is never scored and keeps replacing / merging re-submissions.
+ *
+ * An answer from a participant who had left (POST .../participants/leave)
+ * brings them back into the room (ParticipantPresence::returned).
  */
 class AnswerSubmissionService
 {
@@ -58,14 +79,18 @@ class AnswerSubmissionService
     /**
      * @param  DeckSessionSlideRun  $run  a run of $session
      *
-     * @throws DeckException 409 invalid_state, 422 unsupported_type
+     * @throws DeckException 409 invalid_state (data.reason …, already_answered on a scored quiz run), 422 unsupported_type
      * @throws \Illuminate\Validation\ValidationException keyed answer_payload.*
      */
     public function submit(DeckSession $session, DeckParticipant $participant, DeckSessionSlideRun $run, array $payload): SubmittedAnswer
     {
         $type = $this->answerType($session, $run);
-        // Cheap early answer; repeated under the lock below.
+        // Cheap early answers; repeated under the lock below.
         self::assertAccepting($session, $run);
+        $scored = app(QuizRuntime::class)->scores($session, $type);
+        if ($scored && $this->answerQuery($participant, $run)->exists()) {
+            throw self::alreadyAnswered($run);
+        }
 
         $incoming = DeckValidation::prefixed('answer_payload', fn () => $type->validateAnswer(
             $payload,
@@ -85,12 +110,24 @@ class AnswerSubmissionService
         $event = clone $result->answer;
         $event->answer_payload = AnswerBroadcastPreview::make($incoming);
 
+        app(ParticipantPresence::class)->returned($session, $participant);
         $this->aggregates->schedule($lockedRun);
         $this->live->afterCommit(function () use ($session, $event, $result) {
             $total = DeckParticipantAnswer::query()->where('slide_run_id', $event->slide_run_id)->count();
 
             $this->broadcaster->broadcast($session, AnswerSubmittedPayload::fromAnswer($event, $total, $result->isUpdate));
         });
+
+        if ($type->revealModel() === SlideTypeContract::REVEAL_HIDDEN) {
+            $this->live->afterCommit(function () use ($session, $lockedRun) {
+                try {
+                    app(SessionStateMachine::class)->revealIfAllAnswered($session, (int) $lockedRun->id);
+                } catch (Throwable $exception) {
+                    // The answer is committed; the host or the timer still reveals.
+                    report($exception);
+                }
+            });
+        }
 
         return $result;
     }
@@ -188,6 +225,8 @@ class AnswerSubmissionService
         $config = $locked->config_snapshot ?? [];
         $model = new DeckParticipantAnswer();
         $timestamp = $model->fromDateTime($now);
+        $scored = app(QuizRuntime::class)->scores($session, $type);
+        $score = $scored ? $this->score($locked, $incoming, $timeToAnswerMs) : null;
 
         for ($attempt = 1; ; $attempt++) {
             $inserted = $this->insertAnswer([
@@ -199,12 +238,20 @@ class AnswerSubmissionService
                 'submitted_at' => $timestamp,
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
-            ]);
+            ] + ($score === null ? [] : [
+                'is_correct' => $score->isCorrect,
+                'points_awarded' => $score->pointsAwarded,
+            ]));
 
             $existing = $this->answerQuery($participant, $locked);
 
             if ($inserted > 0) {
                 return [new SubmittedAnswer($existing->firstOrFail(), isUpdate: false, merged: false), $locked];
+            }
+
+            // Scored quiz answers are final: an earlier (or a racing) first answer wins.
+            if ($scored) {
+                throw self::alreadyAnswered($locked);
             }
 
             // Someone (an earlier or a racing submission) owns the row: wait for it, then merge.
@@ -227,6 +274,33 @@ class AnswerSubmissionService
         $answer->save();
 
         return [new SubmittedAnswer($answer, isUpdate: true, merged: $merged), $locked];
+    }
+
+    /**
+     * ScoringService on the run's snapshots; points are never negative. A
+     * scoring failure is reported and scores 0 (is_correct null), so the
+     * answer itself is still kept.
+     */
+    private function score(DeckSessionSlideRun $run, array $payload, ?int $timeToAnswerMs): ScoreResult
+    {
+        try {
+            $result = app(QuizRuntime::class)->score($run, $payload, (int) ($timeToAnswerMs ?? 0));
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return ScoreResult::zero();
+        }
+
+        return new ScoreResult(max(0, $result->pointsAwarded), $result->isCorrect, $result->partialCreditRatio);
+    }
+
+    /** 409 invalid_state for a second answer on a scored quiz run. */
+    private static function alreadyAnswered(DeckSessionSlideRun $run): DeckException
+    {
+        return DeckException::invalidState('You have already answered this slide. Answers are final.', [
+            'reason' => 'already_answered',
+            'slide_run_id' => (int) $run->id,
+        ]);
     }
 
     private function answerQuery(DeckParticipant $participant, DeckSessionSlideRun $run)

@@ -4,6 +4,7 @@ namespace App\Deck\Broadcasts\Payloads;
 
 use App\Deck\Broadcasts\BroadcastPayload;
 use App\Models\Deck\DeckSession;
+use App\Models\Deck\DeckSessionSlideRun;
 
 /**
  * `participant.count.updated`: how many participants are in the session
@@ -31,6 +32,15 @@ final readonly class ParticipantCountUpdatedPayload implements BroadcastPayload
     public static function countFor(DeckSession $session): int
     {
         return $session->participants()->whereNull('left_at')->count();
+    }
+
+    /**
+     * Answers on $run by participants currently in the session (left_at
+     * null): the "x / y answered" x and what auto-reveal compares with countFor().
+     */
+    public static function answeredCountFor(DeckSessionSlideRun $run): int
+    {
+        return $run->answers()->whereHas('participant', fn ($query) => $query->whereNull('left_at'))->count();
     }
 
     public function eventName(): string

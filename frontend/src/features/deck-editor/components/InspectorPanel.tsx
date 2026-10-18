@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
-import type { Deck, DeckSettingsPatch, Slide, SlidePatch } from "@/features/deck/types";
+import type { Deck, DeckProduct, DeckSettingsPatch, Slide, SlidePatch } from "@/features/deck/types";
 import type { OptionsApi, SlideMediaApi } from "../slides/types";
 import { ContentTab } from "./inspector/ContentTab";
 import { DesignTab } from "./inspector/DesignTab";
@@ -17,6 +17,8 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export interface InspectorPanelProps {
+	/** Quiz decks get the scoring fields on the Settings tab. Default: the deck's product. */
+	product?: DeckProduct;
 	deck: Deck;
 	slide: Slide | null;
 	errors?: Record<string, string[]>;
@@ -27,8 +29,18 @@ export interface InspectorPanelProps {
 	onOpenDeckSettings(): void;
 }
 
-/** Right column: Content (type Editor) / Design (theme) / Settings (timer, results, submissions). */
-export function InspectorPanel({ deck, slide, errors, onPatch, options, media, onUpdateSettings, onOpenDeckSettings }: InspectorPanelProps) {
+/** Right column: Content (type Editor) / Design (theme) / Settings (timer, results, submissions; quiz: points). */
+export function InspectorPanel({
+	product,
+	deck,
+	slide,
+	errors,
+	onPatch,
+	options,
+	media,
+	onUpdateSettings,
+	onOpenDeckSettings,
+}: InspectorPanelProps) {
 	const [tab, setTab] = useState<Tab>("content");
 	const baseId = useId();
 	const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
@@ -96,7 +108,7 @@ export function InspectorPanel({ deck, slide, errors, onPatch, options, media, o
 				) : tab === "content" ? (
 					<ContentTab slide={slide} deck={deck} errors={errors} onPatch={onPatch} options={options} media={media} />
 				) : (
-					<SettingsTab slide={slide} deck={deck} errors={errors} onPatch={onPatch} />
+					<SettingsTab slide={slide} deck={deck} product={product ?? deck.product} errors={errors} onPatch={onPatch} />
 				)}
 			</div>
 		</aside>

@@ -50,7 +50,7 @@ export function JoinIntroCard({
 						{title || `Join this ${module}`}
 					</h1>
 					<p className="mt-2 text-sm font-medium text-slate-600">
-						Enter your player name and get ready for the next slide.
+						Enter your name to join. The host starts the questions for everyone.
 					</p>
 				</div>
 
@@ -67,7 +67,7 @@ export function JoinIntroCard({
 					<div className="rounded-lg border border-secondary/20 bg-secondary/10 p-3">
 						<div className="flex items-center gap-2 text-xs font-bold uppercase text-secondary">
 							<ListChecks className="h-4 w-4" />
-							Slides
+							Questions
 						</div>
 						<p className="mt-1 text-sm font-black text-slate-950">
 							{countLabel || "Ready"}

@@ -182,7 +182,7 @@ const GameMode: React.FC<LeaderboardProps> = () => {
 												<td className="px-6 py-4 text-center">
 													<div className="text-[#d0d0e6] text-sm font-bold">
 														{user?.quiz_participant?.total_score &&
-															`${user?.quiz_participant?.total_score} score`}
+															`${user?.quiz_participant?.total_score} points`}
 													</div>
 												</td>
 											</tr>
@@ -257,7 +257,7 @@ const GameMode: React.FC<LeaderboardProps> = () => {
 												<td className="px-6 py-4 text-center">
 													<div className="text-[#d0d0e6] text-sm font-bold">
 														{user.total_score &&
-															`${user.total_score} score`}
+															`${user.total_score} points`}
 													</div>
 												</td>
 											</tr>

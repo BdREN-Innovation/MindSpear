@@ -94,15 +94,14 @@ const QuizCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 
 	const saveTextChange = useCallback(
 		(optionId: string) => {
-			if (editText.trim()) {
-				dispatch(
-					updateOptionText({
-						quizId: id,
-						optionId,
-						text: editText.trim(),
-					})
-				);
-			}
+			// Also when emptied: clearing an answer's text used to be ignored.
+			dispatch(
+				updateOptionText({
+					quizId: id,
+					optionId,
+					text: editText.trim(),
+				})
+			);
 			setEditingId(null);
 			setEditText("");
 		},
@@ -329,9 +328,7 @@ const QuizCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 					<div className="mb-6">
 						<label className="flex items-center cursor-pointer justify-between">
 							<div className="text-gray-700 font-medium text-[0.875rem]">
-								{isMultipleSelection
-									? "Select Multiple Answer"
-									: "Select Single Answer"}
+								Multiple correct answers
 							</div>
 
 							<div className="relative">
@@ -357,6 +354,11 @@ const QuizCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 								></div>
 							</div>
 						</label>
+						<p className="mt-1.5 text-xs text-[#888]">
+							{isMultipleSelection
+								? "Mark every correct answer. Players score only when they pick all of them and nothing else."
+								: "Players pick one answer. Turn on to allow more than one correct answer."}
+						</p>
 					</div>
 
 					<Select
@@ -393,8 +395,8 @@ const QuizCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 						className="mt-[15px] !text-[0.875rem]"
 						label="Points"
 						items={[
-							{ label: "Single Points", value: "1" },
-							{ label: "Multiple Points", value: "2" },
+							{ label: "Standard (1 point)", value: "1" },
+							{ label: "Double (2 points)", value: "2" },
 						]}
 						prefixIcon={<VscActivateBreakpoints />}
 						onChange={(e) =>

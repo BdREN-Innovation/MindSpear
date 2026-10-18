@@ -6,6 +6,7 @@ use App\Deck\Exceptions\DeckException;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Deck\Slides\TakesMedia;
+use App\Deck\Slides\Types\Quiz\QuizOptions;
 use App\Models\Deck\Deck;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
@@ -36,6 +37,15 @@ use Illuminate\Validation\ValidationException;
  *   change of the deck default must never reach existing slides, so null or
  *   0 on the slide means off: there is no deck-settings fallback here. Q&A
  *   and content runs are always untimed (null).
+ * - Quiz (QUIZ_REDESIGN_PLAN.md): an answer slide whose get_ready_seconds is
+ *   null gets config deck.quiz.get_ready_seconds (5; 0 on the slide = off),
+ *   and its config_snapshot gains `scoring` {points_min, points_max,
+ *   speed_bonus_enabled, time_limit_seconds} from the slide's columns
+ *   (defaults config deck.quiz.scoring) and `_key_salt` (QuizOptions::KEY_SALT,
+ *   random per run: the opaque option keys differ on every run and session;
+ *   `_` keys never reach a view). A spinner run (QuizRuntime::spins)
+ *   is timed by its spin length instead (config.spin_duration_ms rounded up
+ *   to whole seconds, else deck.quiz.spin_seconds): it reveals itself then.
  *
  * One live session per deck: the deck row is locked while checking, and a
  * second start answers 409 conflict with data.session_id of the live one.
@@ -120,6 +130,24 @@ class SessionLauncher
 
         $config = $this->snapshotConfig($type, $slide);
         $timed = $type->acceptsAnswers();
+        $quiz = $product === Deck::PRODUCT_QUIZ;
+
+        $timeLimit = match (true) {
+            $timed => self::seconds($slide->time_limit_seconds),
+            QuizRuntime::spins($type) => QuizRuntime::spinSeconds($config),
+            default => null,
+        };
+        $getReady = $timed ? self::seconds($slide->get_ready_seconds) : null;
+
+        if ($quiz && $timed) {
+            if ($slide->get_ready_seconds === null) {
+                $getReady = self::seconds(QuizRuntime::defaultGetReadySeconds());
+            }
+
+            $config['scoring'] = QuizRuntime::scoringSnapshot($slide, $timeLimit);
+            // Per-run salt of the opaque option keys (QuizOptions::key): new keys every run and session.
+            $config[QuizOptions::KEY_SALT] = QuizOptions::newSalt();
+        }
 
         return [
             'slide_id' => $slide->id,
@@ -129,8 +157,8 @@ class SessionLauncher
             'body_snapshot' => $slide->body,
             'config_snapshot' => $config,
             'options_snapshot' => $slide->options->map(fn (SlideOption $option) => self::optionSnapshot($option))->values()->all(),
-            'time_limit_seconds' => $timed ? self::seconds($slide->time_limit_seconds) : null,
-            'get_ready_seconds' => $timed ? self::seconds($slide->get_ready_seconds) : null,
+            'time_limit_seconds' => $timeLimit,
+            'get_ready_seconds' => $getReady,
             'state' => DeckSessionSlideRun::STATE_WAITING,
             'state_version' => 0,
         ];

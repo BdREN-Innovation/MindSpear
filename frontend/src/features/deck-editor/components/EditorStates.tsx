@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { FileQuestion, Loader2, Lock, RefreshCw, WifiOff } from "lucide-react";
 import { Modal } from "@/components/ui";
 import type { DeckApiError } from "@/features/deck/api/errors";
+import type { DeckProduct } from "@/features/deck/types";
+import { productCopy } from "./productCopy";
 
 // Full-page states of the editor route and the delete confirmation.
 
@@ -27,27 +29,29 @@ function FullPage({ icon, title, children }: { icon: ReactNode; title: string; c
 	);
 }
 
-export function EditorLoading() {
+export function EditorLoading({ product = "quest" }: { product?: DeckProduct }) {
 	return (
 		<main className="flex h-full w-full items-center justify-center bg-gray-2 dark:bg-dark" aria-busy="true">
 			<p role="status" className="flex items-center gap-2 text-sm text-dark-5 dark:text-dark-6">
 				<Loader2 className="h-5 w-5 text-primary motion-safe:animate-spin" aria-hidden />
-				Loading your quest…
+				Loading your {productCopy(product).noun}…
 			</p>
 		</main>
 	);
 }
 
-/** 403 feature_disabled: Quest v2 is switched off for this account. */
-export function FeatureDisabledPage({ error }: { error: DeckApiError }) {
+/** 403 feature_disabled: Quest v2 / Quiz v2 is switched off for this account. */
+export function FeatureDisabledPage({ error, product = "quest" }: { error: DeckApiError; product?: DeckProduct }) {
+	const copy = productCopy(product);
 	return (
-		<FullPage icon={<Lock className="h-6 w-6" aria-hidden />} title="The new quest editor isn't available for your account">
+		<FullPage icon={<Lock className="h-6 w-6" aria-hidden />} title={`The new ${copy.noun} editor isn't available for your account`}>
 			<p className="text-sm text-dark-5 dark:text-dark-6">
-				{error.message || "Quest v2 is not enabled for your account."} Your existing quests are still in My Library.
+				{error.message || `${copy.v2} is not enabled for your account.`} Your existing {copy.plural} are still in My
+				Library.
 			</p>
 			<div className="flex flex-wrap justify-center gap-2">
-				<Link href="/my-library/quest-page" className={linkClass}>
-					My quests
+				<Link href={copy.libraryHref} className={linkClass}>
+					My {copy.plural}
 				</Link>
 				<Link href="/dashboard" className={primaryClass}>
 					Back to dashboard
@@ -57,23 +61,32 @@ export function FeatureDisabledPage({ error }: { error: DeckApiError }) {
 	);
 }
 
-export function LoadErrorPage({ error, onRetry }: { error: DeckApiError; onRetry(): void }) {
+export function LoadErrorPage({
+	error,
+	onRetry,
+	product = "quest",
+}: {
+	error: DeckApiError;
+	onRetry(): void;
+	product?: DeckProduct;
+}) {
+	const copy = productCopy(product);
 	if (error.code === "not_found") {
 		return (
-			<FullPage icon={<FileQuestion className="h-6 w-6" aria-hidden />} title="Quest not found">
+			<FullPage icon={<FileQuestion className="h-6 w-6" aria-hidden />} title={`${copy.Noun} not found`}>
 				<p className="text-sm text-dark-5 dark:text-dark-6">It may have been deleted, or it belongs to another account.</p>
-				<Link href="/my-library/quest-page" className={primaryClass}>
-					Go to my quests
+				<Link href={copy.libraryHref} className={primaryClass}>
+					Go to my {copy.plural}
 				</Link>
 			</FullPage>
 		);
 	}
 	return (
-		<FullPage icon={<WifiOff className="h-6 w-6" aria-hidden />} title="The quest could not be loaded">
+		<FullPage icon={<WifiOff className="h-6 w-6" aria-hidden />} title={`The ${copy.noun} could not be loaded`}>
 			<p className="text-sm text-dark-5 dark:text-dark-6">{error.message}</p>
 			<div className="flex flex-wrap justify-center gap-2">
-				<Link href="/my-library/quest-page" className={linkClass}>
-					My quests
+				<Link href={copy.libraryHref} className={linkClass}>
+					My {copy.plural}
 				</Link>
 				<button type="button" onClick={onRetry} className={primaryClass}>
 					<RefreshCw className="h-4 w-4" aria-hidden />

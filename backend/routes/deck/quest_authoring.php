@@ -7,10 +7,9 @@ use App\Deck\Http\DeckRoutes;
 use Illuminate\Support\Facades\Route;
 
 /*
-| Deck authoring API (plan §2.1, §5.7 bulk), registered for every product in
-| config('deck.routes') — today /api/v1/quests/v2/... with names
-| deck.quest.*. The controllers read the product from the route, so Quiz v2
-| only needs its config entry. Media / cover / option-image attach routes
+| Deck authoring API (plan §2.1, §5.7 bulk) for Quest: /api/v1/quests/v2/...
+| with names deck.quest.*. The controllers read the product from the route;
+| Quiz v2 mirrors these routes in quiz_authoring.php. Media / cover / option-image attach routes
 | live in their own route file. `deck.feature`: 403 feature_disabled unless
 | the user has the product's v2 (App\Deck\Support\DeckFeature).
 */
@@ -37,4 +36,4 @@ DeckRoutes::authoring(function (string $product) {
         Route::patch('{deck}/slides/{slide}/options/{option}', [SlideOptionController::class, 'update'])->whereNumber(['deck', 'slide', 'option'])->name('options.update');
         Route::delete('{deck}/slides/{slide}/options/{option}', [SlideOptionController::class, 'destroy'])->whereNumber(['deck', 'slide', 'option'])->name('options.destroy');
     });
-});
+}, ['quest']);

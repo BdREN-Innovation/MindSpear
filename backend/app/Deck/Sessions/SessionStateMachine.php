@@ -2,17 +2,22 @@
 
 namespace App\Deck\Sessions;
 
+use App\Deck\Broadcasts\BroadcastPayload;
 use App\Deck\Broadcasts\DeckBroadcaster;
 use App\Deck\Broadcasts\DeckChannels;
+use App\Deck\Broadcasts\Payloads\LeaderboardUpdatedPayload;
+use App\Deck\Broadcasts\Payloads\ParticipantCountUpdatedPayload;
+use App\Deck\Broadcasts\Payloads\PublishSize;
 use App\Deck\Broadcasts\Payloads\SessionEndedPayload;
 use App\Deck\Broadcasts\Payloads\SlideChangedPayload;
 use App\Deck\Broadcasts\Payloads\SlideStateChangedPayload;
+use App\Deck\Broadcasts\Payloads\SpinStartedPayload;
 use App\Deck\Exceptions\DeckException;
 use App\Deck\Http\Resources\SessionStatePresenter;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
-use App\Events\Live\LiveBroadcastEvent;
 use App\Jobs\Deck\TransitionSlideRunJob;
+use App\Models\Deck\Deck;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
 use App\Services\Live\LiveAggregateService;
@@ -35,14 +40,31 @@ use Throwable;
  *   get_ready only when get_ready_seconds > 0; it ends by itself after the
  *   countdown. voting ends by close_voting, by leaving the slide, by ending
  *   the session or when time_limit_seconds runs out.
+ * - quiz (acceptsAnswers + hidden_until_reveal):
+ *                            waiting → [get_ready →] voting → reveal
+ *   Like a poll, except that voting ends in `reveal` instead of `closed`:
+ *   by the `reveal` action (close_voting does the same), the time limit,
+ *   every participant having answered (revealIfAllAnswered), leaving the
+ *   slide or ending the session. Reveal broadcasts slide.revealed
+ *   (LiveAggregateService::broadcastRevealed).
+ * - spinner (types with spin()): waiting → voting (spinning) → reveal
+ *   start_voting spins: spin() picks the option, `spin.started` goes out and
+ *   the run reveals itself after time_limit_seconds (the spin length the
+ *   launcher snapshots: config.spin_duration_ms rounded up to seconds, else
+ *   config deck.quiz.spin_seconds), or on `reveal`.
  * - Q&A (moderated_feed):    waiting → open → closed (no get_ready, no timer)
- * - content (everything else): stays `waiting`; only navigation applies.
- * A closed run is never reopened.
+ * - content (everything else, the leaderboard included): stays `waiting`;
+ *   only navigation applies. Moving onto a leaderboard run broadcasts
+ *   `leaderboard.updated`.
+ * A closed or revealed run is never reopened.
  *
- * Actions (POST .../advance): start_voting, close_voting, next_slide,
- * previous_slide, jump_to {target_run_id}. Leaving a run that is get_ready,
- * voting or open closes it first; going backwards (previous_slide, or
- * jump_to an earlier slide) away from such a run needs force=true.
+ * Actions (POST .../advance): start_voting, close_voting, reveal, next_slide,
+ * previous_slide, jump_to {target_run_id}, insert_leaderboard (quiz: a new
+ * leaderboard run right after the current one, which it then moves to, like
+ * next_slide; later runs shift down one position). Leaving a run that is get_ready,
+ * voting or open ends it first (closed, or reveal for quiz and spinner
+ * runs); going backwards (previous_slide, or jump_to an earlier slide) away
+ * from such a run needs force=true.
  *
  * Every run transition increments state_version, stamps state_started_at
  * (+ voting_started_at / closed_at) and broadcasts slide.state.changed after
@@ -64,25 +86,42 @@ class SessionStateMachine
 
     public const ACTION_CLOSE_VOTING = 'close_voting';
 
+    /** Quiz: end answering now and show the correct answer (spinner: stop the wheel). */
+    public const ACTION_REVEAL = 'reveal';
+
     public const ACTION_NEXT_SLIDE = 'next_slide';
 
     public const ACTION_PREVIOUS_SLIDE = 'previous_slide';
 
     public const ACTION_JUMP_TO = 'jump_to';
 
+    /** Quiz: show a leaderboard now (a new leaderboard run right after the current one). */
+    public const ACTION_INSERT_LEADERBOARD = 'insert_leaderboard';
+
     public const ACTIONS = [
         self::ACTION_START_VOTING,
         self::ACTION_CLOSE_VOTING,
+        self::ACTION_REVEAL,
         self::ACTION_NEXT_SLIDE,
         self::ACTION_PREVIOUS_SLIDE,
         self::ACTION_JUMP_TO,
+        self::ACTION_INSERT_LEADERBOARD,
     ];
+
+    /** Actions only quiz sessions take (AdvanceSessionRequest drops them on other routes). */
+    public const QUIZ_ACTIONS = [self::ACTION_REVEAL, self::ACTION_INSERT_LEADERBOARD];
 
     /** waiting → [get_ready →] voting → closed */
     public const KIND_POLL = 'poll';
 
     /** waiting → open → closed */
     public const KIND_QA = 'qa';
+
+    /** waiting → [get_ready →] voting → reveal (hidden_until_reveal, scored). */
+    public const KIND_QUIZ = 'quiz';
+
+    /** waiting → voting (spinning) → reveal (spinner_wheel). */
+    public const KIND_SPIN = 'spin';
 
     /** No voting; navigation only. */
     public const KIND_CONTENT = 'content';
@@ -108,6 +147,7 @@ class SessionStateMachine
         private readonly LiveSessionService $live,
         private readonly ParticipantTokenService $tokens,
         private readonly DeckChannels $channels,
+        private readonly QuizRuntime $quiz,
     ) {}
 
     /**
@@ -140,15 +180,17 @@ class SessionStateMachine
                 // A deadline that passed between the catch-up and the lock.
                 $timedOut = $this->applyDue($s, $current, $now) || $caughtUp === (int) $current->id;
 
+                // The time limit ended it in this very request: that is what the host asked for.
+                $endedByTimer = $timedOut && $current->isFinal();
+
                 match ($action) {
                     self::ACTION_START_VOTING => $this->startVoting($s, $current, $now),
-                    // The time limit closed it in this very request: that is what the host asked for.
-                    self::ACTION_CLOSE_VOTING => $timedOut && $current->state === DeckSessionSlideRun::STATE_CLOSED
-                        ? null
-                        : $this->closeVoting($s, $current, $now),
+                    self::ACTION_CLOSE_VOTING => $endedByTimer ? null : $this->closeVoting($s, $current, $now),
+                    self::ACTION_REVEAL => $endedByTimer ? null : $this->revealAction($s, $current, $now),
                     self::ACTION_NEXT_SLIDE => $this->nextSlide($s, $current, $now),
                     self::ACTION_PREVIOUS_SLIDE => $this->previousSlide($s, $current, $force, $now),
                     self::ACTION_JUMP_TO => $this->jumpTo($s, $current, $targetRunId, $force, $now),
+                    self::ACTION_INSERT_LEADERBOARD => $this->insertLeaderboard($s, $current, $now),
                 };
 
                 return $s;
@@ -164,8 +206,9 @@ class SessionStateMachine
 
     /**
      * Host ends the session: closes any get_ready/voting/open run
-     * (broadcastClosed), sets status ended + ended_at, revokes every
-     * participant token and broadcasts session.ended.
+     * (broadcastClosed; quiz and spinner runs are revealed instead), sets
+     * status ended + ended_at, revokes every participant token and
+     * broadcasts session.ended.
      *
      * @throws DeckException 409 invalid_state when it already ended
      */
@@ -187,7 +230,7 @@ class SessionStateMachine
                 ->get();
 
             foreach ($active as $run) {
-                $this->close($s, $run->setRelation('session', $s), $now);
+                $this->finish($s, $run->setRelation('session', $s), $now);
             }
 
             $s->forceFill(['status' => DeckSession::STATUS_ENDED, 'ended_at' => $now])->save();
@@ -210,6 +253,48 @@ class SessionStateMachine
         $this->catchUp($session, $synced);
 
         return $synced ?? $session;
+    }
+
+    /**
+     * Quiz: reveals $slideRunId when it is the session's current run, still
+     * voting, and every participant in the session (joined, not left) has
+     * an answer on it. AnswerSubmissionService calls it after each accepted
+     * answer commits. Locks like a host action (session, then run), so two
+     * last answers arriving together reveal once. True when it revealed.
+     */
+    public function revealIfAllAnswered(DeckSession $session, int $slideRunId): bool
+    {
+        $run = DeckSessionSlideRun::query()->where('deck_session_id', $session->id)->find($slideRunId);
+
+        if (! $run || $run->state !== DeckSessionSlideRun::STATE_VOTING || $this->kindOf($run) !== self::KIND_QUIZ) {
+            return false;
+        }
+
+        if (! $this->allAnswered($session, $run)) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($session, $slideRunId) {
+            $s = $this->lockSession($session);
+
+            if (! $s->isLive() || (int) $s->current_slide_run_id !== $slideRunId) {
+                return false;
+            }
+
+            $run = DeckSessionSlideRun::query()
+                ->where('deck_session_id', $s->id)
+                ->whereKey($slideRunId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $run || $run->state !== DeckSessionSlideRun::STATE_VOTING || ! $this->allAnswered($s, $run)) {
+                return false;
+            }
+
+            $this->reveal($s, $run->setRelation('session', $s), now());
+
+            return true;
+        });
     }
 
     /**
@@ -293,7 +378,7 @@ class SessionStateMachine
         });
     }
 
-    /** poll | qa | content, from the run's type (unknown types are treated as content). */
+    /** poll | quiz | spin | qa | content, from the run's type (unknown types are treated as content). */
     public function kindOf(DeckSessionSlideRun $run): string
     {
         $type = $this->registry->has((string) $run->type_snapshot) ? $this->registry->for($run->type_snapshot) : null;
@@ -301,9 +386,17 @@ class SessionStateMachine
         return match (true) {
             $type === null => self::KIND_CONTENT,
             $type->revealModel() === SlideTypeContract::REVEAL_MODERATED => self::KIND_QA,
+            QuizRuntime::spins($type) => self::KIND_SPIN,
+            $type->acceptsAnswers() && $type->revealModel() === SlideTypeContract::REVEAL_HIDDEN => self::KIND_QUIZ,
             $type->acceptsAnswers() => self::KIND_POLL,
             default => self::KIND_CONTENT,
         };
+    }
+
+    /** Whether $run ends in `reveal` (quiz and spinner runs) rather than `closed`. */
+    public function reveals(DeckSessionSlideRun $run): bool
+    {
+        return in_array($this->kindOf($run), [self::KIND_QUIZ, self::KIND_SPIN], true);
     }
 
     // --- actions ------------------------------------------------------------------
@@ -326,6 +419,12 @@ class SessionStateMachine
             return;
         }
 
+        if ($kind === self::KIND_SPIN) {
+            $this->spin($s, $run, $now);
+
+            return;
+        }
+
         if ((int) $run->get_ready_seconds > 0) {
             $this->transition($s, $run, DeckSessionSlideRun::STATE_GET_READY, $now);
             $this->scheduleTimer($s, $run, (int) $run->get_ready_seconds);
@@ -342,7 +441,22 @@ class SessionStateMachine
             throw $this->illegal($run, 'Voting is not open on this slide.');
         }
 
-        $this->close($s, $run, $now);
+        // Quiz and spinner runs end in reveal: close_voting is the same as reveal there.
+        $this->finish($s, $run, $now);
+    }
+
+    /** `reveal`: quiz and spinner runs only, while voting (spinning). */
+    private function revealAction(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
+    {
+        if (! $this->reveals($run)) {
+            throw $this->illegal($run, 'This slide has no answer to reveal.');
+        }
+
+        if ($run->state !== DeckSessionSlideRun::STATE_VOTING) {
+            throw $this->illegal($run, 'Only a slide that is taking answers can be revealed.');
+        }
+
+        $this->reveal($s, $run, $now);
     }
 
     private function nextSlide(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
@@ -384,6 +498,50 @@ class SessionStateMachine
         $this->moveTo($s, $run, $target, $now);
     }
 
+    /**
+     * insert_leaderboard (plan §3.2 "insert leaderboard"): a quiz session
+     * gets a leaderboard run (the type's default config, no authoring slide)
+     * at the position after the current run; every later run moves down one
+     * position (two UPDATEs, since unique(deck_session_id, position_snapshot)
+     * is checked row by row). Then it is a next_slide onto it: an active
+     * current run is revealed, slide.changed (total_slides + 1),
+     * slide.state.changed and leaderboard.updated go out.
+     */
+    private function insertLeaderboard(DeckSession $s, DeckSessionSlideRun $current, CarbonInterface $now): void
+    {
+        if ($s->product() !== Deck::PRODUCT_QUIZ || ! $this->registry->has(QuizRuntime::LEADERBOARD_TYPE)) {
+            throw $this->illegal($current, 'Only a quiz can show a leaderboard.');
+        }
+
+        if ($this->quiz->isLeaderboard($current)) {
+            throw $this->illegal($current, 'The leaderboard is already showing.');
+        }
+
+        $type = $this->registry->for(QuizRuntime::LEADERBOARD_TYPE);
+        $position = (int) $current->position_snapshot;
+        $later = fn () => DeckSessionSlideRun::query()->where('deck_session_id', $s->id);
+
+        $later()->where('position_snapshot', '>', $position)->update(['position_snapshot' => DB::raw('-(position_snapshot + 1)')]);
+        $later()->where('position_snapshot', '<', 0)->update(['position_snapshot' => DB::raw('-position_snapshot')]);
+
+        $run = DeckSessionSlideRun::create([
+            'deck_session_id' => $s->id,
+            'slide_id' => null,
+            'position_snapshot' => $position + 1,
+            'type_snapshot' => QuizRuntime::LEADERBOARD_TYPE,
+            'title_snapshot' => 'Leaderboard',
+            'body_snapshot' => null,
+            'config_snapshot' => $type->validateConfig($type->defaultConfig()),
+            'options_snapshot' => [],
+            'time_limit_seconds' => null,
+            'get_ready_seconds' => null,
+            'state' => DeckSessionSlideRun::STATE_WAITING,
+            'state_version' => 0,
+        ]);
+
+        $this->moveTo($s, $current, $run, $now);
+    }
+
     // --- transitions ----------------------------------------------------------------
 
     private function openVoting(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
@@ -401,11 +559,66 @@ class SessionStateMachine
         $this->aggregates->broadcastClosed($run);
     }
 
-    /** Leaves $from (closing it when active) and makes $to the current run. */
+    /**
+     * voting → reveal: answers stop (closed_at), a scored run's points move
+     * into total_points (QuizRuntime::applyRevealedPoints, same transaction)
+     * and slide.revealed goes out after commit.
+     */
+    private function reveal(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
+    {
+        $this->transition($s, $run, DeckSessionSlideRun::STATE_REVEAL, $now, ['closed_at' => $now]);
+        $this->quiz->applyRevealedPoints($s, $run);
+        $this->aggregates->broadcastRevealed($run);
+    }
+
+    /** Ends an active run: reveal for quiz and spinner runs, closed otherwise. */
+    private function finish(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
+    {
+        $this->reveals($run) ? $this->reveal($s, $run, $now) : $this->close($s, $run, $now);
+    }
+
+    /**
+     * Spinner start: the type picks the winning option (spin(), weighted),
+     * the result is kept on the run (config_snapshot._spin) for resyncs and
+     * the reveal, voting (spinning) starts with the spin length as its timer
+     * and `spin.started` {option_id, target_angle} goes out.
+     */
+    private function spin(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void
+    {
+        if (($run->options_snapshot ?? []) === []) {
+            throw $this->illegal($run, 'This wheel has no options to spin.');
+        }
+
+        $result = QuizRuntime::normaliseSpin($this->registry->for($run->type_snapshot)->spin($run));
+        $run->config_snapshot = array_replace($run->config_snapshot ?? [], [
+            QuizRuntime::SPIN_KEY => $result + ['spun_at' => $now->toISOString()],
+        ]);
+
+        $this->transition($s, $run, DeckSessionSlideRun::STATE_VOTING, $now, ['voting_started_at' => $now]);
+        $this->broadcaster->broadcast($s, SpinStartedPayload::fromRun($run, $result));
+
+        if ((int) $run->time_limit_seconds > 0) {
+            $this->scheduleTimer($s, $run, (int) $run->time_limit_seconds);
+        }
+    }
+
+    /** Every participant in the session (joined, not left) has an answer on $run. */
+    private function allAnswered(DeckSession $s, DeckSessionSlideRun $run): bool
+    {
+        $participants = ParticipantCountUpdatedPayload::countFor($s);
+
+        if ($participants === 0) {
+            return false;
+        }
+
+        return ParticipantCountUpdatedPayload::answeredCountFor($run) >= $participants;
+    }
+
+    /** Leaves $from (ending it when active) and makes $to the current run. */
     private function moveTo(DeckSession $s, DeckSessionSlideRun $from, DeckSessionSlideRun $to, CarbonInterface $now): void
     {
         if (in_array($from->state, self::ACTIVE_STATES, true)) {
-            $this->close($s, $from, $now);
+            $this->finish($s, $from, $now);
         }
 
         $s->forceFill(['current_slide_run_id' => $to->id])->save();
@@ -414,6 +627,18 @@ class SessionStateMachine
         $total = DeckSessionSlideRun::query()->where('deck_session_id', $s->id)->count();
         $this->broadcaster->broadcast($s, $this->slideChanged($s, $to, $total));
         $this->broadcaster->broadcast($s, SlideStateChangedPayload::fromRun($to));
+
+        if ($this->quiz->isLeaderboard($to)) {
+            $this->broadcaster->broadcast($s, $this->leaderboardUpdated($s, $to));
+        }
+    }
+
+    /** `leaderboard.updated` for a leaderboard run that just became current (top N; slim when too large). */
+    private function leaderboardUpdated(DeckSession $s, DeckSessionSlideRun $run): LeaderboardUpdatedPayload
+    {
+        $payload = LeaderboardUpdatedPayload::fromRun($run, $this->quiz->leaderboard($s, $this->quiz->leaderboardSize($run)), $this->quiz->leaderboardSize($run));
+
+        return $this->publishBytes($s, $payload) <= self::SLIDE_CHANGED_MAX_BYTES ? $payload : $payload->slim();
     }
 
     private function transition(DeckSession $s, DeckSessionSlideRun $run, string $state, CarbonInterface $now, array $stamps = []): void
@@ -428,7 +653,7 @@ class SessionStateMachine
         $this->broadcaster->broadcast($s, SlideStateChangedPayload::fromRun($run));
     }
 
-    /** get_ready → voting, voting → closed when the deadline passed. True when something changed. */
+    /** get_ready → voting, voting → closed (quiz / spinner: reveal) when the deadline passed. True when something changed. */
     private function applyDue(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): bool
     {
         if (! $this->isDue($run, $now)) {
@@ -437,7 +662,7 @@ class SessionStateMachine
 
         $run->state === DeckSessionSlideRun::STATE_GET_READY
             ? $this->openVoting($s, $run, $now)
-            : $this->close($s, $run, $now);
+            : $this->finish($s, $run, $now);
 
         return true;
     }
@@ -477,22 +702,9 @@ class SessionStateMachine
     }
 
     /** Size of the Pusher HTTP body Reverb receives for $payload (data is JSON inside JSON). */
-    private function publishBytes(DeckSession $s, SlideChangedPayload $payload): int
+    private function publishBytes(DeckSession $s, BroadcastPayload $payload): int
     {
-        $channel = $this->channels->for($s, $payload);
-        $event = LiveBroadcastEvent::fromPayload($payload, $channel, [
-            'module' => $s->product(),
-            'session_id' => $s->id,
-            'broadcasted_at' => now()->toISOString(),
-        ]);
-
-        $body = json_encode([
-            'name' => $event->broadcastAs(),
-            'data' => json_encode($event->broadcastWith() + ['socket' => null]),
-            'channels' => [$channel],
-        ]);
-
-        return $body === false ? PHP_INT_MAX : strlen($body);
+        return PublishSize::bytes($s, $payload);
     }
 
     /**

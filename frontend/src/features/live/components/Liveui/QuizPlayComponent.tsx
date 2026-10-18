@@ -129,7 +129,12 @@ const QuizPlayComponent: React.FC<NavigatorProps> = ({
 					);
 				}
 			} catch (error) {
-				console.error("Failed to complete quiz participant:", error);
+				// Ending the session already scores every attempt (and revokes the token), so a
+				// refused call here is expected; only something else is worth reporting.
+				const status = (error as { response?: { status?: number } })?.response?.status;
+				if (status !== 400 && status !== 401) {
+					console.error("Failed to complete quiz participant:", error);
+				}
 			} finally {
 				setLeaderboardVisible(true);
 				if (sessionId && quizId) {

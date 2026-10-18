@@ -55,6 +55,8 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         'storage_quota_bytes',
         // Quest v2 rollout flag (plan §8.3). Not taken from request input anywhere; set by admins.
         'quest_v2_enabled',
+        // Quiz v2 rollout flag (QUIZ_REDESIGN_PLAN.md §2.4). Same rules as quest_v2_enabled.
+        'quiz_v2_enabled',
     ];
 
     /**
@@ -79,6 +81,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
             'password' => 'hashed',
             'storage_quota_bytes' => 'integer',
             'quest_v2_enabled' => 'boolean',
+            'quiz_v2_enabled' => 'boolean',
         ];
     }
 

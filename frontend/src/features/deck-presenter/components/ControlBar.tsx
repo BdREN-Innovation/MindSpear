@@ -3,8 +3,10 @@
 import { useRef } from "react";
 import {
 	BarChart3,
+	CheckCheck,
 	ChevronLeft,
 	ChevronRight,
+	Eye,
 	List,
 	Loader2,
 	LogOut,
@@ -13,8 +15,10 @@ import {
 	Minimize,
 	Play,
 	QrCode,
+	RotateCw,
 	Square,
 	SkipForward,
+	Trophy,
 	Users,
 } from "lucide-react";
 import type { DeckConnectionStatus } from "@/features/deck/live/channelState";
@@ -26,7 +30,8 @@ import { ControlButton } from "./ControlButton";
 import { SlideListPopover } from "./SlideListPopover";
 
 // Bottom control bar (plan §6.2):
-//   [exit] [≡ slides] ‹ 3 / 12 ›   [ primary action ]   📊 12 · 👥 42 ● · Q&A · QR · ⛶ · End
+//   [exit] [≡ slides] ‹ 3 / 12 ›   [ primary action ]   📊 12 · 👥 42 ● · Q&A · 🏆 · QR · ⛶ · End
+// (🏆 = quiz only: insert a leaderboard slide after the current one and show it.)
 // Sized to fit a 1280 px projector with the QR sidebar open (~1000 px).
 // Every action button is disabled while one request is in flight, so a
 // double click can never advance twice.
@@ -43,6 +48,12 @@ const CONNECTION: Record<DeckConnectionStatus, { label: string; dot: string }> =
 export interface ResponseTally {
 	count: number;
 	people: number | null;
+}
+
+/** Quiz runs: "12 / 30 answered" (answers on the run / participants in the room). */
+export interface AnsweredTally {
+	count: number;
+	of: number | null;
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -67,11 +78,15 @@ export interface ControlBarProps {
 	participantCount: number | null;
 	/** Responses on the current run (answer slides), else null. */
 	responses: ResponseTally | null;
+	/** Quiz runs: answered count (shown instead of `responses`), else null. */
+	answered?: AnsweredTally | null;
 	connection: DeckConnectionStatus;
 	qrOpen: boolean;
 	onToggleQr: () => void;
 	/** Shown on Q&A runs only. */
 	moderation: { open: boolean; count: number; onToggle: () => void } | null;
+	/** Quiz sessions: insert a leaderboard right after the current slide and move to it (null elsewhere). */
+	insertLeaderboard?: { onInsert: () => void; disabled: boolean; title: string } | null;
 	fullscreen: { isFullscreen: boolean; supported: boolean; toggle: () => void };
 	onEnd: () => void;
 	onExit: () => void;
@@ -81,11 +96,15 @@ function PrimaryIcon({ primary, busy }: { primary: PrimaryAction; busy: boolean 
 	if (busy || primary.kind === "wait")
 		return <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />;
 	if (primary.kind === "end") return <Square className="h-5 w-5" aria-hidden />;
-	switch (primary.action) {
-		case "start_voting":
+	switch (primary.icon) {
+		case "start":
 			return <Play className="h-5 w-5" aria-hidden />;
-		case "close_voting":
+		case "stop":
 			return <Square className="h-5 w-5" aria-hidden />;
+		case "reveal":
+			return <Eye className="h-5 w-5" aria-hidden />;
+		case "spin":
+			return <RotateCw className="h-5 w-5" aria-hidden />;
 		default:
 			return <SkipForward className="h-5 w-5" aria-hidden />;
 	}
@@ -109,10 +128,12 @@ export function ControlBar(props: ControlBarProps) {
 		onSlideListOpenChange,
 		participantCount,
 		responses,
+		answered = null,
 		connection,
 		qrOpen,
 		onToggleQr,
 		moderation,
+		insertLeaderboard = null,
 		fullscreen,
 		onEnd,
 		onExit,
@@ -193,7 +214,19 @@ export function ControlBar(props: ControlBarProps) {
 
 			{/* Right: counters, panels, end */}
 			<div className="flex min-w-0 items-center justify-end gap-1">
-				{responses !== null && (
+				{answered !== null ? (
+					<span
+						className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
+						title={`${answered.count}${answered.of !== null ? ` of ${answered.of}` : ""} answered on this slide`}
+						aria-live="polite"
+					>
+						<CheckCheck className="h-5 w-5" aria-hidden />
+						{answered.count}
+						{answered.of !== null && <span className="text-[var(--deck-text-muted)]"> / {answered.of}</span>}
+						<span className="font-medium text-[var(--deck-text-muted)]"> answered</span>
+					</span>
+				) : null}
+				{answered === null && responses !== null && (
 					<span
 						className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
 						title={`${plural(responses.count, "response", "responses")}${
@@ -240,6 +273,21 @@ export function ControlBar(props: ControlBarProps) {
 							<span className="absolute -right-0.5 -top-0.5 min-w-5 rounded-full bg-[var(--deck-primary)] px-1 text-xs font-bold leading-5 text-[var(--deck-on-primary)]">
 								{moderation.count > 99 ? "99+" : moderation.count}
 							</span>
+						)}
+					</ControlButton>
+				)}
+				{insertLeaderboard && (
+					<ControlButton
+						icon
+						onClick={insertLeaderboard.onInsert}
+						disabled={busy || insertLeaderboard.disabled}
+						aria-label={insertLeaderboard.title}
+						title={insertLeaderboard.title}
+					>
+						{pending === "insert_leaderboard" ? (
+							<Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />
+						) : (
+							<Trophy className="h-5 w-5" aria-hidden />
 						)}
 					</ControlButton>
 				)}

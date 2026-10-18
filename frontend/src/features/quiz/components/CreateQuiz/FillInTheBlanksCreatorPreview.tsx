@@ -81,15 +81,14 @@ const FillInTheBlanksCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({
 
 	const saveTextChange = useCallback(
 		(optionId: string) => {
-			if (editText.trim()) {
-				dispatch(
-					updateOptionText({
-						quizId: id,
-						optionId,
-						text: editText.trim(),
-					})
-				);
-			}
+			// Also when emptied: clearing an answer's text used to be ignored.
+			dispatch(
+				updateOptionText({
+					quizId: id,
+					optionId,
+					text: editText.trim(),
+				})
+			);
 			setEditingId(null);
 			setEditText("");
 		},
@@ -170,6 +169,12 @@ const FillInTheBlanksCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({
 			<div className="grid grid-cols-1 md:grid-cols-12 gap-5">
 				<div className="md:col-span-9 p-4 bg-[#fff] rounded-[15px]">
 					<StylableInput />
+					{/* How to make the blank was never explained. */}
+					<p className="mb-3 mt-1 text-xs text-[#888]">
+						Type four underscores <span className="rounded bg-[#f2f2f2] px-1 font-mono">____</span> where the
+						missing word goes, e.g. &ldquo;The capital of Japan is ____.&rdquo; Then add the answers and mark
+						the right one.
+					</p>
 					<div className="w-[50%] m-auto shadow-md">
 						<StylableInputFile
 							initialImageUrl={currentItem?.source_content_url}
@@ -414,8 +419,8 @@ const FillInTheBlanksCreatorPreview: React.FC<QuizCreatorPreviewProps> = ({
 						className="mt-[15px] !text-[0.875rem]"
 						label="Points"
 						items={[
-							{ label: "Single Points", value: "1" },
-							{ label: "Multiple Points", value: "2" },
+							{ label: "Standard (1 point)", value: "1" },
+							{ label: "Double (2 points)", value: "2" },
 						]}
 						prefixIcon={<VscActivateBreakpoints />}
 						onChange={(e) =>

@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Route;
 
 /*
 | Live sessions: start, join-code lookup, state resync, host transitions, end.
-| Loaded by DeckServiceProvider inside the api group under /api/v1, once per
-| product in config('deck.routes') (Quest: /quests/v2 and /quest-sessions/v2).
+| Loaded by DeckServiceProvider inside the api group under /api/v1, for Quest
+| (/quests/v2 and /quest-sessions/v2); Quiz v2 mirrors them in quiz_sessions.php.
 |
 | Host routes use Sanctum + throttle:deck-author + deck.feature (403
 | feature_disabled without Quest v2) and answer 404 for anyone but the host.
@@ -28,7 +28,7 @@ DeckRoutes::authoring(function () {
             ->whereNumber('deck')
             ->name('decks.sessions.store');
     });
-});
+}, ['quest']);
 
 DeckRoutes::sessions(function () {
     Route::get('by-code/{code}', [AudienceSessionController::class, 'byCode'])
@@ -51,4 +51,4 @@ DeckRoutes::sessions(function () {
         ->whereNumber('session')
         ->middleware(['throttle:deck-participant', 'deck.participant'])
         ->name('participant-state');
-});
+}, ['quest']);

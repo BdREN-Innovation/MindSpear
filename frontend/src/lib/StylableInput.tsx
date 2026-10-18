@@ -365,11 +365,11 @@ const StylableInput: React.FC<stypeType> = ({ style }) => {
 		<div className="relative">
 			<div
 				ref={editorRef}
-				className={
+				className={`${
 					style === "quest"
 						? " w-full min-h-[20px] p-3  border text-xl rounded-lg mb-2 focus:outline-none"
 						: "w-full min-h-[20px] p-3 border border-primary bg-orange-100 text-xl rounded-lg mb-2 focus:outline-none"
-				}
+				} empty:before:pointer-events-none empty:before:text-gray-400 empty:before:content-[attr(data-placeholder)]`}
 				contentEditable
 				onFocus={() => setIsFocused(true)}
 				onBlur={handleBlur}
@@ -394,17 +394,19 @@ const StylableInput: React.FC<stypeType> = ({ style }) => {
 					html={
 						selectedItem?.title ||
 						(selectedItem as any)?.question_text ||
-						"Untitled question"
+						""
 					}
 					wordLimit={70}
 					className="text-inherit"
 				/>
 			</div>
 
+			{/* Floats over the content below: an in-flow toolbar collapsing on blur moved
+			    everything up under the pointer, so the next click (e.g. on an answer) was lost. */}
 			{isFocused && (
 				<div
 					ref={toolbarRef}
-					className="flex flex-wrap items-center gap-2 bg-white p-2 border rounded-md shadow"
+					className="absolute left-0 right-0 top-full z-20 -mt-1 flex flex-wrap items-center gap-2 bg-white p-2 border rounded-md shadow"
 				>
 					{/* ######## Font Size ######## */}
 					<select

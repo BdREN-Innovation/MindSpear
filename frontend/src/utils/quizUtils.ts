@@ -58,14 +58,17 @@ export function convertDataToQuestions(data: QuizItem[]): FinalData {
 			quiz_id: Number(item.quiz_id),
 			question_text: item.title,
 			question_id: item.id,
-			points: item.points,
+			// Save what the editor shows: its Points / Time limit selects fall back to "Single Points" / 30 seconds
+			// (a missing value used to be stored as null, and null points score 0).
+			points: item.points || "1",
 			id: Number(item.id),
 			visibility: "private",
 			question_type: questionType,
 			serial_number: item?.position,
-			source_content_url: item?.source_content_url,
+			// null (not undefined, which JSON drops) so a removed image is cleared on the server.
+			source_content_url: item?.source_content_url || null,
 			source_image_id: item?.source_image_id,
-			time_limit_seconds: item?.timeLimit,
+			time_limit_seconds: item?.timeLimit || "30",
 			options: {
 				choices,
 				correct_answer,

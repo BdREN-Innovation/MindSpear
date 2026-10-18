@@ -12,8 +12,10 @@ use Illuminate\Support\Facades\Route;
 /*
 | Participant side of a live session (plan §3.1, §3.3, §3.6), under the
 | product's sessions prefix (/api/v1/quest-sessions/v2 for Quest). Names:
-| deck.{product}.sessions.participants.join, .runs.answers.store,
-| .runs.my-answer, .runs.aggregate.
+| deck.{product}.sessions.participants.join, .participants.leave,
+| .runs.answers.store, .runs.my-answer, .runs.aggregate. A join that carries
+| a valid X-Participant-Token of the session is a same-device rejoin (the
+| same participant, 200 rejoined: true).
 |
 | Token routes carry two throttles: `deck-participant` (per token hash) and
 | a per-IP cap (ParticipantReadAccess::IP_THROTTLE), so a client that sends
@@ -26,6 +28,12 @@ DeckRoutes::sessions(function (string $product) {
         ->whereNumber('session')
         ->middleware('throttle:deck-join')
         ->name('participants.join');
+
+    // Leave (sets left_at; the token stays valid for a same-device rejoin). Token in the header or, for sendBeacon, the body.
+    Route::post('{session}/participants/leave', [ParticipantJoinController::class, 'leave'])
+        ->whereNumber('session')
+        ->middleware([ParticipantReadAccess::IP_THROTTLE, 'throttle:deck-participant'])
+        ->name('participants.leave');
 
     // Size cap first: an oversized body never reaches the token lookup or the validator.
     Route::post('{session}/slide-runs/{run}/answers', [ParticipantAnswerController::class, 'store'])
@@ -44,4 +52,4 @@ DeckRoutes::sessions(function (string $product) {
         ->whereNumber(['session', 'run'])
         ->middleware([ParticipantReadAccess::IP_THROTTLE, 'throttle:deck-participant'])
         ->name('runs.aggregate');
-});
+}, ['quest']);

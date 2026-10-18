@@ -10,9 +10,12 @@ use App\Http\Requests\BaseFormRequest;
  * POST /quests/v2/{deck}/slides/bulk (plan §5.7):
  *   {slides: [{type, title?, body?, config?, options?: [{label?, payload?}]}, ...], after_position?}
  * or the bare list. 1..50 slides; options null/absent = the type's defaults.
+ * Quiz routes also take slides.*.points_min / points_max / speed_bonus_enabled
+ * and slides.*.options.*.is_correct (QuizFields).
  */
 class BulkSlidesRequest extends BaseFormRequest
 {
+    use QuizFields;
     use ReadsRawJson;
     use RejectsInvalidUtf8;
 
@@ -40,7 +43,14 @@ class BulkSlidesRequest extends BaseFormRequest
             'slides.*.options.*' => ['required', 'array'],
             'slides.*.options.*.label' => ['sometimes', 'nullable', 'string', 'max:' . SlideInput::MAX_LABEL],
             'slides.*.options.*.payload' => ['sometimes', 'nullable', 'array'],
+            ...$this->scoringRules('slides.*.'),
+            ...$this->correctRules('slides.*.options.*.'),
         ];
+    }
+
+    public function messages(): array
+    {
+        return $this->quizMessages('slides.*.', 'slides.*.options.*.');
     }
 
     /** Validated slides, each `body` as sent (untrimmed). */

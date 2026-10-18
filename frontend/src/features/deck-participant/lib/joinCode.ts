@@ -1,10 +1,8 @@
-import type { DeckProduct } from "@/features/deck/types";
-
 // v2 join codes (backend JoinCodeGenerator): 6 characters from an alphabet
 // without the look-alikes O/0 and I/1. The backend ignores case, spaces and
 // dashes; we normalise the same way before checking.
-
-export const PARTICIPANT_PRODUCT: DeckProduct = "quest";
+// Codes are unique across products: the product comes from the lookup
+// (lookupSessionByCode), never from the code itself.
 
 export const JOIN_CODE_LENGTH = 6;
 export const JOIN_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

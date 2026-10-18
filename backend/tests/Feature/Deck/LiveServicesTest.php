@@ -376,7 +376,12 @@ it('authorises host.{product}.v2 channels for the session host only and keeps le
     // A deck host gains nothing on the legacy channel with the same numeric id.
     $auth("host.quest.{$quest->id}")->assertForbidden();
 
-    Sanctum::actingAs(User::find($quiz->host_user_id));
+    // The host channel needs the product's v2 flag, like the host HTTP routes.
+    $quizHost = User::find($quiz->host_user_id);
+    Sanctum::actingAs($quizHost);
+    $auth("host.quiz.v2.{$quiz->id}")->assertForbidden();
+    $quizHost->forceFill(['quiz_v2_enabled' => true])->save();
+    Sanctum::actingAs($quizHost->refresh());
     $auth("host.quiz.v2.{$quiz->id}")->assertOk();
 
     Sanctum::actingAs($stranger);

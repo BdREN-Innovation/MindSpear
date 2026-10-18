@@ -18,4 +18,4 @@ DeckRoutes::sessions(function (string $product) {
         ->whereNumber('session')
         ->middleware([ParticipantReadAccess::IP_THROTTLE, 'throttle:deck-participant'])
         ->name('review');
-});
+}, ['quest']);

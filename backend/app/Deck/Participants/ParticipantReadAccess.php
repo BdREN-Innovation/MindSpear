@@ -20,8 +20,20 @@ use Illuminate\Http\Request;
  */
 class ParticipantReadAccess
 {
-    /** Per-IP requests per minute on the token routes, sized for a large room behind one NAT. */
-    public const IP_PER_MINUTE = 1800;
+    /**
+     * Per-IP requests per minute on the token routes (answers, my-answer,
+     * aggregate, leaderboard, leave), shared by every route that carries it.
+     * Not the main guard: each token has its own `deck-participant` budget
+     * (240 / min). This only stops one address cycling made-up tokens, so it
+     * is sized for the biggest room behind one NAT: 500 phones answering a
+     * question every 20 s = 500 answers + at most 500 reads (my-answer, or
+     * an aggregate after a slim slide.revealed) per question = 3,000 / min;
+     * 6,000 leaves 2x headroom for retries and leaderboard reads. Quiz phones
+     * should make ONE read after a reveal (GET state, which is per-token
+     * only and carries my_submission_for_current_slide with the correctness
+     * and the standing), not state AND my-answer.
+     */
+    public const IP_PER_MINUTE = 6000;
 
     /** Per-IP cap that holds whatever token a request sends (the deck-participant limiter keys by token). */
     public const IP_THROTTLE = 'throttle:' . self::IP_PER_MINUTE . ',1,deck-participant-ip-';

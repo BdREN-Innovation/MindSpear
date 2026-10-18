@@ -14,10 +14,12 @@ use App\Http\Requests\Quiz\HostLive\StatusLiveRequest;
 use App\Http\Requests\Quiz\Quiz\StoreRequest;
 use App\Http\Requests\Quiz\Quiz\UpdateRequest;
 use App\Models\Quiz\Quiz;
+use App\Models\Quiz\QuizParticipant;
 use App\Models\Quiz\QuizSession;
 use App\Models\Quiz\BankQuestion as QuizBankQuestion;
 use App\Services\Live\LiveSessionService;
 use App\Services\Live\ParticipantTokenService;
+use App\Services\Quiz\LegacyQuizScorer;
 use Exception;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\JsonResponse;
@@ -53,7 +55,7 @@ class QuizController extends ApiBaseController
     public function index(Request $request): JsonResponse
     {
         $quizes = Quiz::with(['user.institution', 'deletedBy'])
-            ->withCount('questions')
+            ->withCount(['questions' => fn ($query) => $query->authored()])
             ->withSum('questions as total_points', 'points');
 
         // Apply filters if any
@@ -489,6 +491,19 @@ class QuizController extends ApiBaseController
                 'join_link' => null,
                 'join_code' => null,
             ]);
+
+            // Score every attempt still in progress. The players' own "completed" call comes
+            // after their tokens are revoked below, so it was refused and live scores stayed 0.
+            $scorer = app(LegacyQuizScorer::class);
+            QuizParticipant::where('quiz_session_id', $quizSession->id)
+                ->where('status', 'In Progress')
+                ->with('userQuizAnswers.question')
+                ->get()
+                ->each(function (QuizParticipant $participant) use ($scorer) {
+                    $scorer->complete($participant);
+                    $participant->status = 'Completed';
+                    $participant->save();
+                });
 
             app(ParticipantTokenService::class)->revokeForSession(LiveSessionService::MODULE_QUIZ, $quizSession->id);
 

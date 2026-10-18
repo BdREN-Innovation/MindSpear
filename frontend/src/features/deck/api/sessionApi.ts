@@ -5,6 +5,7 @@ import type {
 	ApiEnvelope,
 	DeckProduct,
 	HostSessionState,
+	LeaderboardResponse,
 	QaFeed,
 	QaFeedParams,
 	QaHostItem,
@@ -15,11 +16,16 @@ import { deckRequest } from "./errors";
 import { authoringBase, DECK_TIMEOUTS, sessionsBase } from "./routes";
 
 // Host side of a live session (Sanctum via axiosInstance; the deck owner only,
-// everyone else 404). Backend: routes/deck/quest_sessions.php + quest_qa.php
-// + quest_participants.php (aggregate). Responses are snake_case HOST STATE
-// (SessionStatePresenter::host). A presenter must NOT send X-Participant-Token:
-// on the dual routes (state, aggregate, Q&A feed) that header selects the
-// participant view; axiosInstance only adds it for legacy attempt URLs.
+// everyone else 404). Backend: routes/deck/{quest,quiz}_sessions.php +
+// quest_qa.php + {quest,quiz}_participants.php (aggregate). Responses are
+// snake_case HOST STATE (SessionStatePresenter::host). A presenter must NOT
+// send X-Participant-Token: on the dual routes (state, aggregate, Q&A feed,
+// leaderboard) that header selects the participant view; axiosInstance only
+// adds it for legacy attempt URLs.
+//
+// Quiz (/quiz-sessions/v2): HOST STATE gains `quiz` {submitted_count, spin,
+// leaderboard}; advance takes `reveal`; getLeaderboard reads the ranking. Host
+// routes answer 403 feature_disabled without quiz_v2_enabled. No Q&A routes.
 
 type Id = number | string;
 
@@ -37,6 +43,7 @@ export interface SessionApi {
 	/**
 	 * POST {session}/advance — 409 invalid_state {slide_run_id, state, state_version, requires_force?}
 	 * on an illegal transition; resend previous_slide / backwards jump_to with force: true after confirming.
+	 * Quiz: `reveal` ends answering (also close_voting); leaving an active quiz run reveals it.
 	 */
 	advance(sessionId: Id, input: AdvanceInput): Promise<HostSessionState>;
 	/** POST {session}/end — closes the active run, revokes every participant token. 409 when already ended. */
@@ -51,6 +58,11 @@ export interface SessionApi {
 	getQaFeed(sessionId: Id, runId: Id, params?: QaFeedParams, signal?: AbortSignal): Promise<QaFeed<QaHostItem>>;
 	/** PATCH {session}/qa/questions/{question} — hide / star / mark answered (real booleans). */
 	moderateQuestion(sessionId: Id, questionId: Id, flags: QaModerationFlags): Promise<QaHostItem>;
+	/**
+	 * Quiz only: GET {session}/leaderboard?limit=1..100 (default 10) — top N by total points with
+	 * points_delta from the last revealed slide; `me` is null for the host. 403 feature_disabled, 422 limit.
+	 */
+	getLeaderboard(sessionId: Id, options?: { limit?: number; signal?: AbortSignal }): Promise<LeaderboardResponse>;
 }
 
 export function createSessionApi(product: DeckProduct): SessionApi {
@@ -123,8 +135,26 @@ export function createSessionApi(product: DeckProduct): SessionApi {
 				);
 				return res.data.data.question;
 			}),
+
+		getLeaderboard: (sessionId, options = {}) =>
+			deckRequest(async () => {
+				const res = await axiosInstance.get<ApiEnvelope<LeaderboardResponse>>(`${sessionUrl(sessionId)}/leaderboard`, {
+					params: options.limit ? { limit: options.limit } : undefined,
+					signal: options.signal,
+					timeout,
+				});
+				return res.data.data;
+			}),
 	};
 }
 
 /** Quest v2 host session API. */
 export const questSessionApi = createSessionApi("quest");
+
+/** Quiz v2 host session API (/api/v1/quiz-sessions/v2; start under /api/v1/quizzes/{deck}/sessions). */
+export const quizSessionApi = createSessionApi("quiz");
+
+/** The host session API of a product (shared instances). */
+export function sessionApiFor(product: DeckProduct): SessionApi {
+	return product === "quiz" ? quizSessionApi : questSessionApi;
+}

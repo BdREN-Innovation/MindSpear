@@ -14,7 +14,6 @@ import {
 	setQuestData,
 	// clearQuestData,
 } from "@/features/quest/store/questQuestionTimeSlice";
-import { Switch } from "antd";
 import {
 	changeQuizQuestion,
 	getHostLiveSession,
@@ -261,14 +260,10 @@ function QuizReport() {
 		dataFetch();
 	}, [params?.id, activeSessionId, dispatch]);
 
-	const handleQuizChange = (checked: boolean) => {
-		setIsQuizMode(checked);
-		dispatch(setScope("entire"));
-	};
-
-	const handleGamesChange = (checked: boolean) => {
-		setIsQuizMode(!checked);
-		dispatch(setScope("slide"));
+	// One choice (two switches could disagree: turning "Quiz Mode" off showed Games mode but kept quiz ranking).
+	const chooseMode = (quizMode: boolean) => {
+		setIsQuizMode(quizMode);
+		dispatch(setScope(quizMode ? "entire" : "slide"));
 	};
 
 	// quizeStart
@@ -400,27 +395,35 @@ function QuizReport() {
 							{response?.quiz.title}{" "}
 						</h3>
 						<div className="  w-full rounded-[10px] mt-4 ">
-							<div className=" items-center font-bold gap-3 live_switch flex justify-between mb-5">
-								<h2 className="border border-[#2222] p-3 rounded-[8px] w-full">
-									Quiz Mode{" "}
-									<Switch
-										className="ml-[10px] rounded-[5px] font-bold"
-										checkedChildren="Yes"
-										unCheckedChildren="No"
-										checked={isQuizMode}
-										onChange={handleQuizChange}
-									/>
-								</h2>
-								<h2 className="border border-[#2222] p-3 rounded-[8px] w-full">
-									Games Mode{" "}
-									<Switch
-										className="ml-[10px] rounded-[5px] font-bold"
-										checkedChildren="Yes"
-										unCheckedChildren="No"
-										checked={!isQuizMode}
-										onChange={handleGamesChange}
-									/>
-								</h2>
+							<div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Ranking">
+								{[
+									{ quiz: true, title: "Quiz mode", text: "Players are ranked by points." },
+									{ quiz: false, title: "Game mode", text: "Ranked by points; ties go to the faster player." },
+								].map((option) => {
+									const active = isQuizMode === option.quiz;
+									return (
+										<button
+											key={option.title}
+											type="button"
+											role="radio"
+											aria-checked={active}
+											onClick={() => chooseMode(option.quiz)}
+											className={`rounded-lg border-2 p-3 text-left transition ${
+												active ? "border-primary bg-[#fff6ee]" : "border-[#e5e5e5] hover:border-primary/50"
+											}`}
+										>
+											<span className="flex items-center gap-2 text-sm font-bold text-[#222]">
+												<span
+													className={`h-4 w-4 rounded-full border-2 ${
+														active ? "border-primary bg-primary shadow-[inset_0_0_0_2px_#fff]" : "border-[#ccc]"
+													}`}
+												/>
+												{option.title}
+											</span>
+											<span className="mt-1 block text-xs font-normal text-[#777]">{option.text}</span>
+										</button>
+									);
+								})}
 							</div>
 							{/* <button
 								onClick={() => {
@@ -565,7 +568,7 @@ function QuizReport() {
 						Assigned MindSpear{" "}
 						<span className="border border-[#fa9b47] p-2 rounded-[10px] font-bold text-[#fa9b47] ml-[5px]">
 							{" "}
-							Ends in {daysLeft} days{" "}
+							Ends in {daysLeft} {Number(daysLeft) === 1 ? "day" : "days"}{" "}
 						</span>
 					</h4>
 					<h4 className="text-[#333333] border-[#2222] border-b-2 pt-[10px] pb-[10px] text-[0.875rem]">

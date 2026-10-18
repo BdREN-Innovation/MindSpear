@@ -12,8 +12,10 @@ export const addNewItem = (state: HoverState, action: PayloadAction<QuizItem>) =
 
   let newItem: QuizItem = {
     key: action.payload.key,
-    id: action.payload.id,
-    title: 'Untitled question',
+    // Ids are compared as strings everywhere (questions loaded from the API have string ids).
+    id: String(action.payload.id),
+    // Empty, not "Untitled question": the editor shows a placeholder and Save asks for a title.
+    title: action.payload.title ?? '',
     layout_id: '',
     options: [],
     maxOptions: 0,
@@ -21,7 +23,8 @@ export const addNewItem = (state: HoverState, action: PayloadAction<QuizItem>) =
     position: nextPosition  ,
     allowDuplicates: false,
     isMultipleSelection: false,
-    timeLimit: '',
+    timeLimit: action.payload.timeLimit ?? '',
+    points: action.payload.points,
     quiz_id: action.payload.quiz_id,
     quizTypeName: action.payload.quizTypeName,
     quizTypeModalStatus: action.payload.quizTypeModalStatus,
@@ -76,6 +79,13 @@ export const addNewItem = (state: HoverState, action: PayloadAction<QuizItem>) =
       minOptions: 1,
       allowDuplicates: false,
     };
+  }
+
+  // A question that already has content (imported from the question bank) keeps it.
+  if (action.payload.options?.length) {
+    newItem.options = action.payload.options;
+    newItem.isMultipleSelection = !!action.payload.isMultipleSelection;
+    if (action.payload.source_content_url) newItem.source_content_url = action.payload.source_content_url;
   }
 
   state.multypleselectedItem.push(newItem);

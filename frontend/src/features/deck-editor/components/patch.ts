@@ -3,7 +3,8 @@ import type { OptionInput, Slide, SlideOption, SlidePatch } from "@/features/dec
 // Optimistic copies of what the backend does with a slide PATCH, so the
 // editor can show a change before the server confirms it:
 //   - config merges recursively (objects key by key; lists and scalars replace)
-//   - title / body / timers replace
+//   - title / body / timers / quiz scoring columns replace
+//   - an option's label / payload / is_correct replace
 
 type Json = Record<string, unknown>;
 
@@ -42,10 +43,13 @@ export function applySlidePatch(slide: Slide, patch: SlidePatch): Slide {
 	if (patch.config) next.config = mergeConfig(slide.config, patch.config) as typeof next.config;
 	if ("time_limit_seconds" in patch) next.timeLimitSeconds = patch.time_limit_seconds ?? null;
 	if ("get_ready_seconds" in patch) next.getReadySeconds = patch.get_ready_seconds ?? null;
+	if ("points_min" in patch) next.pointsMin = patch.points_min ?? null;
+	if ("points_max" in patch) next.pointsMax = patch.points_max ?? null;
+	if ("speed_bonus_enabled" in patch) next.speedBonusEnabled = patch.speed_bonus_enabled ?? null;
 	return next;
 }
 
-/** Option label / payload typed but not yet confirmed. */
+/** Option label / payload / is_correct typed but not yet confirmed. */
 export function applyOptionInput(slide: Slide, optionId: number, input: OptionInput): Slide {
 	let changed = false;
 	const options = slide.options.map((option): SlideOption => {
@@ -55,6 +59,7 @@ export function applyOptionInput(slide: Slide, optionId: number, input: OptionIn
 			...option,
 			...("label" in input ? { label: input.label ?? null } : {}),
 			...("payload" in input ? { payload: input.payload ?? {} } : {}),
+			...("is_correct" in input ? { isCorrect: input.is_correct ?? null } : {}),
 		};
 	});
 	return changed ? ({ ...slide, options } as Slide) : slide;

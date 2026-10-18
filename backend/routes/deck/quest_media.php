@@ -9,8 +9,7 @@ use Illuminate\Support\Facades\Route;
 |   PUT /api/v1/quests/v2/{deck}/cover                                  {file_id|null}
 |   PUT /api/v1/quests/v2/{deck}/slides/{slide}/media                   {file_id|null} | {video_url|null}
 |   PUT /api/v1/quests/v2/{deck}/slides/{slide}/options/{option}/image  {file_id|null}
-| Registered for every product in config('deck.routes'), so Quiz v2 gets
-| them under its own prefix without changes here.
+| Quest only; Quiz v2 mirrors them in quiz_media.php.
 */
 
 DeckRoutes::authoring(function (string $product) {
@@ -27,4 +26,4 @@ DeckRoutes::authoring(function (string $product) {
             ->whereNumber(['deck', 'slide', 'option'])
             ->name('slides.options.image');
     });
-});
+}, ['quest']);

@@ -8,6 +8,7 @@ use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Deck\Slides\Types\Content\ContentSlideType;
 use App\Deck\Support\OptionLimits;
+use App\Models\Deck\Deck;
 use App\Models\Deck\Slide;
 use Closure;
 use Illuminate\Validation\ValidationException;
@@ -45,6 +46,12 @@ class SlideInput
     public const MAX_TIME_LIMIT = DeckSettings::MAX_TIME_LIMIT;
 
     public const MAX_GET_READY = DeckSettings::MAX_GET_READY;
+
+    /** Quiz-only slide columns (QUIZ_REDESIGN_PLAN.md "Scoring model"), refused on other products. */
+    public const SCORING_FIELDS = ['points_min', 'points_max', 'speed_bonus_enabled'];
+
+    /** Highest points_min / points_max a quiz slide may award. */
+    public const MAX_POINTS = 1000;
 
     public function __construct(private readonly SlideTypeRegistry $registry) {}
 
@@ -149,15 +156,21 @@ class SlideInput
 
     /**
      * An option payload: a JSON object (type extras such as a matrix label),
-     * at most MAX_OPTION_PAYLOAD_BYTES encoded.
+     * at most MAX_OPTION_PAYLOAD_BYTES encoded. A type may normalise it with
+     * an optional `validateOptionPayload(array $payload): array` hook (the
+     * Quiz types: match_pairs {side, pair_key}, categorise
+     * {correct_category_key}, spinner_wheel {weight}); its errors come back
+     * keyed `payload.<key>`.
      *
      * @throws ValidationException keyed `payload`
      */
-    public function payload(mixed $payload): array
+    public function payload(mixed $payload, ?SlideTypeContract $type = null): array
     {
-        if ($payload === null) {
+        if ($payload === null && ($type === null || ! method_exists($type, 'validateOptionPayload'))) {
             return [];
         }
+
+        $payload ??= [];
 
         if (! is_array($payload) || ($payload !== [] && array_is_list($payload))) {
             DeckValidation::fail(['payload' => 'The payload must be an object.']);
@@ -167,7 +180,29 @@ class SlideInput
             DeckValidation::fail(['payload' => 'The payload may not be larger than ' . self::MAX_OPTION_PAYLOAD_BYTES . ' bytes.']);
         }
 
+        if ($type !== null && method_exists($type, 'validateOptionPayload')) {
+            return DeckValidation::prefixed('payload', fn () => $type->validateOptionPayload($payload));
+        }
+
         return $payload;
+    }
+
+    /**
+     * An option's is_correct (Quiz): a boolean or null.
+     *
+     * @throws ValidationException keyed `is_correct`
+     */
+    public function isCorrect(mixed $value): ?bool
+    {
+        if ($value === null || is_bool($value)) {
+            return $value;
+        }
+
+        if (in_array($value, [0, 1, '0', '1'], true)) {
+            return (bool) (int) $value;
+        }
+
+        DeckValidation::fail(['is_correct' => 'The is_correct field must be true or false.']);
     }
 
     /** Whether slides of $type have options at all (content, word cloud, Q&A, matrix and pin types do not). */
@@ -205,10 +240,17 @@ class SlideInput
         $rows = [];
         foreach (array_values($options) as $index => $option) {
             $option = is_array($option) ? $option : [];
-            $rows[] = [
+            $row = [
                 'label' => $this->label(isset($option['label']) ? (string) $option['label'] : null),
-                'payload' => self::collect($errors, "options.{$index}", fn () => $this->payload($option['payload'] ?? null)) ?? [],
+                'payload' => self::collect($errors, "options.{$index}", fn () => $this->payload($option['payload'] ?? null, $type)) ?? [],
             ];
+
+            // Quiz: the request only lets is_correct through on quiz routes.
+            if (array_key_exists('is_correct', $option)) {
+                $row['is_correct'] = self::collect($errors, "options.{$index}", fn () => $this->isCorrect($option['is_correct']));
+            }
+
+            $rows[] = $row;
         }
 
         if ($errors !== []) {
@@ -277,19 +319,86 @@ class SlideInput
      * Timer fields of a new slide, from the deck settings (answer-taking
      * types only). get_ready_seconds is always set (0 = off), so a later
      * change of the deck default never reaches existing slides.
+     *
+     * Quiz decks ($product quiz): the deck's default_time_limit when set,
+     * else the type's own (optional `defaultSlideAttributes()` hook:
+     * time_limit_seconds), and the scoring columns points_min / points_max /
+     * speed_bonus_enabled from the same hook (else config deck.quiz.scoring).
      */
-    public function seedTiming(SlideTypeContract $type, ?array $deckSettings): array
+    public function seedTiming(SlideTypeContract $type, ?array $deckSettings, ?string $product = null): array
     {
         if (! $type->acceptsAnswers()) {
             return ['time_limit_seconds' => null, 'get_ready_seconds' => null];
         }
 
-        $settings = DeckSettings::normalise($deckSettings);
-
-        return [
+        $settings = DeckSettings::normalise($deckSettings, [], $product);
+        $seed = [
             'time_limit_seconds' => $settings['default_time_limit'],
             'get_ready_seconds' => $settings['get_ready_seconds'],
         ];
+
+        if ($product !== Deck::PRODUCT_QUIZ) {
+            return $seed;
+        }
+
+        $attributes = method_exists($type, 'defaultSlideAttributes') ? (array) $type->defaultSlideAttributes() : [];
+        $defaults = (array) config('deck.quiz.scoring', []);
+
+        return [
+            'time_limit_seconds' => $seed['time_limit_seconds'] ?? ($attributes['time_limit_seconds'] ?? null),
+            'get_ready_seconds' => $seed['get_ready_seconds'],
+            'points_min' => $attributes['points_min'] ?? ($defaults['points_min'] ?? 50),
+            'points_max' => $attributes['points_max'] ?? ($defaults['points_max'] ?? 100),
+            'speed_bonus_enabled' => $attributes['speed_bonus_enabled'] ?? ($defaults['speed_bonus_enabled'] ?? true),
+        ];
+    }
+
+    /**
+     * Quiz scoring columns present in $data (points_min, points_max,
+     * speed_bonus_enabled; range-checked by the request), for a slide of
+     * $type whose stored values are $stored. Only answer-taking types score;
+     * the resulting points_min may not exceed points_max (null = the
+     * default, config deck.quiz.scoring).
+     *
+     * @throws ValidationException keyed by the field
+     */
+    public function scoring(SlideTypeContract $type, array $data, array $stored = []): array
+    {
+        $out = [];
+        $errors = [];
+
+        foreach (self::SCORING_FIELDS as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+
+            if ($data[$key] !== null && ! $type->acceptsAnswers()) {
+                $errors[$key] = 'This slide type is not scored.';
+
+                continue;
+            }
+
+            $out[$key] = $data[$key] === null ? null : ($key === 'speed_bonus_enabled' ? (bool) $data[$key] : (int) $data[$key]);
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        if (array_key_exists('points_min', $out) || array_key_exists('points_max', $out)) {
+            $defaults = (array) config('deck.quiz.scoring', []);
+            $min = array_key_exists('points_min', $out) ? $out['points_min'] : ($stored['points_min'] ?? null);
+            $max = array_key_exists('points_max', $out) ? $out['points_max'] : ($stored['points_max'] ?? null);
+            $min ??= (int) ($defaults['points_min'] ?? 50);
+            $max ??= (int) ($defaults['points_max'] ?? 100);
+
+            if ($min > $max) {
+                $field = array_key_exists('points_min', $out) ? 'points_min' : 'points_max';
+                DeckValidation::fail([$field => "The minimum points ({$min}) may not be more than the maximum points ({$max})."]);
+            }
+        }
+
+        return $out;
     }
 
     /**

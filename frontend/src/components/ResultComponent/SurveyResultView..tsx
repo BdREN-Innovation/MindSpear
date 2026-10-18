@@ -677,7 +677,7 @@ function QuizQuestionsResultView({ list }: any) {
                     <div className="flex items-center justify-center gap-3 text-primary font-semibold text-lg">
                         <Users className="w-6 h-6" />
                         <span>
-                            Share your quest to start collecting responses
+                            Share your survey to start collecting responses
                         </span>
                     </div>
                 </div>

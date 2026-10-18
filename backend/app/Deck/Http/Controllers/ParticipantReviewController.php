@@ -29,7 +29,8 @@ use Illuminate\Http\Request;
  *   {session_id, session: {id, deck_id, product, deck_title, theme, status, total_slides,
  *    started_at, ended_at, public_channel_key},
  *    participant: {id, display_name, emoji_avatar},
- *    runs: [serializeForParticipant(run) + {my_answer: my-answer shape | null,
+ *    runs: [serializeForParticipant(run) + {my_answer: my-answer shape (Quiz: with
+ *           correctness for revealed runs) | null,
  *           results_visibility: 'public'|'host',
  *           aggregate: the type's aggregate | null}, ...] in position order,
  *    server_time}
@@ -82,8 +83,9 @@ class ParticipantReviewController extends DeckController
                 'display_name' => $participant->display_name,
                 'emoji_avatar' => $participant->emoji_avatar,
             ],
-            'runs' => $runs->map(fn (DeckSessionSlideRun $run) => SessionStatePresenter::participantRun($run) + [
-                'my_answer' => isset($answers[$run->id]) ? SessionStatePresenter::submission($answers[$run->id]) : null,
+            // The session is over: quiz runs show their options in this participant's order, whatever their state.
+            'runs' => $runs->map(fn (DeckSessionSlideRun $run) => SessionStatePresenter::participantRun($run, $participant, false) + [
+                'my_answer' => isset($answers[$run->id]) ? SessionStatePresenter::myAnswer($answers[$run->id], $run, $participant) : null,
                 'results_visibility' => $this->results->visibility($run),
                 'aggregate' => $this->aggregate($run),
             ])->values()->all(),

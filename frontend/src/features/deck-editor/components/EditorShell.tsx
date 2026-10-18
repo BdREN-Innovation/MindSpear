@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-import { createAuthoringApi, questAuthoringApi } from "@/features/deck/api/authoringApi";
+import { authoringApiFor } from "@/features/deck/api/authoringApi";
 import { getDeckTheme } from "@/features/deck/theme";
 import type { DeckProduct, Slide, SlideTypeKey } from "@/features/deck/types";
 import { getSlideType } from "../slideRegistry";
@@ -14,12 +14,15 @@ import { DeleteSlideDialog, EditorLoading, FeatureDisabledPage, LoadErrorPage } 
 import { GenerateSlidesModal } from "./GenerateSlidesModal";
 import { InspectorPanel } from "./InspectorPanel";
 import { PreviewOverlay } from "./PreviewOverlay";
+import { productCopy } from "./productCopy";
 import { SlidePicker } from "./SlidePicker";
 import { SlideRail } from "./SlideRail";
 import { useDeckEditor } from "./useDeckEditor";
 
-// The Quest v2 editor (plan §5.1 / §5.3): header, slide rail, canvas,
-// inspector. Product-parameterised so Quiz v2 can reuse it.
+// The v2 deck editor (Quest plan §5.1 / §5.3): header, slide rail, canvas,
+// inspector. Product-parameterised: /quests/[id]/edit and /quizzes/[id]/edit
+// share it; the product picks the API (/quests/v2 or /quizzes), the slide
+// types the picker offers, the Settings tab fields (quiz scoring) and copy.
 
 export interface EditorShellProps {
 	deckId: string;
@@ -27,11 +30,6 @@ export interface EditorShellProps {
 	/** Slide to select once the deck loads (?slide=<id>); unknown ids fall back to the first slide. */
 	initialSlideId?: number | null;
 }
-
-const ROUTES: Record<DeckProduct, { present: (id: string) => string; library: string }> = {
-	quest: { present: (id) => `/quests/${id}/present`, library: "/my-library/quest-page" },
-	quiz: { present: (id) => `/quizzes/${id}/present`, library: "/my-library/quiz-page" },
-};
 
 /** Single-key shortcuts must not fire while the author is typing. */
 function isTypingTarget(element: HTMLElement | null): boolean {
@@ -47,7 +45,7 @@ function isTypingTarget(element: HTMLElement | null): boolean {
 }
 
 export function EditorShell({ deckId, product = "quest", initialSlideId = null }: EditorShellProps) {
-	const api = useMemo(() => (product === "quest" ? questAuthoringApi : createAuthoringApi(product)), [product]);
+	const api = authoringApiFor(product);
 	const editor = useDeckEditor(deckId, api, { preferredSlideId: initialSlideId });
 	const {
 		deck,
@@ -67,7 +65,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 		flushAll,
 	} = editor;
 	const router = useRouter();
-	const routes = ROUTES[product];
+	const copy = productCopy(product);
 
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const [aiOpen, setAiOpen] = useState(false);
@@ -174,7 +172,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 	const onPresent = async () => {
 		setPresenting(true);
 		await flushAll();
-		router.push(routes.present(deckId));
+		router.push(copy.presentHref(deckId));
 	};
 
 	// Editor shortcuts (plan §5.3). Refs keep the listener stable.
@@ -234,10 +232,11 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
 
-	if (editor.blocked) return <FeatureDisabledPage error={editor.blocked} />;
-	if (editor.loadState === "loading" && !deck) return <EditorLoading />;
-	if (editor.loadState === "error" && editor.loadError) return <LoadErrorPage error={editor.loadError} onRetry={editor.reload} />;
-	if (!deck) return <EditorLoading />;
+	if (editor.blocked) return <FeatureDisabledPage error={editor.blocked} product={product} />;
+	if (editor.loadState === "loading" && !deck) return <EditorLoading product={product} />;
+	if (editor.loadState === "error" && editor.loadError)
+		return <LoadErrorPage error={editor.loadError} onRetry={editor.reload} product={product} />;
+	if (!deck) return <EditorLoading product={product} />;
 
 	const deleteTarget = deleteId !== null ? slides.find((s) => s.id === deleteId) : undefined;
 
@@ -246,7 +245,8 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 			<EditorHeader
 				title={deck.title}
 				saveStatus={editor.saveStatus}
-				backHref={routes.library}
+				backHref={copy.libraryHref}
+				product={product}
 				canPresent={slides.length > 0}
 				presenting={presenting}
 				onTitleChange={setTitle}
@@ -258,7 +258,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 			/>
 
 			<p className="border-b border-yellow-dark/30 bg-yellow-light-4 px-4 py-2 text-xs text-dark lg:hidden">
-				The quest editor is built for larger screens. Use a laptop or desktop for the best experience.
+				The {copy.noun} editor is built for larger screens. Use a laptop or desktop for the best experience.
 			</p>
 
 			<div className="flex min-h-0 flex-1 overflow-x-auto">
@@ -276,6 +276,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 					addButtonRef={addButtonRef}
 				/>
 				<CenterCanvas
+					product={product}
 					slide={selected}
 					index={selectedIndex}
 					total={slides.length}
@@ -286,6 +287,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 					onMove={onMove}
 				/>
 				<InspectorPanel
+					product={product}
 					deck={deck}
 					slide={selected}
 					errors={selected ? editor.errorsFor(selected.id) : undefined}
@@ -307,18 +309,15 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 				busy={adding}
 				onClose={() => setPickerOpen(false)}
 				onPick={onPick}
-				onGenerate={
-					product === "quest"
-						? () => {
-								setPickerOpen(false);
-								setAiOpen(true);
-							}
-						: undefined
-				}
+				onGenerate={() => {
+					setPickerOpen(false);
+					setAiOpen(true);
+				}}
 			/>
 
 			<GenerateSlidesModal
 				open={aiOpen}
+				product={product}
 				onClose={() => setAiOpen(false)}
 				afterPosition={selected?.position ?? null}
 				onAddSlides={addSlides}
@@ -328,7 +327,13 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 				}}
 			/>
 
-			<DeckSettingsModal open={settingsOpen} settings={deck.settings} onClose={() => setSettingsOpen(false)} onSave={updateSettings} />
+			<DeckSettingsModal
+				open={settingsOpen}
+				product={product}
+				settings={deck.settings}
+				onClose={() => setSettingsOpen(false)}
+				onSave={updateSettings}
+			/>
 
 			<DeleteSlideDialog
 				open={deleteId !== null}
@@ -340,6 +345,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 
 			{previewOpen ? (
 				<PreviewOverlay
+					product={product}
 					slides={slides}
 					startIndex={Math.max(0, selectedIndex)}
 					theme={theme}

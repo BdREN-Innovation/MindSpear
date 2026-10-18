@@ -16,12 +16,12 @@ type WaitingStageProps = {
 const copy = {
 	lobby: {
 		title: "You are in the lobby",
-		message: "Get ready. The host will launch the next slide shortly.",
+		message: "Get ready. The host will start the first question shortly.",
 		statusLabel: "Queued and connected",
 	},
 	host: {
 		title: "Answer locked in",
-		message: "Nice move. Wait here while the host prepares the next slide.",
+		message: "Nice move. Wait here while the host moves on to the next question.",
 		statusLabel: "Waiting for host",
 	},
 	complete: {

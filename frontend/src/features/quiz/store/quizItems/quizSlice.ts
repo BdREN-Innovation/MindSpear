@@ -82,7 +82,7 @@ const quizSlice = createSlice({
 
 			const duplicatedItem = {
 				...itemToDuplicate,
-				id: action.payload.qid,
+				id: String(action.payload.qid),
 				// id: generateUniqueId(itemToDuplicate.key),
 				position: nextPosition,
 				options: itemToDuplicate.options.map((option) => ({
@@ -99,12 +99,9 @@ const quizSlice = createSlice({
 		},
 		setSelectedItem: (state, action: PayloadAction<QuizItem | null>) => {
 			if (action.payload) {
-				state.selectedItem = {
-					...action.payload,
-					title: !action.payload.title?.trim()
-						? "Untitled question"
-						: action.payload.title,
-				};
+				// The title is kept as is: an empty one shows the editor's placeholder
+				// instead of becoming the literal text "Untitled question".
+				state.selectedItem = { ...action.payload, title: action.payload.title ?? "" };
 			} else {
 				state.selectedItem = null;
 			}
@@ -174,6 +171,8 @@ const quizSlice = createSlice({
 			optionReducers.sortAnswerReducers.updateSortAnswerOption,
 		updateSortAnswerItem:
 			optionReducers.sortAnswerReducers.updateSortAnswerItem,
+		removeSortAnswerOption:
+			optionReducers.sortAnswerReducers.removeSortAnswerOption,
 	},
 });
 
@@ -207,6 +206,7 @@ export const {
 	addSortAnswerOption,
 	updateSortAnswerOption,
 	updateSortAnswerItem,
+	removeSortAnswerOption,
 	removeSelectedItem,
 	duplicateItem,
 } = quizSlice.actions;

@@ -13,6 +13,14 @@ import { entry as pointsAllocation } from "./slides/pointsAllocation";
 import { entry as rating } from "./slides/rating";
 import { entry as matrix2x2 } from "./slides/matrix2x2";
 import { entry as pinOnImage } from "./slides/pinOnImage";
+import { entry as pickAnswerSingle } from "./slides/pickAnswerSingle";
+import { entry as pickAnswerMulti } from "./slides/pickAnswerMulti";
+import { entry as shortAnswer } from "./slides/shortAnswer";
+import { entry as matchPairs } from "./slides/matchPairs";
+import { entry as correctOrder } from "./slides/correctOrder";
+import { entry as categorise } from "./slides/categorise";
+import { entry as spinnerWheel } from "./slides/spinnerWheel";
+import { entry as leaderboard } from "./slides/leaderboard";
 import { entry as heading } from "./slides/heading";
 import { entry as paragraph } from "./slides/paragraph";
 import { entry as bullets } from "./slides/bullets";
@@ -26,6 +34,8 @@ import { entry as qrCode } from "./slides/qrCode";
 // Frontend twin of the backend SlideTypeRegistry: the single source of truth
 // for which components render a slide type. Shells look types up by the
 // backend key (`slide.type` / `run.type`) and never switch on it.
+// Products: Quest offers the 11 Quest types + the 9 content types; Quiz the 8
+// quiz types + the same 9 content types (slideTypesForProduct).
 
 /** Catalog order (SlidePicker order). */
 const ENTRIES: SlideTypeEntry[] = [
@@ -40,6 +50,14 @@ const ENTRIES: SlideTypeEntry[] = [
 	rating,
 	matrix2x2,
 	pinOnImage,
+	pickAnswerSingle,
+	pickAnswerMulti,
+	shortAnswer,
+	matchPairs,
+	correctOrder,
+	categorise,
+	spinnerWheel,
+	leaderboard,
 	heading,
 	paragraph,
 	bullets,
@@ -67,6 +85,16 @@ export const SLIDE_CATEGORY_LABELS: Record<SlideCategory, string> = {
 	interactive: "Interactive",
 	content: "Content",
 };
+
+/** Category headings per product (a quiz deck's "poll" category holds the scored questions). */
+export const SLIDE_CATEGORY_LABELS_BY_PRODUCT: Record<DeckProduct, Record<SlideCategory, string>> = {
+	quest: SLIDE_CATEGORY_LABELS,
+	quiz: { poll: "Quiz questions", interactive: "Interactive", content: "Content" },
+};
+
+export function slideCategoryLabel(category: SlideCategory, product: DeckProduct = "quest"): string {
+	return SLIDE_CATEGORY_LABELS_BY_PRODUCT[product][category];
+}
 
 /** The entry for a backend type key, or undefined for an unknown key (render a fallback). */
 export function getSlideType(key: string | null | undefined): SlideTypeEntry | undefined {

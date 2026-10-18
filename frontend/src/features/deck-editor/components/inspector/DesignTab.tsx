@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { DECK_THEME_KEYS, DECK_THEMES, getDeckTheme, type DeckTheme } from "@/features/deck/theme";
 import type { Deck, DeckSettingsPatch } from "@/features/deck/types";
+import { productCopy } from "../productCopy";
 
 export interface DesignTabProps {
 	deck: Deck;
@@ -85,7 +86,7 @@ export function DesignTab({ deck, onUpdateSettings, onOpenDeckSettings }: Design
 			<div>
 				<h3 className="text-sm font-semibold text-dark dark:text-white">Theme</h3>
 				<p className="mt-0.5 text-xs text-dark-5 dark:text-dark-6">
-					Colours for every slide in this quest, on the big screen and on participants&apos; phones.
+					Colours for every slide in this {productCopy(deck.product).noun}, on the big screen and on participants&apos; phones.
 				</p>
 			</div>
 			<ThemeGrid value={deck.settings.theme} onChange={changeTheme} disabled={saving} />
@@ -95,7 +96,7 @@ export function DesignTab({ deck, onUpdateSettings, onOpenDeckSettings }: Design
 				className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-stroke px-3 text-sm font-medium text-dark transition hover:bg-gray-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:border-stroke-dark dark:text-white dark:hover:bg-dark-3"
 			>
 				<Settings2 className="h-4 w-4" aria-hidden />
-				More quest settings
+				More {productCopy(deck.product).noun} settings
 			</button>
 		</div>
 	);

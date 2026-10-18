@@ -432,6 +432,28 @@ it('looks up live sessions by join code, case-insensitively, and shows nothing p
     $this->getJson("/api/v1/quest-sessions/v2/by-code/{$code}")->assertNotFound();
 });
 
+it('finds live sessions of either product through the product-neutral play lookup', function () {
+    $host = DeckFactory::newOwner();
+    $session = sessApiStart($host, sessApiDeck($host, [['poll_single']], ['title' => 'Team retro']));
+    $quizSession = DeckSession::factory()->live()->create([
+        'deck_id' => Deck::factory()->quiz()->create(['title' => 'Friday quiz'])->id,
+        'join_code' => 'QZ' . Str::upper(Str::random(6)),
+    ]);
+
+    $this->getJson('/api/v1/play/by-code/' . strtolower($session->join_code))->assertOk()
+        ->assertJsonPath('data.session_id', $session->id)
+        ->assertJsonPath('data.product', 'quest');
+    $this->getJson("/api/v1/play/by-code/{$quizSession->join_code}")->assertOk()
+        ->assertJsonPath('data.session_id', $quizSession->id)
+        ->assertJsonPath('data.product', 'quiz')
+        ->assertJsonPath('data.deck_title', 'Friday quiz');
+    $this->getJson('/api/v1/play/by-code/ZZZZZZZZZZZZ')->assertNotFound()->assertJsonPath('data.code', 'not_found');
+
+    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk();
+    $this->getJson("/api/v1/play/by-code/{$session->join_code}")->assertNotFound();
+    expect(app('router')->getRoutes()->getByName('deck.play.by-code')->gatherMiddleware())->toContain('throttle:deck-lookup');
+});
+
 it('throttles by-code lookups per IP, whatever participant token is sent', function () {
     // Array-backed copy of the registered limiters: counters stay out of the dev Redis.
     $limiters = (fn () => $this->limiters)->call(app(CacheRateLimiter::class));

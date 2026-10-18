@@ -39,7 +39,8 @@ export const sortAnswerReducers = {
 
   const colorList = ['#F79945', '#BC5EB3', '#5769E7', '#89c6c7'];
   const newIndex = selectedItem.options.length;
-  const newId = (newIndex + 1).toString();
+  // After a removal the count can repeat an id still in use, so take the next free one.
+  const newId = (Math.max(0, ...selectedItem.options.map(opt => Number(opt.id) || 0)) + 1).toString();
 
   const newOption = {
     id: newId,
@@ -92,6 +93,17 @@ updateSortAnswerOption: (
   }
 },
   
+  /** Removes an accepted answer (the last one always stays). */
+  removeSortAnswerOption: (state: HoverState, action: PayloadAction<{ id: string }>) => {
+    const selectedItem = state.selectedItem;
+    if (!selectedItem || selectedItem.key !== 'sortanswer' || !selectedItem.options || selectedItem.options.length <= 1) return;
+    selectedItem.options = selectedItem.options.filter(opt => opt.id !== action.payload.id);
+    const matchedItem = state.multypleselectedItem.find(item => item.id === selectedItem.id);
+    if (matchedItem?.options) {
+      matchedItem.options = matchedItem.options.filter(opt => opt.id !== action.payload.id);
+    }
+  },
+
   updateSortAnswerItem: (
     state: HoverState,
     action: PayloadAction<Partial<{

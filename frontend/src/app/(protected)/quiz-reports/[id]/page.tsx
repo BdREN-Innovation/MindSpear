@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { Quiz } from "@/types/types";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import Summary from "@/features/quiz/components/QuizReports/Summary";
 import Participants from "@/features/quiz/components/QuizReports/Participants";
@@ -108,7 +108,8 @@ function QuizReport() {
 	useEffect(() => {
 		const datafetch = async () => {
 			try {
-				const response = await axiosInstance.get(`/quiz-participants`);
+				// This quiz's participants (the unfiltered list mixed in other quizzes').
+				const response = await axiosInstance.get(`/quiz-participants?quiz_id=${params?.id}`);
 				setParticipantsData(
 					response?.data?.data?.quiz_participants?.data
 				);
@@ -129,7 +130,7 @@ function QuizReport() {
 			}
 		};
 		datafetch();
-	}, []);
+	}, [params?.id]);
 
 	const renderTabContent = () => {
 		switch (activeTab) {
@@ -149,12 +150,15 @@ function QuizReport() {
 	// 		updateHostLiveSession()
 	// 	};
 
+	// Saved only after the host edits the name (loading the page used to save it back unchanged).
+	const titleEdited = useRef(false);
 	useEffect(() => {
-		if (debouncedTitle?.trim() === "") return;
+		if (!titleEdited.current || debouncedTitle?.trim() === "") return;
 		updateTitleApi(debouncedTitle);
 	}, [debouncedTitle]);
 
 	const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		titleEdited.current = true;
 		setTitleInput(e.target.value);
 	};
 
@@ -223,7 +227,7 @@ function QuizReport() {
 						Assigned MindSpear{" "}
 						<span className="border border-[#fa9b47] p-2 rounded-[10px] font-bold text-[#fa9b47] ml-[5px]">
 							{" "}
-							Ends in {daysLeft} days{" "}
+							Ends in {daysLeft} {Number(daysLeft) === 1 ? "day" : "days"}{" "}
 						</span>
 					</h4>
 					<h4 className="text-[#333333] border-[#2222] border-b-2 pt-[10px] pb-[10px] text-[0.875rem]">

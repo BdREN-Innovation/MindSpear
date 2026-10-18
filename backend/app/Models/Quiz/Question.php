@@ -70,6 +70,22 @@ class Question extends Model
         return $this->belongsTo(User::class, 'owner_id');
     }
 
+    /**
+     * Rows made by "Add question" and never saved: placeholder text and no options yet.
+     */
+    public function scopeBlank($query)
+    {
+        return $query->whereNull('options')->where('question_text', '.');
+    }
+
+    /**
+     * Questions with content: excludes the blank rows above.
+     */
+    public function scopeAuthored($query)
+    {
+        return $query->where(fn ($q) => $q->whereNotNull('options')->orWhere('question_text', '!=', '.'));
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_published', true);

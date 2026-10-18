@@ -4,17 +4,22 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui";
 import { isDeckApiError } from "@/features/deck/api/errors";
 import { getDeckTheme } from "@/features/deck/theme";
-import type { DeckQaSort, DeckSettings, DeckSettingsPatch } from "@/features/deck/types";
+import type { DeckProduct, DeckQaSort, DeckSettings, DeckSettingsPatch } from "@/features/deck/types";
 import { SegmentedField, SelectField, ToggleField, type ChoiceOption } from "../slides/shared";
 import { ThemeGrid } from "./inspector/DesignTab";
 import { GET_READY_CHOICES, timeLimitOptions } from "./inspector/SettingsTab";
+import { productCopy } from "./productCopy";
 
 // Deck-wide settings (backend DeckRequest → DeckSettings): default_time_limit,
 // get_ready_seconds, theme, show_qr_sidebar, default_qa_sort. The timer
 // defaults only seed slides added later; existing slides keep their own.
+// Quiz decks have no Q&A slides, so the Q&A order is Quest-only; their
+// get-ready countdown defaults to 5 s (resolveDeckSettings(…, 'quiz')).
 
 export interface DeckSettingsModalProps {
 	open: boolean;
+	/** Default quest. */
+	product?: DeckProduct;
 	settings: DeckSettings;
 	onClose(): void;
 	onSave(patch: DeckSettingsPatch): Promise<void>;
@@ -27,7 +32,9 @@ const QA_SORTS: ChoiceOption<DeckQaSort>[] = [
 
 const GET_READY_OPTIONS: ChoiceOption<number>[] = [{ value: 0, label: "Off" }, ...GET_READY_CHOICES];
 
-export function DeckSettingsModal({ open, settings, onClose, onSave }: DeckSettingsModalProps) {
+export function DeckSettingsModal({ open, product = "quest", settings, onClose, onSave }: DeckSettingsModalProps) {
+	const copy = productCopy(product);
+	const quiz = product === "quiz";
 	const [draft, setDraft] = useState<DeckSettings>(settings);
 	const [errors, setErrors] = useState<Record<string, string[]>>({});
 	const [formError, setFormError] = useState<string | null>(null);
@@ -79,7 +86,7 @@ export function DeckSettingsModal({ open, settings, onClose, onSave }: DeckSetti
 
 	return (
 		<Modal
-			title="Quest settings"
+			title={`${copy.Noun} settings`}
 			open={open}
 			onClose={saving ? undefined : onClose}
 			size="md"
@@ -123,7 +130,11 @@ export function DeckSettingsModal({ open, settings, onClose, onSave }: DeckSetti
 					/>
 					<SelectField<number>
 						label="Get-ready countdown"
-						hint="A short countdown before voting opens on new question slides."
+						hint={
+							quiz
+								? "A short countdown before answering opens on new question slides."
+								: "A short countdown before voting opens on new question slides."
+						}
 						value={draft.get_ready_seconds}
 						options={getReadyOptions}
 						error={errors.get_ready_seconds}
@@ -152,14 +163,16 @@ export function DeckSettingsModal({ open, settings, onClose, onSave }: DeckSetti
 						error={errors.show_qr_sidebar}
 						onChange={(on) => set("show_qr_sidebar", on)}
 					/>
-					<SegmentedField<DeckQaSort>
-						label="Default Q&A order"
-						hint="How audience questions are sorted on new Q&A slides."
-						value={draft.default_qa_sort}
-						options={QA_SORTS}
-						error={errors.default_qa_sort}
-						onChange={(value) => set("default_qa_sort", value)}
-					/>
+					{quiz ? null : (
+						<SegmentedField<DeckQaSort>
+							label="Default Q&A order"
+							hint="How audience questions are sorted on new Q&A slides."
+							value={draft.default_qa_sort}
+							options={QA_SORTS}
+							error={errors.default_qa_sort}
+							onChange={(value) => set("default_qa_sort", value)}
+						/>
+					)}
 				</fieldset>
 
 				{formError ? (

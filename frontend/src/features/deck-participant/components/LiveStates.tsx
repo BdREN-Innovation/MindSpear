@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { CheckCircle2, Lock, MessageCircleQuestion } from "lucide-react";
+import { CheckCircle2, Lock, MessageCircleQuestion, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useServerClock } from "@/features/deck/live/useServerClock";
-import type { IsoDateTime, ParticipantRunView } from "@/features/deck/types";
+import { isScoredQuizSlideTypeKey, type IsoDateTime, type ParticipantRunView, type QuizStanding } from "@/features/deck/types";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
 import { runTitle } from "../lib/runs";
 import { LoadingDots, useAnnounce } from "../shell";
@@ -13,6 +13,9 @@ import { LoadingDots, useAnnounce } from "../shell";
 // The run-state screens around the type's Participant component (plan §7.2):
 // lobby (no slide yet), waiting for the host, the get-ready countdown,
 // voting closed, the timer bar and the "answer sent" strip (§7.4).
+// Quiz sessions add the standing pill for the top bar; the points bar while
+// answering, "Answer locked in" and the reveal result (✓ / ✗ "+N points")
+// belong to the type components (props.scoring / reveal / standing).
 //
 // The countdowns own their 250 ms clock (useServerClock), so only these small
 // components re-render while time runs — never the slide's answer UI.
@@ -59,13 +62,14 @@ function TypeChip({ run }: { run: ParticipantRunView }) {
 
 export function WaitingForHost({ run }: { run: ParticipantRunView }) {
 	const qa = run.type === "qa_audience";
+	const quiz = isScoredQuizSlideTypeKey(run.type);
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
 			<TypeChip run={run} />
 			<h2 className="mt-4 text-2xl font-bold leading-snug tracking-tight">{runTitle(run)}</h2>
 			<p className="mt-6 inline-flex items-center gap-2 text-sm text-[var(--deck-text-muted)]">
 				<LoadingDots label={null} size="sm" />
-				{qa ? "Questions will open soon" : "Waiting for the host to open voting"}
+				{qa ? "Questions will open soon" : quiz ? "Waiting for the host to start" : "Waiting for the host to open voting"}
 			</p>
 		</div>
 	);
@@ -85,14 +89,18 @@ export function GetReadyOverlay({ run, endsAt, durationSeconds }: CountdownProps
 			<p className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--deck-text-muted)]">Get ready</p>
 			<div className="relative mt-6 flex h-40 w-40 items-center justify-center" role="timer" aria-live="off">
 				<span className="absolute inset-0 rounded-full border-[6px] border-[var(--deck-surface-muted)]" aria-hidden />
-				<AnimatePresence mode="popLayout" initial={false}>
+				{/* mode="wait": the old digit is gone (a quick fade) before the next one pops in, so two never overlap. */}
+				<AnimatePresence mode="wait" initial={false}>
 					<motion.span
 						key={seconds ?? "dots"}
 						className="font-mono text-[72px] font-semibold leading-none"
 						initial={reduceMotion ? false : { scale: 1.6, opacity: 0 }}
-						animate={{ scale: 1, opacity: 1 }}
-						exit={reduceMotion ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
-						transition={{ type: "spring", stiffness: 420, damping: 26 }}
+						animate={{ scale: 1, opacity: 1, transition: { type: "spring", stiffness: 420, damping: 26 } }}
+						exit={
+							reduceMotion
+								? { opacity: 0, transition: { duration: 0.08 } }
+								: { scale: 0.6, opacity: 0, transition: { duration: 0.12, ease: "easeIn" } }
+						}
 					>
 						{seconds !== null && seconds > 0 ? seconds : <LoadingDots label={null} size="lg" />}
 					</motion.span>
@@ -140,9 +148,8 @@ export function VotingClosedView({
 	);
 }
 
-/** Voting countdown bar; announces "N seconds left" once at ten seconds. */
-export function TimerBar({ endsAt, durationSeconds }: CountdownProps) {
-	const { secondsRemaining: seconds, progress } = useServerClock({ endsAt, durationSeconds });
+/** Announces "N seconds left" once per deadline, at ten seconds. */
+function useTenSecondWarning(seconds: number | null, endsAt: IsoDateTime | null | undefined) {
 	const announce = useAnnounce();
 	const announcedFor = useRef<string | null>(null);
 	useEffect(() => {
@@ -152,6 +159,12 @@ export function TimerBar({ endsAt, durationSeconds }: CountdownProps) {
 			announce(`${seconds} seconds left.`);
 		}
 	}, [seconds, endsAt, announce]);
+}
+
+/** Voting countdown bar; announces "N seconds left" once at ten seconds. */
+export function TimerBar({ endsAt, durationSeconds }: CountdownProps) {
+	const { secondsRemaining: seconds, progress } = useServerClock({ endsAt, durationSeconds });
+	useTenSecondWarning(seconds, endsAt);
 
 	if (seconds === null) return null;
 	const urgent = seconds <= 5;
@@ -201,5 +214,26 @@ export function SubmittedStrip({ message }: { message: string }) {
 			<CheckCircle2 className="h-5 w-5 text-[var(--deck-success)]" aria-hidden />
 			{message}
 		</motion.div>
+	);
+}
+
+/* ------------------------------------------------------------------ */
+/* Quiz                                                                */
+/* ------------------------------------------------------------------ */
+
+/** "#3 · 240 pts" (rank null: just the points). */
+export function standingText(standing: Pick<QuizStanding, "rank" | "total_points">): string {
+	return `${standing.rank ? `#${standing.rank} · ` : ""}${standing.total_points} pts`;
+}
+
+/** Top-bar pill with my rank and points (quiz). */
+export function StandingPill({ standing }: { standing: QuizStanding | null }) {
+	if (!standing) return null;
+	return (
+		<span className="flex h-9 items-center gap-1 whitespace-nowrap rounded-full bg-[var(--deck-surface-muted)] px-3 text-sm font-semibold tabular-nums">
+			<Trophy className="h-3.5 w-3.5 text-[var(--deck-primary)]" aria-hidden />
+			<span className="sr-only">Your place: </span>
+			{standingText(standing)}
+		</span>
 	);
 }

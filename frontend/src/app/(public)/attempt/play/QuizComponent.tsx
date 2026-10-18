@@ -45,12 +45,19 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
               </div>
             </div>
             
+            {isMultipleSelection && (
+              <p className="mb-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white">
+                Select all that apply
+              </p>
+            )}
+
             <div className='flex items-center justify-center'>
               {source_content_url && (
                 <div className="flex justify-center mb-4 ">
                   <Image
                     src={source_content_url} 
                     alt="Quiz visual"
+                    unoptimized
                     width={176}
                     height={64}
                     className="max-h-64 rounded-md"
@@ -99,8 +106,8 @@ const QuizComponent: React.FC<QuizComponentProps> = ({
               ))}
             </div>
             {isTimeUp && (
-              <div className="mt-2 text-red-600 text-sm">
-                <p> Time s up! Options are now disabled. </p>
+              <div className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-sm font-medium text-white">
+                Time&apos;s up! Answers are closed for this question.
               </div>
             )}
         </div>

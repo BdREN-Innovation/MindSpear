@@ -5,7 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { ScaledSlide } from "@/features/deck-editor/components/SlidePreview";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
-import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/slides/types";
+import type { HostActions, PresenterQuizInfo, PresenterSessionInfo } from "@/features/deck-editor/slides/types";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { ParticipantRunView, RunState, SlideAggregate, SlimRunView } from "@/features/deck/types";
 
@@ -79,11 +79,13 @@ export interface SlideStageProps {
 	theme: DeckTheme;
 	host: HostActions;
 	session: PresenterSessionInfo;
+	/** Quiz sessions: submitted count, spin, leaderboard rows, reveal delta of this run (null for Quest). */
+	quiz?: PresenterQuizInfo | null;
 	/** Shell chrome drawn on the slide's top-right corner (the timer chip), scaled with the slide. */
 	cornerOverlay?: ReactNode;
 }
 
-export function SlideStage({ run, slimRun, state, aggregate, theme, host, session, cornerOverlay }: SlideStageProps) {
+export function SlideStage({ run, slimRun, state, aggregate, theme, host, session, quiz = null, cornerOverlay }: SlideStageProps) {
 	const reduceMotion = useReducedMotion();
 
 	if (!run) {
@@ -125,6 +127,7 @@ export function SlideStage({ run, slimRun, state, aggregate, theme, host, sessio
 									mode="live"
 									host={host}
 									session={session}
+									quiz={quiz && quiz.slide_run_id === run.id ? quiz : null}
 								/>
 							</PresenterErrorBoundary>
 						) : (

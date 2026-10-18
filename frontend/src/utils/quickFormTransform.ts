@@ -234,16 +234,18 @@ export function normalizeTasks(data: any) {
       };
 
       // Group A: quiz_single_choice, quiz_multiple_choice, true_false_choice, fill_in_the_blanks_choice
-      if (["quiz_single_choice", "quiz_multiple_choice", "true_false_choice", "fill_in_the_blanks_choice"].includes(item.question_type)) {
+      if (["quiz_single_choice", "quiz_multiple_choice", "true_false_choice", "fill_in_the_blanks_choice", "fill_in_the_blanks_multiple_choice"].includes(item.question_type)) {
+        // The id is the answer's position in the question (numbered before empty answers are
+        // dropped, so it still matches what the scoring compares).
         return {
           ...baseQuiz,
-          questions: item.options?.choices
-            ?.filter((choice: null) => choice !== null) 
-            .map((choice: any, idx: string | number) => ({
+          questions: (item.options?.choices ?? [])
+            .map((choice: string | null, idx: number) => ({
               id: idx,
               text: choice,
-              color: item.options?.color[idx] || null
-            })) || []
+              color: item.options?.color?.[idx] || null
+            }))
+            .filter((choice: { text: string | null }) => choice.text !== null && `${choice.text}`.trim() !== "")
         };
       }
 

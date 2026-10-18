@@ -20,6 +20,7 @@ use App\Models\Quiz\UserQuizAnswer;
 use App\Services\Live\LiveAggregateService;
 use App\Services\Live\LiveSessionService;
 use App\Services\Live\ParticipantTokenService;
+use App\Services\Quiz\LegacyQuizScorer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -1238,7 +1239,8 @@ class QuizAttemptController extends ApiBaseController
                 $isCorrect = $this->isAnswerCorrect(
                     $question->question_type,
                     $selectedOption,
-                    $correctAnswer
+                    $correctAnswer,
+                    $question->options['choices'] ?? []
                 );
 
                 // Calculate points for this question
@@ -1658,7 +1660,7 @@ class QuizAttemptController extends ApiBaseController
     /**
      * Check if the answer is correct based on question type
      */
-    private function isAnswerCorrect(string $questionType, $selectedOption, $correctAnswer): bool
+    private function isAnswerCorrect(string $questionType, $selectedOption, $correctAnswer, array $choices = []): bool
     {
         if (is_null($selectedOption) || is_null($correctAnswer)) {
             return false;
@@ -1672,23 +1674,16 @@ class QuizAttemptController extends ApiBaseController
                 return $selectedOption == $correctAnswer;
 
             case 'quiz_multiple_choice':
-                // For multiple choice, sort arrays and compare
-                if (is_array($selectedOption) && is_array($correctAnswer)) {
-                    sort($selectedOption);
-                    sort($correctAnswer);
-
-                    return $selectedOption == $correctAnswer;
-                }
-
-                return false;
+            case 'fill_in_the_blanks_multiple_choice':
+                // The player sends "0,2"; the same all-or-nothing rule as the score.
+                return app(LegacyQuizScorer::class)->sameIndexSet($selectedOption, $correctAnswer);
 
             case 'sort_answer_choice':
-                // For sort answer, order matters - compare as is
-                if (is_array($selectedOption) && is_array($correctAnswer)) {
-                    return $selectedOption == $correctAnswer;
-                }
-
-                return false;
+            case 'sort_answer':
+            case 'short_answer_choice':
+            case 'short_answer':
+                // The player types the answer; the same rule as the score.
+                return app(LegacyQuizScorer::class)->shortAnswerMatches($selectedOption, ['choices' => $choices, 'correct_answer' => $correctAnswer]);
 
             default:
                 return false;
@@ -1700,106 +1695,7 @@ class QuizAttemptController extends ApiBaseController
      */
     protected function completeAttempt(QuizParticipant $attempt): void
     {
-        $attempt->end_time = now();
-        $score = 0;
-
-        foreach ($attempt->userQuizAnswers as $answer) {
-            $question = $answer->question;
-
-            if (! $question || ! in_array($question->question_type, [
-                'multiple_choice',
-                'true_false',
-                'single_choice',
-                'quiz_single_choice',
-                'quiz_multiple_choice',
-                'true_false_choice',
-                'fill_in_the_blanks_choice',
-                'sort_answer_choice',
-                'sort_answer',
-                'short_answer_choice',
-                'short_answer',
-            ])) {
-                continue;
-            }
-
-            $answerData = $answer->answer_data;
-            $points = $question->points ?? 0;
-
-            if (in_array($question->question_type, ['multiple_choice', 'single_choice', 'quiz_single_choice', 'quiz_multiple_choice', 'fill_in_the_blanks_choice', 'true_false_choice'])) {
-                $correctIndex = $question->options['correct_answer'] ?? null;
-                $selectedOption = $answerData['selected_option'] ?? null;
-
-                // Handle quiz_multiple_choice (multiple correct answers)
-                if ($question->question_type === 'quiz_multiple_choice') {
-
-                    $correctIndex = $question->options['correct_answers'] ?? null;
-                    $selectedOption = $answerData['selected_option'] ?? null;
-
-                    if ($selectedOption !== null && $correctIndex !== null) {
-                        // Convert "1,2,3" into [1, 2, 3]
-                        $userAnswers = is_array($selectedOption)
-                            ? $selectedOption
-                            : array_map('intval', explode(',', $selectedOption));
-
-                        // Find correctly selected options
-                        $correctSelected = array_intersect($userAnswers, $correctIndex);
-                        $totalCorrect = count($correctIndex);
-                        $userCorrect = count($correctSelected);
-
-                        // Award proportional points (e.g., 2/3 correct = 2/3 of total points)
-                        if ($totalCorrect > 0) {
-                            $score += ($question->points * ($userCorrect / $totalCorrect));
-                        }
-                    }
-                } else {
-                    if ($selectedOption !== null && $correctIndex !== null && $selectedOption == $correctIndex) {
-                        $score += $points;
-                    }
-                }
-            } elseif ($question->question_type === 'true_false') {
-                $correctAnswer = $question->options['correct_answer'] ?? null;
-                $selectedAnswer = $answerData['selected_option'] ?? null;
-
-                if ($selectedAnswer !== null && $correctAnswer !== null) {
-                    $userAnswer = filter_var($selectedAnswer, FILTER_VALIDATE_BOOLEAN);
-                    if ($userAnswer === $correctAnswer) {
-                        $score += $points;
-                    }
-                }
-            } elseif ($question->question_type === 'sort_answer_choice' || $question->question_type === 'sort_answer' || $question->question_type === 'short_answer_choice' || $question->question_type === 'short_answer') {
-                $correctOrder = $question->options['correct_answer'] ?? null;
-                $selectedOption = $answerData['selected_option'] ?? null;
-
-                if ($selectedOption !== null && $correctOrder !== null) {
-                    $correctChoices = $question->options['choices'] ?? [];
-
-                    // Get the correct values in order
-                    $correctOrderValues = array_map(function ($index) use ($correctChoices) {
-                        return $correctChoices[$index] ?? null;
-                    }, $correctOrder);
-
-                    // Handle both array and string input
-                    $userOrder = is_array($selectedOption) ? $selectedOption : explode(',', $selectedOption);
-                    $userOrder = array_map('trim', $userOrder);
-
-                    // Check if ALL user answers exist in correct choices (order doesn't matter)
-                    $allExist = true;
-                    foreach ($userOrder as $answer) {
-                        if (! in_array($answer, $correctOrderValues)) {
-                            $allExist = false;
-                            break;
-                        }
-                    }
-
-                    // Award points if all submitted answers exist in correct choices
-                    if ($allExist && ! empty($userOrder)) {
-                        $score += $points;
-                    }
-                }
-            }
-        }
-
-        $attempt->score = $score;
+        app(LegacyQuizScorer::class)->complete($attempt);
     }
 
     /**

@@ -44,3 +44,50 @@ export {
 } from "./participant";
 export { submitErrorMessage, useSubmit, type UseSubmitResult } from "./useSubmit";
 export { haptic, useDebouncedValue, usePrefersReducedMotion } from "./hooks";
+
+// Quiz v2 (QF1): additive helpers for the quiz slide types.
+export {
+	CorrectMarker,
+	EditorError,
+	EditorWarning,
+	InlineSelect,
+	OptionLabelInput,
+	nextAuthorKey,
+	useCorrectMarking,
+	type CorrectMarking,
+	type OptionLabelInputProps,
+} from "./quizEditor";
+export {
+	ChoiceTiles,
+	CorrectSummary,
+	LetterBadge,
+	PercentBar,
+	QuizHeader,
+	REVEAL_BADGE_GAP_S,
+	REVEAL_BAR_S,
+	REVEAL_STAGGER_S,
+	RevealBars,
+	RevealMark,
+	StageHint,
+	StageMessage,
+	SubmittedCount,
+	quizStageHint,
+	useRevealTiming,
+	type ChoiceTile,
+	type RevealBarItem,
+	type RevealTiming,
+} from "./quizPresenter";
+export {
+	LockedIn,
+	PointsBar,
+	QuizResultBanner,
+	ResultHeading,
+	ResultRow,
+	ToneIcon,
+	quizPhase,
+	useEarnablePoints,
+	type QuizPhase,
+	type QuizResultInfo,
+	type ResultTone,
+} from "./quizParticipant";
+export { formatPoints, optionLetter, plural, quizDisplayTitle, quizFallbackTitle, rankLabel, resolveStanding } from "./quizLabels";

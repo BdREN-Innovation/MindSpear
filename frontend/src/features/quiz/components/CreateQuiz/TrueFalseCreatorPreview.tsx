@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 "use client";
 
 import React, { useState } from "react";
@@ -38,14 +37,16 @@ const TrueFalseComponend: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 		(state: RootState) => state.quiz.multypleselectedItem
 	);
 	const currentItem = multypleselectedItem.find((item) => item.id === id);
-	if (!currentItem) return;
+	// Hooks before the early return: returning first changed the hook count between renders
+	// ("Rendered more hooks than during the previous render").
+	const [showAddToBankModal, setShowAddToBankModal] = useState(false);
+	if (!currentItem) return null;
 	const trueFalseItems = {
 		...currentItem,
 		options: currentItem.options.filter(
 			(option) => option.text === "True" || option.text === "False"
 		),
 	};
-	const [showAddToBankModal, setShowAddToBankModal] = useState(false);
 
 	const handleAddToQuestionBank = () => {
 		setShowAddToBankModal(true);
@@ -254,8 +255,8 @@ const TrueFalseComponend: React.FC<QuizCreatorPreviewProps> = ({ id }) => {
 						className="mt-[15px] !text-[0.875rem]"
 						label="Points"
 						items={[
-							{ label: "Single Points", value: "1" },
-							{ label: "Multiple Points", value: "2" },
+							{ label: "Standard (1 point)", value: "1" },
+							{ label: "Double (2 points)", value: "2" },
 						]}
 						prefixIcon={<VscActivateBreakpoints />}
 						onChange={(e) =>

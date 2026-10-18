@@ -13,8 +13,6 @@ import { HiOutlineDuplicate } from "react-icons/hi";
 // 	FillInTheBlankIcon,
 // } from "@/assets/icons";
 import {
-	clearHoveredItem,
-	setHoveredItem,
 	setSelectedItem,
 	setMultipleSelectedItems,
 	removeSelectedItem,
@@ -44,6 +42,13 @@ import ConfirmDialog from "@/utils/showConfirmDialog";
 import { AxiosError } from "axios";
 import Image from "next/image";
 import { toast } from "react-toastify";
+const TYPE_ICONS: Record<string, { src: string; label: string }> = {
+	quiz: { src: "/images/icons/Icon-01.svg", label: "Multiple choice" },
+	truefalse: { src: "/images/icons/Icon-02.svg", label: "True / False" },
+	sortanswer: { src: "/images/icons/Icon-03.svg", label: "Short answer" },
+	fillintheblanks: { src: "/images/icons/Icon-04.svg", label: "Fill in the blanks" },
+};
+
 interface MenuItem {
 	key: string;
 	id: string;
@@ -56,8 +61,6 @@ interface SortableItemProps {
 	item: MenuItem;
 	multypleselectedItem: MenuItem[];
 	index: number;
-	onMouseEnter: (item: MenuItem) => void;
-	onMouseLeave: () => void;
 	onClick: (item: MenuItem) => void;
 	onDelete: (key: string) => void;
 	onDuplicate: (key: string) => void;
@@ -67,13 +70,10 @@ function SortableItem({
 	currentActiveItem,
 	item,
 	multypleselectedItem,
-	onMouseEnter,
-	onMouseLeave,
 	onClick,
 	onDelete,
 	onDuplicate,
 }: SortableItemProps) {
-	console.log(item, "itemitemitemitemitemitem");
 
 	const {
 		attributes,
@@ -93,7 +93,6 @@ function SortableItem({
 	const itemList = multypleselectedItem.find((i) => i.id === item.id);
 	const isActive = itemList?.id === currentActiveItem?.id;
 
-	console.log(item, "itemList");
 
 	const questionsRemove = async (id: string) => {
 		await ConfirmDialog.show(
@@ -145,108 +144,70 @@ function SortableItem({
 				style={style}
 				{...attributes}
 				{...listeners}
-				onMouseEnter={() => onMouseEnter(item)}
-				onMouseLeave={onMouseLeave}
 			>
 				<div
-					className={`flex justify-center group mb-[15px] w-full items-center px-5 py-3  flex-col rounded-[10px] h-[132px] cursor-grab active:cursor-grabbing
-          border-2 ${isActive ? "border-[#BC5EB3]" : "border-[#2222]"}
-          hover:border-[#BC5EB3] transition`}
+					className={`flex justify-center group mb-[15px] w-full items-center gap-2 pl-5 pr-9 py-3 flex-col rounded-[10px] h-[132px] cursor-grab active:cursor-grabbing border-2 transition ${
+						isActive
+							? "border-[#BC5EB3] bg-[#fbf3fa]"
+							: "border-[#2222] hover:border-[#BC5EB3]/50 hover:bg-[#fcfafc]"
+					}`}
 					onClick={() => onClick(item)}
 				>
-					{item.key === "quiz" && (
-						<>
-							<Image
-								src="/images/icons/Icon-01.svg"
-								alt="True / False"
-								width={60}
-								height={60}
-								className="mr-2"
-							/>
-							<SafeHTMLRenderer
-								html={`${item.title}`}
-								wordLimit={10}
-							/>
-						</>
+					{TYPE_ICONS[item.key] && (
+						<Image
+							src={TYPE_ICONS[item.key].src}
+							alt={TYPE_ICONS[item.key].label}
+							width={48}
+							height={48}
+						/>
 					)}
-
-					{item.key === "truefalse" && (
-						<>
-							<Image
-								src="/images/icons/Icon-02.svg"
-								alt="True / False"
-								width={60}
-								height={60}
-								className="mr-2"
-							/>
-							<SafeHTMLRenderer
-								html={`${item.title}`}
-								wordLimit={5}
-							/>
-						</>
-					)}
-
-					{item.key === "sortanswer" && (
-						<>
-							<Image
-								src="/images/icons/Icon-03.svg"
-								alt="Short Answer"
-								width={60}
-								height={60}
-								className="mr-2"
-							/>
-							<SafeHTMLRenderer
-								html={`${item.title}`}
-								wordLimit={5}
-							/>
-						</>
-					)}
-
-					{item.key === "fillintheblanks" && (
-						<>
-							<Image
-								src="/images/icons/Icon-04.svg"
-								alt="Fill In The Blanks"
-								width={60}
-								height={60}
-								className="mr-2"
-							/>
-							<SafeHTMLRenderer
-								html={`${item.title}`}
-								wordLimit={5}
-							/>
-						</>
-					)}
+					{/* Two lines of the title (the old limit cut it to a few letters). */}
+					<SafeHTMLRenderer
+						html={item.title || "Untitled question"}
+						className={`line-clamp-2 w-full break-words text-center text-[13px] leading-snug ${
+							item.title ? "text-[#333]" : "italic text-[#999]"
+						}`}
+					/>
 
 					<div
-						className={`bg-[#222] absolute left-0 w-[20px] h-5 top-0 rounded-tl-[7px] rounded-br-[7px] text-[12px] items-center flex text-[#fff] justify-center group-hover:bg-[#BC5EB3] ${
-							isActive ? "bg-[#BC5EB3]" : ""
+						className={`absolute left-0 w-[20px] h-5 top-0 rounded-tl-[7px] rounded-br-[7px] text-[12px] items-center flex text-[#fff] justify-center ${
+							isActive ? "bg-[#BC5EB3]" : "bg-[#222]"
 						}`}
 					>
 						{itemList?.position}
 					</div>
 				</div>
 			</div>
+			{/* The whole circle is the button (only the 12px icon used to react to clicks). */}
 			<div className="absolute z-10 right-2 bottom-3 space-y-14">
-				<div className="w-[25px] mb-[3px] h-[25px] bg-orange-500 rounded-full justify-center flex items-center">
+				<div
+					role="button"
+					aria-label="Duplicate question"
+					title="Duplicate"
+					onClick={(e) => {
+						e.stopPropagation();
+						onDuplicate(item.id);
+					}}
+					className="w-[25px] mb-[3px] h-[25px] bg-orange-500 rounded-full justify-center flex items-center cursor-pointer"
+				>
 					<HiOutlineDuplicate
 						className=" hover:text-[#333] cursor-pointer text-[#fff]"
 						size={12}
-						onClick={(e) => {
-							e.stopPropagation();
-
-							onDuplicate(item.id);
-						}}
 					/>
 				</div>
-				<div className="w-[25px] h-[25px] bg-red-500 hover:bg-red-600 rounded-full justify-center flex items-center ">
+				<div
+					role="button"
+					aria-label="Delete question"
+					title="Delete"
+					onClick={(e) => {
+						e.stopPropagation();
+						questionsRemove(item.id);
+					}}
+					className="w-[25px] h-[25px] bg-red-500 hover:bg-red-600 rounded-full justify-center flex items-center cursor-pointer"
+				>
 					<RiDeleteBin5Line
 						className=" hover:text-[#333] cursor-pointer text-[#fff]"
 						size={12}
-						onClick={(e) => {
-							e.stopPropagation();
-							questionsRemove(item.id);
-						}}
 					/>
 				</div>
 			</div>
@@ -261,7 +222,6 @@ function SelectedQuizList() {
 	const quesentList = useSelector(
 		(state: RootState) => state.quiz.multypleselectedItem
 	);
-	const quesentList2222 = useSelector((state: RootState) => state.quiz);
 	// console.log(quesentList, "quesentList quesentList ");
 
 	const multypleselectedItem = quesentList?.filter(
@@ -271,45 +231,15 @@ function SelectedQuizList() {
 	const selectedItem = useSelector(
 		(state: RootState) => state.quiz.selectedItem
 	);
-	console.log(quesentList2222, "multypleselectedItem");
 
 	const handleItemClick = (item: MenuItem) => {
-		console.log(item, "itemmmmmmm");
 
-		dispatch(
-			setSelectedItem({
-				key: item.key,
-				id: item.id,
-				title: "Untitled question",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-			})
-		);
+		const fullItem = multypleselectedItem.find((i) => i.id === item.id);
+		if (fullItem) dispatch(setSelectedItem(fullItem));
 	};
 
-	const handleMouseLeave = () => {
-		dispatch(clearHoveredItem());
-	};
-
-	const handleMouseEnter = (item: MenuItem) => {
-		dispatch(
-			setHoveredItem({
-				key: item.key,
-				id: item.id,
-				title: "",
-				options: [],
-				maxOptions: 0,
-				minOptions: 0,
-				allowDuplicates: false,
-				isMultipleSelection: false,
-				timeLimit: "",
-			})
-		);
-	};
+	// Hovering a card only highlights it: the editor keeps showing the selected question
+	// (a hover preview used to mix the hovered question's answers into the selected one).
 
 	const sensors = useSensors(
 		useSensor(PointerSensor),
@@ -351,13 +281,12 @@ function SelectedQuizList() {
 	};
 
 	const duplicateFunctionCall = async (id: string) => {
-		if (!selectedItem) return;
+		// The quiz in the URL, so a duplicate works before any question has been selected.
 		const response = await axiosInstance.post(`/quiz/questions/store`, {
-			quiz_id: selectedItem.quiz_id,
+			quiz_id: qId,
 			question_text: ".",
 			visibility: "public",
 		});
-		console.log(response, "currentActive");
 
 		dispatch(
 			duplicateItem({
@@ -367,10 +296,6 @@ function SelectedQuizList() {
 		);
 	};
 
-	console.log(
-		multypleselectedItem,
-		"multypleselectedItemmultypleselectedItemmultypleselectedItemmultypleselectedItem"
-	);
 
 	return (
 		<DndContext
@@ -392,8 +317,6 @@ function SelectedQuizList() {
 								item={item}
 								index={index}
 								multypleselectedItem={multypleselectedItem}
-								onMouseEnter={handleMouseEnter}
-								onMouseLeave={handleMouseLeave}
 								onClick={handleItemClick}
 								currentActiveItem={selectedItem}
 								onDelete={() =>

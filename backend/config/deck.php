@@ -2,7 +2,7 @@
 
 /*
 |--------------------------------------------------------------------------
-| Shared slide engine (Quest v2, later Quiz v2)
+| Shared slide engine (Quest v2 and Quiz v2)
 |--------------------------------------------------------------------------
 */
 
@@ -29,6 +29,12 @@ return [
             'authoring' => 'quests/v2',
             'sessions' => 'quest-sessions/v2',
         ],
+        // Quiz v2 (QUIZ_REDESIGN_PLAN.md §2.1). Sessions live under /v2 because
+        // legacy Quiz v1 still owns GET /api/v1/quiz-sessions/{id}/state.
+        'quiz' => [
+            'authoring' => 'quizzes',
+            'sessions' => 'quiz-sessions/v2',
+        ],
     ],
 
     /*
@@ -37,6 +43,38 @@ return [
     | Quest v2 on for every account. Participants never need it.
     */
     'quest_v2_default_enabled' => (bool) env('QUEST_V2_DEFAULT_ENABLED', false),
+
+    // Quiz v2 rollout, the same way: users.quiz_v2_enabled, or everyone when true.
+    'quiz_v2_default_enabled' => (bool) env('QUIZ_V2_DEFAULT_ENABLED', false),
+
+    /*
+    | Quiz v2 live behaviour (QUIZ_REDESIGN_PLAN.md "Live session state
+    | machine", "Scoring model").
+    | - get_ready_seconds: the "Get ready" countdown new quiz decks seed into
+    |   their answer slides, and the one a quiz slide without its own value
+    |   (null) gets at session start. 0 on the slide turns it off.
+    | - scoring: per-slide defaults (slides.points_min / points_max /
+    |   speed_bonus_enabled), snapshotted into config_snapshot.scoring.
+    | - spin_seconds: how long a spinner_wheel spins before it reveals, when
+    |   the slide has no spin_duration_ms (its value, rounded up, wins).
+    | - leaderboard_size: default top N of GET .../leaderboard (a leaderboard
+    |   slide uses its own top_n / show_all_participants).
+    | - reveal_leaderboard_limit: most leaderboard_delta rows in slide.revealed
+    |   (best new_rank first); participants read their own through my-answer.
+    */
+    'quiz' => [
+        'get_ready_seconds' => (int) env('QUIZ_DEFAULT_GET_READY_SECONDS', 5),
+        'scoring' => [
+            'points_min' => 50,
+            'points_max' => 100,
+            'speed_bonus_enabled' => true,
+            'max_points' => 1000,
+        ],
+        'spin_seconds' => (int) env('QUIZ_SPIN_SECONDS', 3),
+        'leaderboard_size' => 10,
+        'leaderboard_max' => 100,
+        'reveal_leaderboard_limit' => 10,
+    ],
 
     // Most live slides one deck may hold (append, bulk, duplicate slide or deck).
     'max_slides_per_deck' => (int) env('DECK_MAX_SLIDES_PER_DECK', 100),
@@ -56,12 +94,27 @@ return [
         'max' => [
             'ranking' => 12,
             'scales' => 20,
+            // Quiz v2 (QUIZ_REDESIGN_PLAN.md catalog). match_pairs counts cells (2 per pair).
+            'pick_answer_single' => 10,
+            'pick_answer_multi' => 10,
+            'short_answer' => 5,
+            'match_pairs' => 16,
+            'correct_order' => 8,
+            'categorise' => 20,
+            'spinner_wheel' => 12,
         ],
         'min' => [
             'poll_single' => 2,
             'poll_multi' => 2,
             'ranking' => 2,
             'scales' => 1,
+            'pick_answer_single' => 2,
+            'pick_answer_multi' => 2,
+            'short_answer' => 1,
+            'match_pairs' => 4,
+            'correct_order' => 3,
+            'categorise' => 4,
+            'spinner_wheel' => 2,
         ],
     ],
 

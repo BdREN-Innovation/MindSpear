@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { AlertCircle, ArrowLeft, Check, CircleDot, Loader2, MonitorPlay, Play, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DECK_LIMITS } from "@/features/deck/types";
+import { DECK_LIMITS, type DeckProduct } from "@/features/deck/types";
+import { productCopy } from "./productCopy";
 import type { SaveStatus } from "./useDeckEditor";
 
 export interface EditorHeaderProps {
 	title: string;
 	saveStatus: SaveStatus;
 	backHref: string;
+	/** Copy only ("Quest title" / "Quiz title"); default quest. */
+	product?: DeckProduct;
 	canPresent: boolean;
 	presenting?: boolean;
 	onTitleChange(title: string): void;
@@ -53,6 +56,7 @@ export function EditorHeader({
 	title,
 	saveStatus,
 	backHref,
+	product = "quest",
 	canPresent,
 	presenting,
 	onTitleChange,
@@ -62,12 +66,13 @@ export function EditorHeader({
 	onOpenSettings,
 	onPresent,
 }: EditorHeaderProps) {
+	const copy = productCopy(product);
 	return (
 		<header className="flex h-16 shrink-0 items-center gap-3 border-b border-stroke bg-white px-3 dark:border-stroke-dark dark:bg-gray-dark">
 			<Link
 				href={backHref}
 				className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-dark transition hover:bg-gray-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:text-white dark:hover:bg-dark-3"
-				aria-label="Back to my quests"
+				aria-label={`Back to my ${copy.plural}`}
 			>
 				<ArrowLeft className="h-5 w-5" aria-hidden />
 			</Link>
@@ -81,8 +86,8 @@ export function EditorHeader({
 					onKeyDown={(event) => {
 						if (event.key === "Enter") event.currentTarget.blur();
 					}}
-					aria-label="Quest title"
-					placeholder="Untitled quest"
+					aria-label={`${copy.Noun} title`}
+					placeholder={`Untitled ${copy.noun}`}
 					className="min-h-11 w-full min-w-0 max-w-md truncate rounded-lg border border-transparent bg-transparent px-2 text-base font-semibold text-dark outline-none transition hover:border-stroke focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 dark:text-white dark:hover:border-stroke-dark"
 				/>
 				<SaveIndicator status={saveStatus} onRetry={onRetrySave} />
@@ -97,7 +102,7 @@ export function EditorHeader({
 				<button type="button" onClick={onOpenSettings} className={secondaryButton}>
 					<Settings2 className="h-4 w-4" aria-hidden />
 					<span className="hidden lg:inline">Settings</span>
-					<span className="sr-only lg:hidden">Quest settings</span>
+					<span className="sr-only lg:hidden">{copy.Noun} settings</span>
 				</button>
 				<button
 					type="button"

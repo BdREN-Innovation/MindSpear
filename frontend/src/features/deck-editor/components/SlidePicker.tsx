@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { DeckProduct, SlideTypeKey } from "@/features/deck/types";
-import { slideTypesByCategory, type SlideTypeEntry } from "../slideRegistry";
+import { slideCategoryLabel, slideTypesByCategory, type SlideTypeEntry } from "../slideRegistry";
 
 export interface SlidePickerProps {
 	open: boolean;
@@ -37,11 +37,30 @@ function TypeCard({ entry, onPick, disabled }: { entry: SlideTypeEntry; onPick(t
 	);
 }
 
-/** "New slide": every type the product offers, grouped Interactive / Content (plan §5.3). */
+interface PickerSection {
+	id: string;
+	title: string;
+	entries: SlideTypeEntry[];
+}
+
+/**
+ * "New slide": every type the product offers (slideTypesForProduct), grouped
+ * (plan §5.3). Quest: Interactive (polls + interactive) / Content. Quiz: Quiz
+ * questions (the scored types) / Interactive (spinner, leaderboard) / Content.
+ */
 export function SlidePicker({ open, product, onClose, onPick, onGenerate, busy }: SlidePickerProps) {
 	const groups = slideTypesByCategory(product);
-	const interactive = [...groups.poll, ...groups.interactive];
-	const content = groups.content;
+	const sections: PickerSection[] =
+		product === "quiz"
+			? [
+					{ id: "slide-picker-questions", title: slideCategoryLabel("poll", product), entries: groups.poll },
+					{ id: "slide-picker-interactive", title: slideCategoryLabel("interactive", product), entries: groups.interactive },
+					{ id: "slide-picker-content", title: slideCategoryLabel("content", product), entries: groups.content },
+				]
+			: [
+					{ id: "slide-picker-interactive", title: "Interactive", entries: [...groups.poll, ...groups.interactive] },
+					{ id: "slide-picker-content", title: "Content", entries: groups.content },
+				];
 
 	return (
 		<Modal title="Add a slide" open={open} onClose={onClose} size="lg" destroyOnClose>
@@ -62,33 +81,28 @@ export function SlidePicker({ open, product, onClose, onPick, onGenerate, busy }
 						<span>
 							<span className="block text-sm font-semibold text-dark dark:text-white">Generate from a document</span>
 							<span className="mt-0.5 block text-xs leading-snug text-dark-5 dark:text-dark-6">
-								Pick a PDF, Word or PowerPoint file from My Files and let AI write poll, word cloud and open-ended slides. They are added after the current slide.
+								{product === "quiz"
+									? "Pick a PDF, Word or PowerPoint file from My Files and let AI write scored quiz questions with their answers. They are added after the current slide."
+									: "Pick a PDF, Word or PowerPoint file from My Files and let AI write poll, word cloud and open-ended slides. They are added after the current slide."}
 							</span>
 						</span>
 					</button>
 				) : null}
 
-				<section aria-labelledby="slide-picker-interactive">
-					<h3 id="slide-picker-interactive" className="mb-2 text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-						Interactive
-					</h3>
-					<ul className="grid gap-2 sm:grid-cols-2">
-						{interactive.map((entry) => (
-							<TypeCard key={entry.key} entry={entry} onPick={onPick} disabled={busy} />
-						))}
-					</ul>
-				</section>
-
-				<section aria-labelledby="slide-picker-content">
-					<h3 id="slide-picker-content" className="mb-2 text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
-						Content
-					</h3>
-					<ul className="grid gap-2 sm:grid-cols-2">
-						{content.map((entry) => (
-							<TypeCard key={entry.key} entry={entry} onPick={onPick} disabled={busy} />
-						))}
-					</ul>
-				</section>
+				{sections
+					.filter((section) => section.entries.length > 0)
+					.map((section) => (
+						<section key={section.id} aria-labelledby={section.id}>
+							<h3 id={section.id} className="mb-2 text-xs font-semibold uppercase tracking-wide text-dark-5 dark:text-dark-6">
+								{section.title}
+							</h3>
+							<ul className="grid gap-2 sm:grid-cols-2">
+								{section.entries.map((entry) => (
+									<TypeCard key={entry.key} entry={entry} onPick={onPick} disabled={busy} />
+								))}
+							</ul>
+						</section>
+					))}
 			</div>
 		</Modal>
 	);

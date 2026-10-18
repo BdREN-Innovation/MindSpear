@@ -84,11 +84,12 @@ export const updateQuizImages = (
     imageId?: number;
   }>
 ) => {
+  // A key that is present is applied even when undefined: that is how "remove image" clears it.
   const updateItem = (item: QuizItem) => {
-    if (action.payload.imageUrl !== undefined) {
+    if ("imageUrl" in action.payload) {
       item.source_content_url = action.payload.imageUrl;
     }
-    if (action.payload.imageId !== undefined) {
+    if ("imageId" in action.payload) {
       item.source_image_id = action.payload.imageId;
     }
   };

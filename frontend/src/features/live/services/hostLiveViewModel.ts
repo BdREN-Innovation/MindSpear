@@ -216,7 +216,11 @@ export function buildHostLiveViewModel(
 		0
 	);
 	const responseTotal = Math.round(
-		textAnswers.length > 0 ? textAnswers.length : numericTotal
+		textAnswers.length > 0
+			? textAnswers.length
+			: result && "total" in result && result.total
+				? result.total
+				: numericTotal
 	);
 	const isResponseDriven = isResponseDrivenTaskType(taskType);
 

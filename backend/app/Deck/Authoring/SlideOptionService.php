@@ -5,6 +5,7 @@ namespace App\Deck\Authoring;
 use App\Deck\Exceptions\DeckException;
 use App\Deck\Http\DeckValidation;
 use App\Deck\Support\OptionLimits;
+use App\Models\Deck\Deck;
 use App\Models\Deck\Slide;
 use App\Models\Deck\SlideOption;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,12 @@ class SlideOptionService
 {
     public function __construct(private readonly SlideInput $input) {}
 
-    /** Appends an option at the end (422 `options` when the type has none or the cap is reached). */
+    /**
+     * Appends an option at the end (422 `options` when the type has none or
+     * the cap is reached). Quiz: also `is_correct` (the request only lets it
+     * through on quiz routes); the type's validateOptionPayload() hook, if
+     * any, normalises the payload.
+     */
     public function add(Slide $slide, array $data): SlideOption
     {
         $deck = $slide->deck;
@@ -34,9 +40,10 @@ class SlideOptionService
         }
 
         $label = $this->input->label($data['label'] ?? null);
-        $payload = $this->input->payload($data['payload'] ?? null);
+        $payload = $this->input->payload($data['payload'] ?? null, $type);
+        $isCorrect = $this->isCorrect($deck, $data);
 
-        return DB::transaction(function () use ($slide, $deck, $type, $label, $payload) {
+        return DB::transaction(function () use ($slide, $deck, $type, $label, $payload, $isCorrect) {
             SlidePositions::lock($deck);
 
             $count = $slide->options()->count();
@@ -54,6 +61,7 @@ class SlideOptionService
                 'position' => (int) $slide->options()->max('position') + 1,
                 'label' => $label,
                 'payload' => $payload,
+                'is_correct' => $isCorrect,
             ]);
 
             $slide->touch();
@@ -63,7 +71,10 @@ class SlideOptionService
         });
     }
 
-    /** label and/or payload; the slide must still fit its slide.changed broadcast (422 on the changed field). */
+    /**
+     * label and/or payload (Quiz: and is_correct); the slide must still fit
+     * its slide.changed broadcast (422 on the changed field).
+     */
     public function update(SlideOption $option, array $data): SlideOption
     {
         $slide = $option->slide;
@@ -74,7 +85,11 @@ class SlideOptionService
         }
 
         if (array_key_exists('payload', $data)) {
-            $changes['payload'] = $this->input->payload($data['payload']);
+            $changes['payload'] = $this->input->payload($data['payload'], $this->input->typeOf($slide, $slide->deck->product));
+        }
+
+        if (array_key_exists('is_correct', $data)) {
+            $changes['is_correct'] = $this->isCorrect($slide->deck, $data);
         }
 
         if ($changes === []) {
@@ -151,6 +166,20 @@ class SlideOptionService
             $slide->touch();
             $slide->deck->touch();
         });
+    }
+
+    /** `is_correct` from $data: quiz decks only (422 elsewhere); null when absent. */
+    private function isCorrect(Deck $deck, array $data): ?bool
+    {
+        if (! array_key_exists('is_correct', $data)) {
+            return null;
+        }
+
+        if ($deck->product !== Deck::PRODUCT_QUIZ) {
+            DeckValidation::fail(['is_correct' => 'Correct answers are only available on quiz slides.']);
+        }
+
+        return $this->input->isCorrect($data['is_correct']);
     }
 
     /** Removes the option and closes the gap (422 `options` below the type's minimum). */

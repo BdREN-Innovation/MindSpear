@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "react-toastify";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import {
@@ -16,7 +16,7 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { cn } from "@/lib/utils";
 import { toDeckApiError } from "@/features/deck/api/errors";
-import { DECK_LIMITS, type Slide, type SlideOption } from "@/features/deck/types";
+import { DECK_LIMITS, type OptionInput, type Slide, type SlideOption } from "@/features/deck/types";
 import type { OptionsApi } from "../types";
 import { CharCount } from "./fields";
 import { useDebouncedValue } from "./hooks";
@@ -52,6 +52,14 @@ export interface OptionListEditorProps {
 	debounceMs?: number;
 	/** Show 1, 2, 3 before each row (ranking / numbered lists). */
 	numbered?: boolean;
+	/** Optional control at the start of each row, e.g. the quiz "correct answer" marker. */
+	renderRowStart?: (option: SlideOption, index: number) => ReactNode;
+	/** Optional controls under each row's label, e.g. a category select or a wheel weight. */
+	renderRowDetails?: (option: SlideOption, index: number) => ReactNode;
+	/** Body of a new option (default `{}`), e.g. a quiz option payload the type requires. */
+	newOptionInput?: () => OptionInput;
+	/** A line under the list heading. */
+	hint?: ReactNode;
 }
 
 function capitalise(text: string): string {
@@ -72,6 +80,10 @@ export function OptionListEditor({
 	maxLabelLength = DECK_LIMITS.maxOptionLabel,
 	debounceMs = 500,
 	numbered = false,
+	renderRowStart,
+	renderRowDetails,
+	newOptionInput,
+	hint,
 }: OptionListEditorProps) {
 	const serverOrder = useMemo(() => slide.options.map((option) => option.id), [slide.options]);
 	const [pendingOrder, setPendingOrder] = useState<number[] | null>(null);
@@ -98,7 +110,7 @@ export function OptionListEditor({
 		setAdding(true);
 		setListError(null);
 		try {
-			const option = await api.add({});
+			const option = await api.add(newOptionInput?.() ?? {});
 			setFocusId(option.id);
 		} catch (reason) {
 			const error = toDeckApiError(reason);
@@ -159,6 +171,7 @@ export function OptionListEditor({
 					{count} / {max}
 				</span>
 			</div>
+			{hint ? <p className="-mt-1 text-xs text-dark-5 dark:text-dark-6">{hint}</p> : null}
 
 			<DndContext
 				sensors={sensors}
@@ -187,6 +200,8 @@ export function OptionListEditor({
 									debounceMs={debounceMs}
 									allowImages={allowImages}
 									numbered={numbered}
+									start={renderRowStart?.(option, index)}
+									details={renderRowDetails?.(option, index)}
 									disabled={disabled}
 									canRemove={canRemove}
 									min={min}
@@ -240,6 +255,8 @@ interface OptionRowProps {
 	debounceMs: number;
 	allowImages: boolean;
 	numbered: boolean;
+	start?: ReactNode;
+	details?: ReactNode;
 	disabled: boolean;
 	canRemove: boolean;
 	min: number;
@@ -261,6 +278,8 @@ function OptionRow({
 	debounceMs,
 	allowImages,
 	numbered,
+	start,
+	details,
 	disabled,
 	canRemove,
 	min,
@@ -323,6 +342,7 @@ function OptionRow({
 					<GripVertical className="h-4 w-4" aria-hidden />
 				</button>
 				{numbered ? <span className="w-5 shrink-0 text-right text-sm tabular-nums text-dark-5">{index + 1}.</span> : null}
+				{start}
 				{allowImages ? (
 					<ImageSlot
 						imageUrl={option.image?.url}
@@ -384,6 +404,7 @@ function OptionRow({
 					)}
 				</button>
 			</div>
+			{details ? <div className="flex flex-wrap items-center gap-2 pl-10">{details}</div> : null}
 			{error ? (
 				<p id={errorId} role="alert" className="pl-10 text-xs font-medium text-[#B42318] dark:text-red-light">
 					{error}

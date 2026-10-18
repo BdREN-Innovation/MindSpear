@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '@/stores/store';
 import QuizCreatorPreview from '@/features/quiz/components/CreateQuiz/QuizCreatorPreview';
@@ -11,9 +11,11 @@ import { AxiosError } from 'axios';
 import { useParams } from "next/navigation";
 import { setQuiz } from "@/features/quiz/store/quizInformationSlice";
 import type { Quiz } from "@/types/types";
-import { PiWarningCircle } from 'react-icons/pi';
+import QuizEmptyState from '@/features/quiz/components/CreateQuiz/QuizEmptyState';
+import UnsupportedQuestion, { EditorLoading } from '@/features/quiz/components/CreateQuiz/UnsupportedQuestion';
 import { transformQuestionData } from '@/utils/quizUtils';
-import { setMultipleSelectedItems } from '@/features/quiz/store/quizItems/quizSlice';
+import { clearHoveredItem, setMultipleSelectedItems, setSelectedItem } from '@/features/quiz/store/quizItems/quizSlice';
+import { store } from '@/stores/store';
 import { toast } from 'react-toastify';
 
 interface QuizItem {
@@ -28,10 +30,27 @@ interface QuizApiResponse {
 function QuizCreator() {
   const params = useParams();
   const dispatch = useDispatch();
-  const hoveredItem = useSelector((state: RootState) => state.quiz.hoveredItem);
   const selectedItem = useSelector((state: RootState) => state.quiz.selectedItem);
+  const items = useSelector((state: RootState) => state.quiz.multypleselectedItem);
+  const quizId = `${params?.quizId ?? ""}`;
+  const quizItems = items.filter((i) => `${i.quiz_id}` === quizId);
+  const [loaded, setLoaded] = useState(false);
+
+  // The selected question of this quiz (hovering a question in the list no longer swaps the editor).
+  const activeItem: QuizItem | null =
+    selectedItem && quizItems.some((i) => `${i.id}` === `${selectedItem.id}`) ? selectedItem : null;
+
+  // Questions but none selected (e.g. the selected one was deleted): open the first one.
+  useEffect(() => {
+    if (loaded && !activeItem && quizItems.length > 0) {
+      const first = [...quizItems].sort((a, b) => (a.position || 0) - (b.position || 0))[0];
+      dispatch(setSelectedItem(first));
+    }
+  }, [loaded, activeItem, quizItems, dispatch]);
+
   const renderPreview = (item: QuizItem | null) => {
-    if (!item) return <h3>Coming Soon</h3>;
+    if (!loaded) return <EditorLoading />;
+    if (!item) return quizItems.length === 0 ? <QuizEmptyState quizId={quizId} /> : null;
     switch (item.key) {
       case 'quiz':
         return <QuizCreatorPreview id={item.id} />;
@@ -42,30 +61,23 @@ function QuizCreator() {
       case 'fillintheblanks':
         return <FillInTheBlanksCreatorPreview id={item.id} />;
       default:
-        return <div className='h-screen bg-[#fff] rounded-[10px] flex flex-col justify-center items-center'>
-          <PiWarningCircle className="text-[60px] text-[#fda14d]" />
-          <h3 className="font-bold text-[#333] pt-[15px]">
-            Please create you question
-          </h3>
-        </div>;
+        return <UnsupportedQuestion />;
     }
   };
-
-  const activeItem = hoveredItem ?? selectedItem;
 
   useEffect(() => {
     const dataFetch = async () => {
       try {
         const response = await axiosInstance.get<QuizApiResponse>(`/quizes/show/${params?.quizId}`);
-        console.log(response?.data?.data?.quiz?.questions, "response?.data?.data");
         const transformedData = transformQuestionData(response?.data?.data?.quiz?.questions);
-        console.log(transformedData, "response?.data?.data");
         dispatch(setMultipleSelectedItems(transformedData));
+        dispatch(clearHoveredItem());
+        // Keep the selection only if it is one of these questions (the store may hold another quiz's), else the first.
+        const current = store.getState().quiz.selectedItem;
+        const keep = current && transformedData.find((item) => item.id === `${current.id}`);
+        dispatch(setSelectedItem(keep ?? transformedData[0] ?? null));
 
         dispatch(setQuiz(response?.data?.data));
-
-
-
       } catch (error) {
         const axiosError = error as AxiosError<{ message?: string }>;
 
@@ -77,7 +89,7 @@ function QuizCreator() {
           toast.error('Unexpected error occurred. Please try again.');
         }
       } finally {
-
+        setLoaded(true);
       }
     }
     dataFetch()

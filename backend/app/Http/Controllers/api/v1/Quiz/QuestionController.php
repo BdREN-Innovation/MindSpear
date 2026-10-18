@@ -9,6 +9,7 @@ use App\Http\Requests\Quiz\Question\StoreRequest;
 use App\Http\Requests\Quiz\Question\UpdateMultipleRequest;
 use App\Http\Requests\Quiz\Question\UpdateRequest;
 use App\Models\Quiz\Question;
+use App\Models\Quiz\Quiz;
 use App\Models\Quiz\BankQuestion;
 use App\Models\Quiz\QuestionBankCategory;
 use Exception;
@@ -89,6 +90,11 @@ class QuestionController extends ApiBaseController
         DB::beginTransaction();
         // Validate the request data
         $validatedData = $request->validated();
+        if (! $this->ownsQuizzes([$validatedData['quiz_id'] ?? null])) {
+            DB::rollBack();
+
+            return $this->forbiddenResponse([], __('You do not have permission to add questions to this quiz.'));
+        }
         try {
             // Ensure owner
             $validatedData['owner_id'] = auth()->id();
@@ -124,12 +130,16 @@ class QuestionController extends ApiBaseController
      */
     public function storeMultiple(StoreMultipleRequest $request)
     {
+        if (! $this->ownsQuizzes(collect($request->input('questions', []))->pluck('quiz_id'))) {
+            return $this->forbiddenResponse([], __('You do not have permission to add questions to this quiz.'));
+        }
         DB::beginTransaction();
         try {
             // Create multiple questions
             $questions = [];
 
             foreach ($request->input('questions') as $questionData) {
+                $questionData['owner_id'] = auth()->id();
                 $uploadedFile = $request->file('source_content_url');
 
                 // Use the trait method to upload file
@@ -190,18 +200,14 @@ class QuestionController extends ApiBaseController
                 return $this->forbiddenResponse([], __('Quiz questions are immutable. Edit a bank copy instead.'));
             }
 
-            // Owner-only guard for bank items
-            if (is_null($question->quiz_id) && $question->owner_id !== auth()->id()) {
-                return $this->forbiddenResponse([], __('You do not have permission to modify this bank question.'));
+            // Only the quiz owner may change its questions (they also can't be moved into another's quiz).
+            if (! $this->ownsQuestion($question) || ! $this->ownsQuizzes([$validatedData['quiz_id'] ?? null])) {
+                DB::rollBack();
+
+                return $this->forbiddenResponse([], __('You do not have permission to modify this question.'));
             }
 
-            $filePath = $question->getRawOriginal('source_content_url');
-
-            // Check if the file exists and remove
-            if ($filePath && $this->checkExistsFile($filePath)) {
-                $this->removeFile($filePath);
-            }
-
+            // The old image stays in the owner's My Files library.
             $uploadedFile = $request->file('source_content_url');
 
             // Use the trait method to upload file
@@ -230,10 +236,45 @@ class QuestionController extends ApiBaseController
     }
 
     /**
+     * A quiz question belongs to whoever owns its quiz; a bank question to its owner.
+     */
+    private function ownsQuestion(Question $question): bool
+    {
+        $userId = (int) auth()->id();
+
+        return $question->quiz_id !== null
+            ? (int) Quiz::whereKey($question->quiz_id)->value('user_id') === $userId
+            : (int) $question->owner_id === $userId;
+    }
+
+    /**
+     * Whether every given quiz id (nulls ignored) is one of the caller's own quizzes.
+     */
+    private function ownsQuizzes(iterable $quizIds): bool
+    {
+        $ids = collect($quizIds)->filter()->map(fn ($id) => (int) $id)->unique();
+
+        return $ids->isEmpty()
+            || Quiz::whereIn('id', $ids)->where('user_id', auth()->id())->count() === $ids->count();
+    }
+
+    /**
      * Update multiple resources in storage.
      */
     public function updateMultiple(UpdateMultipleRequest $request): JsonResponse
     {
+        // Only questions of the caller's own quizzes (or their own bank items) may
+        // be changed, and none may be moved into someone else's quiz. Checked for
+        // every row before anything is written, so a refused request changes nothing.
+        $rows = collect($request->input('questions', []));
+        $existing = Question::whereIn('id', $rows->pluck('id')->filter()->all())->get();
+        if ($existing->contains(fn (Question $question) => ! $this->ownsQuestion($question))) {
+            return $this->forbiddenResponse([], __('You do not have permission to modify one or more of these questions.'));
+        }
+        if (! $this->ownsQuizzes($rows->pluck('quiz_id'))) {
+            return $this->forbiddenResponse([], __('You do not have permission to move questions into that quiz.'));
+        }
+
         DB::beginTransaction();
         try {
             // Update multiple questions
@@ -252,13 +293,8 @@ class QuestionController extends ApiBaseController
                 //     return $this->forbiddenResponse([], __('One or more quiz questions are immutable. Edit a bank copy instead.'));
                 // }
 
-                $filePath = $question->getRawOriginal('source_content_url');
-
-                // Check if the file exists and remove
-                if ($filePath && $this->checkExistsFile($filePath)) {
-                    $this->removeFile($filePath);
-                }
-
+                // The old image is left alone: question images live in the owner's
+                // My Files library and may be used by other questions.
                 $uploadedFile = $request->file('source_content_url');
 
                 // Use the trait method to upload file
@@ -271,6 +307,16 @@ class QuestionController extends ApiBaseController
                 $question->update($questionData);
                 $questions[] = $question;
             }
+
+            // "Add question" creates a blank row ("." with no options) straight away. The
+            // editor saves every question it shows, so a blank row of these quizzes that
+            // isn't in this save was abandoned: remove it so it isn't counted or played.
+            $savedIds = collect($questions)->pluck('id');
+            Question::whereIn('quiz_id', collect($questions)->pluck('quiz_id')->filter()->unique())
+                ->whereNotIn('id', $savedIds)
+                ->blank()
+                ->delete();
+
             // Commit the transaction
             DB::commit();
 
@@ -305,16 +351,11 @@ class QuestionController extends ApiBaseController
             //     return $this->forbiddenResponse([], __('Quiz questions cannot be deleted.'));
             // }
 
-            if (is_null($question->quiz_id) && $question->owner_id !== auth()->id()) {
-                return $this->forbiddenResponse([], __('You do not have permission to delete this bank question.'));
+            if (! $this->ownsQuestion($question)) {
+                return $this->forbiddenResponse([], __('You do not have permission to delete this question.'));
             }
 
-            $filePath = $question->getRawOriginal('source_content_url');
-
-            // Check if the file exists and remove
-            if ($filePath && $this->checkExistsFile($filePath)) {
-                $this->removeFile($filePath);
-            }
+            // Its image stays in the owner's My Files library (other questions may use it).
 
             // Soft delete the question
             $question->delete();
@@ -357,17 +398,12 @@ class QuestionController extends ApiBaseController
 
                 //     return $this->forbiddenResponse([], __('One or more quiz questions cannot be deleted.'));
                 // }
-                if (is_null($question->quiz_id) && $question->owner_id !== auth()->id()) {
+                if (! $this->ownsQuestion($question)) {
                     DB::rollBack();
 
-                    return $this->forbiddenResponse([], __('You do not have permission to delete one or more bank questions.'));
+                    return $this->forbiddenResponse([], __('You do not have permission to delete one or more of these questions.'));
                 }
-                $filePath = $question->getRawOriginal('source_content_url');
-
-                // Check if the file exists and remove
-                if ($filePath && $this->checkExistsFile($filePath)) {
-                    $this->removeFile($filePath);
-                }
+                // Images stay in the owner's My Files library.
             }
 
             Question::whereIn('id', $questionIds)->delete();

@@ -210,10 +210,12 @@ it('lets everyone author and host while QUEST_V2_DEFAULT_ENABLED is on', functio
         ->and(UserResource::questV2Summary(DeckFactory::newOwner()))->toBe('Enabled');
 });
 
-it('reads the default from config and has no flag for products without one', function () {
+it('reads the default from config; Quiz v2 has its own flag (users.quiz_v2_enabled)', function () {
+    config(['deck.quiz_v2_default_enabled' => false]);
+
     expect(config('deck.quest_v2_default_enabled'))->toBeFalse()
-        ->and(DeckFeature::enabled(null, Deck::PRODUCT_QUIZ))->toBeTrue()
-        ->and(DeckFeature::enabled(DeckFactory::newOwner(false), Deck::PRODUCT_QUIZ))->toBeTrue()
+        ->and(DeckFeature::enabled(null, Deck::PRODUCT_QUIZ))->toBeFalse()
+        ->and(DeckFeature::enabled(DeckFactory::newOwner(false), Deck::PRODUCT_QUIZ))->toBeFalse()
         ->and(DeckFeature::enabled(DeckFactory::newOwner(null)->refresh(), Deck::PRODUCT_QUEST))->toBeFalse()
         ->and(fn () => DeckFeature::assertEnabled(null, Deck::PRODUCT_QUEST))->toThrow(App\Deck\Exceptions\DeckException::class, 'Quest v2 is not enabled for your account.');
 });

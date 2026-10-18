@@ -270,7 +270,7 @@ const QuizEditPages: React.FC<QuizCreatorPreviewProps> = () => {
 										<span className="text-[12px] text-[#858585] ">
 											<span>
 												{" "}
-												Strat Date :{" "}
+												Start Date :{" "}
 												{
 													quinInformationData?.quiz
 														?.open_datetime_local
@@ -281,7 +281,7 @@ const QuizEditPages: React.FC<QuizCreatorPreviewProps> = () => {
 												End Date :{" "}
 												{
 													quinInformationData?.quiz
-														?.open_datetime_local
+														?.close_datetime_local
 												}{" "}
 											</span>
 										</span>

@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Modal } from "@/components/ui";
 // import { QuizItem, FinalData, TransformedQuestion } from '@/types/types';
-import { MdDataSaverOn, MdError } from "react-icons/md";
+import { MdDataSaverOn } from "react-icons/md";
+import { AlertTriangle, Pencil, Save } from "lucide-react";
 import Image from "next/image";
 import { useParams, useRouter, usePathname } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
@@ -9,14 +10,19 @@ import { RootState } from "@/stores/store";
 import axiosInstance from "@/utils/axiosInstance";
 import { toast } from "react-toastify";
 import { AxiosError } from "axios";
-import { FaEye } from "react-icons/fa6";
-import { SiKdenlive } from "react-icons/si";
 // import { useRouter } from 'next/router';
 import { persistor } from "@/stores/store";
 import { convertDataToQuestions } from "@/utils/quizUtils";
 import { Quiz } from "@/types/types";
 import { clearQuiz } from "@/features/quiz/store/quizInformationSlice";
-import { IoSaveSharp } from "react-icons/io5";
+import { setSelectedItem } from "@/features/quiz/store/quizItems/quizSlice";
+const TYPE_ICONS: Record<string, string> = {
+	quiz: "/images/icons/Icon-01.svg",
+	truefalse: "/images/icons/Icon-02.svg",
+	sortanswer: "/images/icons/Icon-03.svg",
+	fillintheblanks: "/images/icons/Icon-04.svg",
+};
+
 interface QuizState {
 	quiz: Quiz;
 }
@@ -55,6 +61,10 @@ function QuizeSave() {
 		hasError: boolean;
 	};
 
+	// The title is the editor's HTML: an emptied editor can leave markup such as "<br>".
+	const hasText = (html?: string) =>
+		!!html?.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+
 	function validateQuestions(data: typeof quesentList): ValidationResult[] {
 		console.log(quesentList, "datadatadatadatadatadata");
 
@@ -73,32 +83,40 @@ function QuizeSave() {
 			);
 
 			if (item.key === "quiz" || item.key === "fillintheblanks") {
-				if (!item.title?.trim()) {
-					messages.push("Title is required.");
+				if (!hasText(item.title)) {
+					messages.push("Add the question text.");
 				}
 				if (filledOptions.length < 2) {
-					messages.push("At least 2 options must have text.");
+					messages.push("Fill in at least 2 answers.");
 				}
 				if (selectedOptions.length === 0) {
-					messages.push("At least 1 option must be selected.");
+					messages.push("Mark the correct answer.");
 				}
 				if (!item.isMultipleSelection && selectedOptions.length > 1) {
-					messages.push("Only 1 option can be selected.");
+					messages.push("Mark only one correct answer, or turn on Multiple correct answers.");
+				}
+				// Players see the blank where the question has four or more underscores.
+				if (item.key === "fillintheblanks" && hasText(item.title) && !/_{4,}/.test(item.title ?? "")) {
+					messages.push("Add the blank: type ____ (four underscores) where the missing word goes.");
 				}
 			}
 
 			if (item.key === "truefalse") {
-				if (!item.title?.trim()) {
-					messages.push("Title is required.");
+				if (!hasText(item.title)) {
+					messages.push("Add the question text.");
 				}
 				if (selectedOptions.length !== 1) {
-					messages.push("Exactly 1 option must be selected.");
+					messages.push("Choose True or False as the correct answer.");
 				}
 			}
 
 			if (item.key === "sortanswer") {
-				if (!item.title?.trim()) {
-					messages.push("Title is required.");
+				if (!hasText(item.title)) {
+					messages.push("Add the question text.");
+				}
+				// Without an accepted answer nobody can ever get it right.
+				if (filledOptions.length === 0) {
+					messages.push("Add at least one accepted answer.");
 				}
 			}
 
@@ -118,8 +136,26 @@ function QuizeSave() {
 	// console.log(transformed, "validationResultsvalidationResults");
 
 	const isFormValid = validationResults.every((result) => !result.hasError);
+	const problems = validationResults
+		.filter((result) => result.hasError)
+		.map((result) => ({
+			...result,
+			position: multypleselectedItem.find((item) => `${item.id}` === `${result.id}`)?.position ?? "",
+		}));
+	const hasQuizName = !!quizresponse?.title?.trim() && quizresponse?.title !== "My Quiz";
+	const totalPoints = multypleselectedItem.reduce((sum, item) => sum + (Number(item.points) || 1), 0);
+	const [saving, setSaving] = useState(false);
+
+	/** "Fix": close the dialog on the question that needs it (the buttons did nothing). */
+	const fixQuestion = (id: string) => {
+		const item = multypleselectedItem.find((question) => `${question.id}` === `${id}`);
+		if (item) dispatch(setSelectedItem(item));
+		setIsModalOpen(false);
+	};
 
 	const onSubmit = async () => {
+		if (saving) return;
+		setSaving(true);
 		try {
 			const response = await axiosInstance.post(
 				`/quiz/questions/${
@@ -147,7 +183,7 @@ function QuizeSave() {
 					axiosError.response.data,
 				);
 				toast.error(
-					axiosError.response.data?.message || "Verification failed.",
+					axiosError.response.data?.message || "The quiz could not be saved. Please try again.",
 				);
 			} else {
 				console.error("Unexpected error:", axiosError.message);
@@ -156,6 +192,8 @@ function QuizeSave() {
 						"Unexpected error occurred. Please try again.",
 				);
 			}
+		} finally {
+			setSaving(false);
 		}
 	};
 
@@ -190,172 +228,100 @@ function QuizeSave() {
 				""
 			)}
 
-			{/* isFormValid */}
-			<Modal
-				// title={`${
-				// 	isFormValid
-				// 		? "This Eduquize be played"
-				// 		: "This Eduquize can&apos;t be played"
-				// }  `}
-				title={""}
-				open={isModalOpen}
-				onClose={() => setIsModalOpen(false)}
-			>
-				{isFormValid ? (
-					<div className="">
-						{`${quizresponse?.title}` === "My Quiz" ? (
-							<>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center">
-										<Image
-											className="border border-[#2222] rounded-[10px]"
-											src="/images/placeholder.jpg"
-											width={120}
-											height={120}
-											alt=""
-										/>
-										<div className="ml-[10px]">
-											<h4 className="font-bold">
-												{" "}
-												Please Update Your Quiz
-												Name{" "}
-											</h4>
-										</div>
+			<Modal title="" open={isModalOpen} onClose={() => setIsModalOpen(false)}>
+				{!isFormValid ? (
+					<div>
+						<div className="flex items-start gap-3">
+							<span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-red-50">
+								<AlertTriangle className="h-5 w-5 text-red-500" aria-hidden />
+							</span>
+							<div>
+								<h3 className="text-lg font-bold text-[#222]">
+									{problems.length === 1
+										? "1 question needs attention"
+										: `${problems.length} questions need attention`}
+								</h3>
+								<p className="text-sm text-[#666]">
+									Fix these before {isQuizEdit ? "updating" : "saving"} your quiz.
+								</p>
+							</div>
+						</div>
+						<ul className="mt-4 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+							{problems.map((result) => (
+								<li
+									key={result.id}
+									className="flex items-center gap-3 rounded-lg border border-[#eee] p-3"
+								>
+									{TYPE_ICONS[result.key] && (
+										<Image src={TYPE_ICONS[result.key]} alt="" width={32} height={32} />
+									)}
+									<div className="min-w-0 flex-1">
+										<p className="text-xs font-semibold uppercase tracking-wide text-[#999]">
+											Question {result.position}
+										</p>
+										<ul className="text-sm text-red-600">
+											{result.messages.map((msg) => (
+												<li key={msg}>{msg}</li>
+											))}
+										</ul>
 									</div>
-
-									<div className="flex flex-col">
-										<button className="bg-red-500 text-white px-3 py-1 rounded">
-											Fix
-										</button>
-									</div>
-								</div>
-							</>
-						) : (
-							<>
-								<div className="flex flex-col justify-center items-center">
-									<h3 className="text-[18px] md:text-[25px]  py-[10px] font-bold w-full border border-[#2222] text-center rounded-[10px] mt-[10px] shadow-2">
-										{" "}
-										Are you sure you want to{" "}
-										{isQuizEdit ? "update" : "save"} the
-										quiz{" "}
-									</h3>
-									<IoSaveSharp className="text-[100px] text-primary my-[30px]" />
-								</div>
-								<div className="hidden">
-									<div className="flex cursor-pointer items-center gap-4 bg-[#f2f1f0] shadow-1 p-3 rounded-md mb-[15px]">
-										<FaEye className="text-[30px]" />
-										<div className=" flex flex-col ">
-											<h5 className="text-[17px] font-bold">
-												{" "}
-												Preview{" "}
-											</h5>
-											<p className="text-[#858585]">
-												{" "}
-												Launch a trial session for this
-												MindSpear{" "}
-											</p>
-										</div>
-									</div>
-									<div className="flex cursor-pointer items-center gap-4 bg-[#f2f1f0] shadow-1 p-3 rounded-md">
-										<SiKdenlive className="text-[30px]" />
-										<div className=" flex flex-col ">
-											<h5 className="text-[17px] font-bold">
-												{" "}
-												Host live{" "}
-											</h5>
-											<p className="text-[#858585]">
-												{" "}
-												Display from a big screen{" "}
-											</p>
-										</div>
-									</div>
-								</div>
-							</>
-						)}
+									<button
+										type="button"
+										onClick={() => fixQuestion(result.id)}
+										className="flex-shrink-0 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+									>
+										Fix
+									</button>
+								</li>
+							))}
+						</ul>
+					</div>
+				) : !hasQuizName ? (
+					<div className="text-center">
+						<span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#fff3e8]">
+							<Pencil className="h-6 w-6 text-primary" aria-hidden />
+						</span>
+						<h3 className="mt-3 text-lg font-bold text-[#222]">Give your quiz a name first</h3>
+						<p className="mx-auto mt-1 max-w-[380px] text-sm text-[#666]">
+							Click <span className="font-semibold">Untitled quiz</span> at the top left to name it, then
+							{isQuizEdit ? " update" : " save"} again.
+						</p>
 					</div>
 				) : (
-					<div className="h-[300px] overflow-y-auto  scrollbar-hidden">
-						{validationResults.map((result) => (
-							<div
-								key={result.id}
-								className="shadow mt-[10px] p-[10px]"
-							>
-								<div className="flex items-center justify-between">
-									<div className="flex items-center">
-										<Image
-											src="/images/placeholder.jpg"
-											width={120}
-											height={120}
-											alt=""
-										/>
-										<div className="ml-[10px]">
-											<h4 className="font-medium">
-												{result.key.toUpperCase()}
-											</h4>
-											<h4 className="font-bold">
-												{result.messages.length > 0
-													? ""
-													: result.title}
-											</h4>
-											{result.messages.length > 0 && (
-												<h4 className="text-red-500">
-													{result.messages[0]}
-												</h4>
-											)}
-										</div>
-									</div>
-
-									<div className="flex flex-col">
-										{result.hasError ? (
-											<button className="bg-red-500 text-white px-3 py-1 rounded">
-												Fix
-											</button>
-										) : (
-											<button className="bg-green-500 text-white px-3 py-1 rounded">
-												Done
-											</button>
-										)}
-									</div>
-								</div>
-
-								{result.hasError && (
-									<div className="flex items-center mt-2">
-										<MdError className="text-[30px] mr-[10px] text-[#bc5eb3]" />
-										<div>
-											{result.messages.map(
-												(msg, index) => (
-													<p
-														key={index}
-														className="text-sm text-red-600 font-medium"
-													>
-														{msg}
-													</p>
-												),
-											)}
-										</div>
-									</div>
-								)}
-							</div>
-						))}
+					<div className="text-center">
+						<span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#fff3e8]">
+							<Save className="h-6 w-6 text-primary" aria-hidden />
+						</span>
+						<h3 className="mt-3 text-lg font-bold text-[#222]">
+							{isQuizEdit ? "Update" : "Save"} &ldquo;{quizresponse?.title}&rdquo;?
+						</h3>
+						<p className="mt-1 text-sm text-[#666]">
+							{multypleselectedItem.length} question{multypleselectedItem.length === 1 ? "" : "s"} ·{" "}
+							{totalPoints} point{totalPoints === 1 ? "" : "s"}
+						</p>
 					</div>
 				)}
 
-				<div className="flex justify-center items-center mt-[20px] gap-4 ">
+				<div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
 					<button
+						type="button"
 						onClick={() => setIsModalOpen(false)}
-						className="flex text-[.875rem]  items-center bg-[#bc5eb3] text-[#fff] hover:text-blue-600 font-bold py-3 px-4 w-full justify-center rounded-md"
+						className="w-full rounded-lg border border-[#e5e5e5] bg-white px-4 py-2.5 text-sm font-semibold text-[#333] hover:bg-[#fafafa]"
 					>
-						{" "}
-						Back to edit{" "}
+						Keep editing
 					</button>
 
-					{isFormValid && quizresponse?.title !== "My Quiz" && (
+					{isFormValid && hasQuizName && (
 						<button
+							type="button"
 							onClick={() => onSubmit()}
-							className="flex text-[.875rem]  items-center bg-primary text-[#fff] hover:text-blue-600 font-bold py-3 px-4 w-full justify-center rounded-md"
+							disabled={saving}
+							className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
 						>
-							{" "}
-							{isQuizEdit ? "Update" : "Submit"}{" "}
+							{saving && (
+								<span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+							)}
+							{isQuizEdit ? "Update quiz" : "Save quiz"}
 						</button>
 					)}
 				</div>

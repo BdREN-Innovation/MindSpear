@@ -49,6 +49,7 @@ type Task = {
 	updated_at?: string;
 	contant_title?: string;
 	image_url?: string;
+	correct_answers?: string[];
 	layout_id?: string;
 	description: string | null;
 	serial_number: number;
@@ -124,10 +125,12 @@ function normalizeQuize(quizeData: any): Quest {
 	const tasks: Task[] = [...(quizeData.questions ?? [])]
 		.map((q, idx): Task => {
 			const colors = (q.options?.color ?? []).map(String);
-			const rawChoices = (q.options?.choices ?? []).filter(
-				(c: any) => c !== null && c !== undefined
-			);
-			const choices: string[] = rawChoices.map(String);
+			// Only trailing empty answers are dropped: an empty one in the middle keeps its place,
+			// so bar i still counts the answer players picked at position i.
+			const rawChoices: any[] = [...(q.options?.choices ?? [])];
+			while (rawChoices.length && (rawChoices[rawChoices.length - 1] ?? "") === "") rawChoices.pop();
+			const choices: string[] = rawChoices.map((c: any) => (c === null || c === undefined ? "—" : String(c)));
+			const correct = [q.options?.correct_answer ?? []].flat().map(Number).filter(Number.isInteger);
 			return {
 				id: q.id,
 				quest_id: quizeData.id,
@@ -144,6 +147,13 @@ function normalizeQuize(quizeData: any): Quest {
 					})),
 					time_limit: q.time_limit_seconds ?? 0,
 				},
+				// Shown on the big screen (it was never passed, so question images were missing).
+				image_url: q.source_content_url ?? undefined,
+				// Revealed on the big screen when time is up. Short answers list every accepted one.
+				correct_answers:
+					q.question_type === "sort_answer_choice"
+						? choices
+						: correct.map((i: number) => choices[i]).filter(Boolean),
 				is_required: true,
 				open_datetime: quizeData.open_datetime,
 				close_datetime: quizeData.close_datetime,
@@ -637,8 +647,8 @@ export default function LiveQuiz() {
 		<div
 			className={`relative h-[100vh] ${
 				isFullscreen
-					? "fixed inset-0 bg-white z-50 p-4"
-					: "min-h-screen flex flex-col bg-white p-4"
+					? "fixed inset-0 bg-white z-50 p-4 pb-24"
+					: "min-h-screen flex flex-col bg-white p-4 pb-24"
 			}`}
 		>
 			<HostLiveHeader onClose={() => setEndModalOpen(true)} />
@@ -660,6 +670,8 @@ export default function LiveQuiz() {
 					isFullscreen={isFullscreen}
 					chartType={chartType}
 					viewModel={viewModel}
+					correctAnswers={mode === "quize" ? currentTask?.correct_answers : undefined}
+					itemLabel={mode === "quize" ? "Question" : "Slide"}
 				/>
 			) : (
 				<div className="flex-1 flex items-center justify-center text-gray-500">
@@ -674,6 +686,11 @@ export default function LiveQuiz() {
 					onPrev={handlePrev}
 					onNext={handleNextSlide}
 					onToggleFullscreen={toggleFullscreen}
+					current={currentSlideIndex + 1}
+					total={totalSlides}
+					itemLabel={mode === "quize" ? "Question" : "Slide"}
+					onEnd={() => setEndModalOpen(true)}
+					endLabel={mode === "quize" ? "End quiz" : "End quest"}
 				/>
 			) : (
 				<>
@@ -684,6 +701,11 @@ export default function LiveQuiz() {
 							onPrev={handlePrev}
 							onNext={handleNextWithConfirm}
 							onToggleFullscreen={toggleFullscreen}
+							current={currentSlideIndex + 1}
+							total={totalSlides}
+							itemLabel={mode === "quize" ? "Question" : "Slide"}
+							onEnd={() => setEndModalOpen(true)}
+							endLabel={mode === "quize" ? "End quiz" : "End quest"}
 						/>
 					)}
 				</>
@@ -695,14 +717,23 @@ export default function LiveQuiz() {
 				width={500}
 			>
 				<div className="space-y-3">
+					{/* It always said "last question", also when ending early from the header or End button. */}
 					<p className="text-gray-700 text-[15px] leading-relaxed">
-						You are currently viewing the{" "}
-						<span className="font-medium">last question</span> of
-						this {mode === "quize" ? "quiz" : "quest"}.
+						{currentSlideIndex >= totalSlides - 1 ? (
+							<>
+								You are on the <span className="font-medium">last question</span> of this{" "}
+								{mode === "quize" ? "quiz" : "quest"}.
+							</>
+						) : (
+							<>
+								You are on question {currentSlideIndex + 1} of {totalSlides}. Ending now finishes it
+								for everyone; the remaining questions won&apos;t be asked.
+							</>
+						)}
 					</p>
 
 					<p className="text-gray-700 text-sm font-medium">
-						Do you want to end this {mode === "quize" ? "quiz" : "quest"} now?
+						End this {mode === "quize" ? "quiz" : "quest"} and show the final results?
 					</p>
 
 					<div className="flex justify-end gap-3 pt-3">
@@ -710,7 +741,7 @@ export default function LiveQuiz() {
 							className="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
 							onClick={() => setEndModalOpen(false)}
 						>
-							Continue Quest
+							Keep going
 						</button>
 
 						<button
