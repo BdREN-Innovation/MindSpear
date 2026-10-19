@@ -210,7 +210,7 @@ class LiveSessionController extends ApiBaseController
         DB::transaction(function () use ($session, $task, $validated) {
             $session->update([
                 'current_task_id' => $task->id,
-                'timer_state' => $validated['timer_state'] ?? null,
+                'timer_state' => $this->liveSessions->stampTimer($validated['timer_state'] ?? null),
             ]);
 
             $session->refresh();
@@ -285,7 +285,7 @@ class LiveSessionController extends ApiBaseController
         DB::transaction(function () use ($session, $question, $validated) {
             $session->update([
                 'current_question_id' => $question->id,
-                'timer_state' => $validated['timer_state'] ?? null,
+                'timer_state' => $this->liveSessions->stampTimer($validated['timer_state'] ?? null),
             ]);
 
             $session->refresh();

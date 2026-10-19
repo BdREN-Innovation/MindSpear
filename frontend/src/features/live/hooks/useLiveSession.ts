@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getEcho, bindEchoConnection } from "@/lib/echo";
 import { getSessionState } from "@/features/live/services/liveSessionApi";
+import { withDeadline } from "@/features/live/services/liveTimer";
 import type {
 	AnswerAggregatePayload,
 	HostAnswerPayload,
@@ -249,11 +250,12 @@ export function useLiveSession({
 		setIsSyncing(true);
 
 		try {
-			const nextSnapshot = await getSessionState(
+			const fetched = await getSessionState(
 				module,
 				sessionId,
 				participantToken
 			);
+			const nextSnapshot = { ...fetched, timer_state: withDeadline(fetched.timer_state) };
 			applySnapshot(nextSnapshot);
 			setError(null);
 
@@ -345,7 +347,10 @@ export function useLiveSession({
 					status === "subscribed" || isConnectedStatus(previous.connectionStatus),
 			}));
 		};
-		const rememberPayload = (payload: SessionEventPayload) => {
+		const rememberPayload = (received: SessionEventPayload) => {
+			const payload: SessionEventPayload = received.timer_state
+				? { ...received, timer_state: withDeadline(received.timer_state) }
+				: received;
 			setSnapshot((previous) =>
 				updateSnapshotFromPayload(
 					previous,

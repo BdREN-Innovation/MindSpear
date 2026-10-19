@@ -7,15 +7,15 @@ import GameMode from "./GameMode";
 import QuizMode from "./QuizMode";
 interface LeaderboardProps {
 	scope: "entire" | "slide";
+	/** The quiz is over: the final standings, in either mode (game mode showed its between-questions board). */
+	ended?: boolean;
 }
 
-const Leaderboard: React.FC<LeaderboardProps> = ({ scope }) => {
+const Leaderboard: React.FC<LeaderboardProps> = ({ ended = false }) => {
 	const scopeType = useSelector((state: any) => state?.leaderboard);
-	console.log(scopeType, "scope2222scope2222scope2222");
-	console.log(scope, "scope2222scope2222scope2222");
 	return (
 		<>
-			{scopeType.scope === "slide" ? (
+			{scopeType.scope === "slide" && !ended ? (
 				<GameMode scope={"slide"} />
 			) : (
 				<QuizMode scope={"entire"} sessionData="" />

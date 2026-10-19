@@ -1,23 +1,29 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from "react";
-// import Image from "next/image";
+import React, { useEffect, useMemo, useState } from "react";
 import { GiPodiumWinner } from "react-icons/gi";
-// import HeaderImages from "@/assets/leaderboardHeaderimages.png";
 import "./Leaderboard.css";
-// import { useSelector } from "react-redux";
-// import { RootState } from "@/services/redux/store";
 import axiosInstance from "@/utils/axiosInstance";
 import { AxiosError } from "axios";
-// import { RootState } from "@/services/redux/store";
-// import { selectAllAnswers  } from "@/services/redux/features/ledaerboardAnswersSlice";
 import { useSearchParams, useParams } from "next/navigation";
+import { cn } from "@/lib/utils";
+
 interface LeaderboardProps {
 	scope: "entire" | "slide";
 	sessionData: any;
+	/** The viewing player's attempt: their entry is marked "You" and summarised on top. */
+	highlightParticipantId?: number | string | null;
 }
 
-const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
+const PLACES = ["First", "Second", "Third"];
+const ordinal = (n: number) => {
+	if (n % 100 >= 11 && n % 100 <= 13) return `${n}th`;
+	return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
+};
+const points = (n: unknown) => `${Number(n) || 0} ${Number(n) === 1 ? "point" : "points"}`;
+const shortPoints = (n: unknown) => `${Number(n) || 0} ${Number(n) === 1 ? "pt" : "pts"}`;
+const nameOf = (item: any) => item?.user?.name || item?.anonymous_details?.name || "Unknown player";
 
+const QuizMode: React.FC<LeaderboardProps> = ({ sessionData, highlightParticipantId }) => {
 	const searchParams = useSearchParams();
 	const params = useParams();
 	const quiz_id = searchParams.get("qid");
@@ -26,192 +32,127 @@ const QuizMode: React.FC<LeaderboardProps> = ({scope, sessionData}) => {
 	// as its route id, which the leaderboard API can't use (it answered 500).
 	const sectionId = sessionData || sessionId || (params.id === "quize" ? null : params.id);
 
-	
-	// const answers = useSelector((state: RootState) => state.answers);
-	// const whole = useSelector((s:any) => s);
-
-	const [leaderboardData, setLeaderboardData] = useState([]);
-	// const [chalangeInformation, setChalangeInformation] = useState<any>({});
-
-	// Mock data - replace with your actual leaderboard data
+	const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+	const [sortingMode, setSortingMode] = useState<string>("quiz");
+	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		if (!sectionId) return;
 
-		// if (mode === "quize") {
 		const datafetch = async () => {
+			setLoading(true);
 			try {
 				const response = await axiosInstance.get(
 					`/quiz-leaderboard/session-answered-questions/${sectionId}`
 				);
-				console.log(response?.data?.data, "response?.data?.data?.leaderboardresponse?.data?.data?.leaderboard");
-				
-
-				setLeaderboardData(response?.data?.data?.participantScores);
-				// setChalangeInformation(response?.data?.data?.quiz);
-				console.log(response);
+				setLeaderboardData(response?.data?.data?.participantScores ?? []);
+				setSortingMode(response?.data?.data?.sorting_mode ?? "quiz");
 			} catch (error) {
-				const axiosError = error as AxiosError<{
-					message?: string;
-				}>;
-				if (axiosError.response) {
-					console.error(
-						"Error verifying token:",
-						axiosError.response.data
-					);
-				} else {
-					console.error("Unexpected error:", axiosError.message);
-				}
+				const axiosError = error as AxiosError<{ message?: string }>;
+				console.error("Could not load the leaderboard:", axiosError.response?.data ?? axiosError.message);
+			} finally {
+				setLoading(false);
 			}
 		};
 		datafetch();
-		// }
 	}, [quiz_id, sectionId]);
 
-	const topThree: any = leaderboardData.slice(0, 3);
+	// Quiz mode: players on the same points share a place (Bob and Cat on 1 point were "Second"
+	// and "Third"). Game mode: ties go to the faster player, in the order the server sorted them.
+	const ranked = useMemo(
+		() =>
+			leaderboardData.map((item: any, index: number) => ({
+				...item,
+				rank:
+					sortingMode === "game"
+						? index + 1
+						: 1 + leaderboardData.filter((other: any) => Number(other?.total_score) > Number(item?.total_score)).length,
+			})),
+		[leaderboardData, sortingMode]
+	);
+	const isMe = (item: any) =>
+		highlightParticipantId != null && String(item?.participant_id) === String(highlightParticipantId);
+	const me = ranked.find(isMe);
+	const topThree = ranked.slice(0, 3);
+
+	if (!loading && ranked.length === 0) {
+		return (
+			<div className="mx-auto mt-8 max-w-xl rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-medium text-slate-500">
+				No answers were recorded in this session.
+			</div>
+		);
+	}
+
+	const podium = (item: any, big = false) =>
+		item && (
+			<div
+				className={cn(
+					"b_ground w-full rounded-xl shadow-lg transition hover:scale-[1.02]",
+					big ? "max-w-[220px] p-6 shadow-xl" : "max-w-[150px] p-5",
+					isMe(item) && "ring-4 ring-[#faef70]"
+				)}
+			>
+				<div className="flex flex-col items-center">
+					<GiPodiumWinner className={cn("mb-2 text-white", big ? "text-[60px]" : "text-[48px]")} />
+					<h6 className="text-sm font-bold text-[#faef70]">{PLACES[item.rank - 1] ?? ordinal(item.rank)}</h6>
+					<p className="max-w-full truncate font-semibold text-white">
+						{nameOf(item)}
+						{isMe(item) && " (you)"}
+					</p>
+					<span className="text-sm text-[#d0d0e6]">{points(item?.total_score)}</span>
+				</div>
+			</div>
+		);
 
 	return (
 		<div className="">
-			{/* Header */}
-			{/* <div className="max-w-6xl mx-auto">
-				<div className="flex flex-col-reverse md:flex-row md:items-center md:justify-between gap-6">
-					<div className="text-center mb-9">
-						<h3 className="text-4xl font-bold text-black leading-tight pt-2">
-							{chalangeInformation?.title}
-						</h3>
-					</div>
+			{me && (
+				<div className="mx-auto mt-6 max-w-6xl rounded-xl border border-primary/30 bg-primary/10 p-5 text-center">
+					<p className="text-xs font-black uppercase tracking-wide text-primary">Your result</p>
+					<p className="mt-1 text-2xl font-black text-slate-950">
+						You placed {ordinal(me.rank)} of {ranked.length}
+					</p>
+					<p className="mt-1 text-sm font-semibold text-slate-600">
+						{points(me.total_score)} · {me.correct_answers ?? 0} of {me.total_questions_answered ?? 0} answered correctly
+					</p>
 				</div>
-			</div> */}
+			)}
 
-			{/* Rankings */}
-			<div className="grid grid-cols-1 md:grid-cols-1 gap-6 w-full mt-8 max-w-6xl mx-auto">
-				{/* LEFT: Top Three */}
-				<div className=" items-center gap-6">
-					{/* Row with 3rd - 1st - 2nd */}
-					<div className="grid grid-cols-3 gap-4 w-full">
-						{/* THIRD - LEFT */}
-						<div className="flex justify-start">
-							{topThree[2] && (
-								<div className="b_ground p-5 rounded-xl shadow-lg w-full max-w-[150px] hover:scale-[1.02] transition">
-									<div className="flex flex-col items-center">
-										<GiPodiumWinner className="text-[48px] text-white mb-2" />
-										<h6 className="text-[#faef70] font-bold text-sm">
-											Third
-										</h6>
-										<p className="text-white font-semibold truncate">
-											{
-												topThree[2]?.anonymous_details
-													?.name
-											}
-										</p>
-										<span className="text-[#d0d0e6] text-sm">
-											{topThree[2]?.total_score} {Number(topThree[2]?.total_score) === 1 ? "point" : "points"}
-										</span>
-									</div>
-								</div>
-							)}
-						</div>
-
-						{/* FIRST - CENTER */}
-						<div className="flex justify-center mt-[-35px]">
-							{topThree[0] && (
-								<div className="b_ground p-6 rounded-xl shadow-xl w-full max-w-[220px] hover:scale-[1.04] transition">
-									<div className="flex flex-col items-center">
-										<GiPodiumWinner className="text-[60px] text-white mb-2" />
-										<h6 className="text-[#faef70] font-bold text-sm">
-											First
-										</h6>
-										<p className="text-white font-semibold truncate">
-											{
-												topThree[0]?.anonymous_details
-													?.name
-											}
-										</p>
-										<span className="text-[#d0d0e6] text-sm">
-											{topThree[0]?.total_score} {Number(topThree[0]?.total_score) === 1 ? "point" : "points"}
-										</span>
-									</div>
-								</div>
-							)}
-						</div>
-
-						{/* SECOND - RIGHT */}
-						<div className="flex justify-end">
-							{topThree[1] && (
-								<div className="b_ground p-5 rounded-xl shadow-lg w-full max-w-[150px] hover:scale-[1.02] transition">
-									<div className="flex flex-col items-center">
-										<GiPodiumWinner className="text-[48px] text-white mb-2" />
-										<h6 className="text-[#faef70] font-bold text-sm">
-											Second
-										</h6>
-										<p className="text-white font-semibold truncate">
-											{
-												topThree[1]?.anonymous_details
-													?.name
-											}
-										</p>
-										<span className="text-[#d0d0e6] text-sm">
-											{topThree[1]?.total_score} {Number(topThree[1]?.total_score) === 1 ? "point" : "points"}
-										</span>
-									</div>
-								</div>
-							)}
-						</div>
-					</div>
+			<div className="mx-auto mt-14 grid w-full max-w-6xl grid-cols-1 gap-6">
+				{/* Podium: 3rd - 1st - 2nd */}
+				<div className="grid w-full grid-cols-3 gap-4">
+					<div className="flex justify-start">{podium(topThree[2])}</div>
+					<div className="mt-[-35px] flex justify-center">{podium(topThree[0], true)}</div>
+					<div className="flex justify-end">{podium(topThree[1])}</div>
 				</div>
 
-				{/* RIGHT: Full Leaderboard List */}
-				<div className="w-full bg-white rounded-xl shadow-md p-4 sm:p-6 max-h-[430px] overflow-y-auto scrollbar-hide">
-
-					<ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  {leaderboardData.map((item: any, index) => {
-    const displayName = item?.user?.name || item?.anonymous_details?.name;
-    const displayEmail = item?.user?.email || item?.anonymous_details?.email;
-
-    return (
-      <li
-        key={index}
-        className="bg-white rounded-xl shadow-lg p-5 flex flex-col gap-3 hover:shadow-xl transition-all border border-gray-100"
-      >
-        {/* Name + Position */}
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg text-gray-800">
-            {displayName || "Unknown User"}
-          </h3>
-
-          <span className="bg-blue-100 text-blue-900 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-											{item?.total_score} pts · {item?.correct_answers}/{item?.total_questions_answered} correct
+				<div className="scrollbar-hide max-h-[430px] w-full overflow-y-auto rounded-xl bg-white p-4 shadow-md sm:p-6">
+					<ul className="grid grid-cols-1 gap-4 md:grid-cols-3">
+						{ranked.map((item: any, index: number) => {
+							const displayEmail = item?.user?.email || item?.anonymous_details?.email;
+							return (
+								<li
+									key={item?.participant_id ?? index}
+									className={cn(
+										"flex flex-col gap-3 rounded-xl border bg-white p-5 shadow-lg transition-all hover:shadow-xl",
+										isMe(item) ? "border-primary ring-2 ring-primary/30" : "border-gray-100"
+									)}
+								>
+									<div className="flex items-center justify-between gap-3">
+										<h3 className="min-w-0 truncate text-lg font-semibold text-gray-800">
+											<span className="mr-2 text-slate-400">#{item.rank}</span>
+											{nameOf(item)}
+											{isMe(item) && <span className="ml-1 text-sm text-primary">(you)</span>}
+										</h3>
+										<span className="flex-shrink-0 rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-900 sm:text-sm">
+											{shortPoints(item?.total_score)} · {item?.correct_answers}/{item?.total_questions_answered} correct
 										</span>
-        </div>
-
-        {/* Email */}
-        {displayEmail && (
-          <p className="text-sm text-gray-500">{displayEmail}</p>
-        )}
-      </li>
-    );
-  })}
-</ul>
-
-
-					{/* <ul className="grid grid-cols-1 md:grid-cols-3 gap-4">
-						{leaderboardData.map((user: any, index) => (
-							<li
-								key={index}
-								className="flex justify-between items-center py-3 px-[10px] rounded-[10px] shadow"
-							>
-								<span className="font-medium text-sm sm:text-base">
-									{user?.anonymous_details?.name}
-								</span>
-
-								<div className="flex gap-2">
-									<span className="bg-blue-100 text-blue-900 px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
-											{user?.total_score} pts · {user?.correct_answers}/{user?.total_questions_answered} correct
-										</span>
-								</div>
-							</li>
-						))}
-					</ul> */}
+									</div>
+									{displayEmail && <p className="text-sm text-gray-500">{displayEmail}</p>}
+								</li>
+							);
+						})}
+					</ul>
 				</div>
 			</div>
 		</div>

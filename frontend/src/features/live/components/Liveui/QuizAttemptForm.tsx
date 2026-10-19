@@ -9,6 +9,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import {
 	clearLegacyLiveStorage,
+	getLiveSeat,
+	rememberLiveSeat,
 	storeParticipantTokenBundle,
 } from "@/features/live/services/liveStorage";
 import { toast } from "react-toastify";
@@ -89,6 +91,7 @@ interface Quiz {
 }
 interface QuizResponse {
 	quiz: Quiz;
+	session?: { id: number } | null;
 }
 function QuizAttemptForm() {
 	const searchParams = useSearchParams();
@@ -104,9 +107,20 @@ function QuizAttemptForm() {
 	>();
 	const [quizErrorStatus, setQuizErrorStatus] = useState<boolean>(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	useEffect(() => {
-		clearLegacyLiveStorage();
-	}, [joinid]);
+	// This browser's earlier place in the same running session (see rememberLiveSeat).
+	const seat = getLiveSeat("quiz", joinid);
+	const resumable = seat && quizData?.session?.id && Number(seat.sessionId) === Number(quizData.session.id) ? seat : null;
+	const resume = () => {
+		if (!resumable) return;
+		storeParticipantTokenBundle({
+			module: "quiz",
+			sessionId: resumable.sessionId,
+			attemptId: resumable.attemptId,
+			participantToken: resumable.participantToken,
+			publicChannelKey: resumable.publicChannelKey,
+		});
+		router.push(resumable.playUrl);
+	};
 	useEffect(() => {
 		const dataFetch = async () => {
 			try {
@@ -144,6 +158,9 @@ function QuizAttemptForm() {
 			return;
 		}
 		setIsSubmitting(true);
+		// A new player: drop the previous one's per-question marks (cleared on page load before,
+		// which also lost them for a player coming back to carry on).
+		clearLegacyLiveStorage();
 		try {
 			const formattedDate = quizData?.quiz?.open_datetime
 				? moment
@@ -182,9 +199,18 @@ function QuizAttemptForm() {
 				participantToken,
 				publicChannelKey,
 			});
-			router.push(
-				`/attempt/quize/play/${responseData?.session?.join_code}?jid=${responseData?.session?.join_link}&qid=${responseData?.quiz?.id}&aid=${attemptId}&sid=${sessionId}&pck=${publicChannelKey}&ujid=${userId}&title=${quizData?.quiz?.title}&uname=${currentUserName}`,
-			);
+			const playUrl = `/attempt/quize/play/${responseData?.session?.join_code}?jid=${responseData?.session?.join_link}&qid=${responseData?.quiz?.id}&aid=${attemptId}&sid=${sessionId}&pck=${publicChannelKey}&ujid=${userId}&title=${encodeURIComponent(quizData?.quiz?.title ?? "")}&uname=${encodeURIComponent(currentUserName)}`;
+			if (joinid) {
+				rememberLiveSeat("quiz", joinid, {
+					sessionId: Number(sessionId),
+					attemptId: Number(attemptId),
+					participantToken,
+					publicChannelKey,
+					name: currentUserName.trim(),
+					playUrl,
+				});
+			}
+			router.push(playUrl);
 
 			// console.log(response, "response?.data.dataresponse?.data.data");
 			// 	const quizId = `${qid}`
@@ -268,6 +294,8 @@ function QuizAttemptForm() {
 						: "Ready"
 				}
 				isSubmitting={isSubmitting}
+				resumeName={resumable?.name}
+				onResume={resume}
 			/>
 		</ParticipantShell>
 	);

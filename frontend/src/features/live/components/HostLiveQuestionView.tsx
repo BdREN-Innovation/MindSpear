@@ -39,6 +39,7 @@ const VIEW_LABELS: Record<string, string> = {
 	single_choice: "Single choice",
 	multiple_choice: "Multiple choice",
 	truefalse: "True / False",
+	fill_in_the_blanks_choice: "Fill in the blank",
 	shortanswer: "Short answer",
 	longanswer: "Long answer",
 	wordcloud: "Word cloud",

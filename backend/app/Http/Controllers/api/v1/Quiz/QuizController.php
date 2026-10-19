@@ -599,19 +599,17 @@ class QuizController extends ApiBaseController
                 return $response;
             }
 
-            // Check for existing sessions with the same time - FIXED
-            $userId = Auth::guard('api')->id();
-            $existingSession = QuizSession::with('quiz')
-                ->whereHas('quiz', function ($query) use ($userId) {
-                    $query->where('user_id', $userId);
-                })
+            // One open self-paced link per quiz at a time (this compared every quiz of the host's,
+            // so one quiz's open link blocked sharing any other).
+            $existingSession = QuizSession::where('quiz_id', $quiz->id)
                 ->isHostLive(false)
+                ->where('running_status', true)
                 ->where('start_datetime', '<', $validatedData['end_datetime'])
                 ->where('end_datetime', '>', $validatedData['start_datetime'])
                 ->first();
 
             if ($existingSession) {
-                return $this->conflictResponse([], __('A quiz session is already scheduled for the specified time range.'));
+                return $this->conflictResponse([], __('This quiz already has a self-paced link open for these dates.'));
             }
 
             // Create new session
@@ -623,7 +621,9 @@ class QuizController extends ApiBaseController
                 'start_datetime' => $validatedData['start_datetime'],
                 'end_datetime' => $validatedData['end_datetime'],
                 'timezone' => $quiz->timezone ?? $validatedData['timezone'] ?? config('app.timezone', 'UTC'),
-                'is_host_live' => $validatedData['is_host_live'],
+                // Never a live session: Host Live picks up a running live session, and would have
+                // turned this link into the live game.
+                'is_host_live' => false,
                 'quiztime_mode' => $validatedData['quiztime_mode'] ?? null,
                 'quiz_mode' => $validatedData['quiz_mode'] ?? null,
             ]);

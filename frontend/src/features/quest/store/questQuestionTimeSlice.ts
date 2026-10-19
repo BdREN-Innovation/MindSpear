@@ -7,6 +7,8 @@ interface QuestState {
   questiQsenTime: string | null;
   questionId: string | null;
   questiQsenLateStartTime: any;
+  /** When the live question's time runs out, by this device's clock. */
+  questiQsenDeadline?: number | null;
 }
 
 const initialState: QuestState = {
@@ -15,6 +17,7 @@ const initialState: QuestState = {
   questiQsenStartTime: null,
   questiQsenTime: null,
   questiQsenLateStartTime: null,
+  questiQsenDeadline: null,
 };
 
 const questQuestionTimeSlice = createSlice({

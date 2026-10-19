@@ -448,80 +448,40 @@ class QuestAttemptController extends ApiBaseController
     }
 
     /**
-     * Join a quest using join code.
+     * Find a live quest by the code on the host's screen ("T915122"; the letter, case, spaces and
+     * dashes are optional). The join page sent the digits only and this matched the whole code, so
+     * every code was "not found"; it also took the latest session even after it had ended.
      */
     public function joinByCode(JoinByCodeRequest $request): JsonResponse
     {
-        DB::beginTransaction();
-
         try {
-            $quest = Quest::where('join_code', $request->join_code)
+            $code = strtoupper(preg_replace('/[\s-]+/', '', (string) $request->join_code));
+            // Stored without the letter; the model adds it for display.
+            $digits = ltrim($code, 'T');
+
+            $quest = Quest::where('join_code', $digits)
                 ->where('is_published', true)
                 ->whereNull('deleted_at')
                 ->first();
 
             if (! $quest) {
-                return $this->notFoundResponse([], __('Quest not found or not available.'));
+                return $this->notFoundResponse([], __("There's no quest with that code. Check the code on the host's screen."));
             }
-
-            // if (! $quest->is_published || ! $quest->start_datetime || ! $quest->end_datetime) {
-            //     return $this->forbiddenResponse([], __('This quest is not currently live.'));
-            // }
-
-            // $validationResponse = $this->validateQuestAvailability($quest);
-
-            // if ($validationResponse) {
-            //     return $validationResponse;
-            // }
 
             $userId = Auth::guard('api')->id();
 
             if ($quest->logged_in_users_only && ! $userId) {
-                return $this->unauthorizedResponse(
-                    [],
-                    __('You need to be logged in to join this quest.')
-                );
+                return $this->unauthorizedResponse([], __('You need to be logged in to join this quest.'));
             }
 
-            // Check for latest Quest Session
             $existingSession = QuestSession::where('quest_id', $quest->id)
-                ->latest()
+                ->where('running_status', true)
+                ->latest('id')
                 ->first();
 
             if (! $existingSession) {
-                return $this->notFoundResponse([], __('No active session found for this quest.'));
+                return $this->badRequestResponse([], __("This quest isn't live right now. Ask the host to start it."));
             }
-
-            // $existingAttempt = $this->checkExistingAttempt($quest, $existingSession, $userId, $request);
-
-            // if ($existingAttempt) {
-            //     return $existingAttempt;
-            // }
-
-            // $anonymousName = $request->input('anonymous_name');
-
-            // if (! $userId && ! $anonymousName) {
-            //     return $this->badRequestResponse(
-            //         [],
-            //         __('Anonymous name is required for anonymous users.')
-            //     );
-            // }
-
-            // if (! $userId) {
-            //     $anonymousName = $this->generateUniqueAnonymousName($quest, $anonymousName);
-            // }
-
-            // $attempt = $this->createNewAttempt($quest, $userId, $request);
-
-            // DB::commit();
-
-            // return $this->createdResponse(
-            //     [
-            //         'quest' => $quest,
-            //         'attempt' => $attempt,
-            //     ],
-            //     __('Quest attempt started successfully.')
-            // );
 
             app(LiveSessionService::class)->ensurePublicChannelKey($existingSession);
 
@@ -532,13 +492,9 @@ class QuestAttemptController extends ApiBaseController
                 'public_channel' => app(LiveSessionService::class)->publicChannel(LiveSessionService::MODULE_QUEST, $existingSession->public_channel_key),
             ], __('Quest retrieved successfully.'));
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Quest join by code failed: ' . $e->getMessage());
 
-            return $this->serverErrorResponse(
-                [],
-                __('Failed to join quest. Please try again.')
-            );
+            return $this->serverErrorResponse([], __('Failed to join quest. Please try again.'));
         }
     }
 

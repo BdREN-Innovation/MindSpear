@@ -138,13 +138,16 @@ const QuizPlayComponent: React.FC<NavigatorProps> = ({
 			} finally {
 				setLeaderboardVisible(true);
 				if (sessionId && quizId) {
-					router.replace(`/quiz-result-view/${sessionId}?qid=${quizId}`);
+					// The attempt marks this player's own place on the leaderboard.
+					router.replace(
+						`/quiz-result-view/${sessionId}?qid=${quizId}&aid=${attemptId ?? ""}&title=${encodeURIComponent(quizTitle ?? "")}&uname=${encodeURIComponent(userName ?? "")}`
+					);
 				}
 			}
 		};
 
 		void completeAndRedirect();
-	}, [attemptId, quizId, router, sessionId, sessionStatus]);
+	}, [attemptId, quizId, quizTitle, router, sessionId, sessionStatus, userName]);
 
 	const Body: any = currentTask
 		? componentForTaskType(

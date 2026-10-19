@@ -17,7 +17,7 @@ import {
 } from "@/features/live/store/leaderboardSlice";
 import QuestCompletedPages from "@/features/quest/components/QuestCompletedPages";
 import { AxiosError } from "axios";
-import { useSearchParams, useParams } from "next/navigation";
+import { useSearchParams, useParams, useRouter } from "next/navigation";
 
 import axiosInstance from "@/utils/axiosInstance";
 import moment from "@/lib/dayjs";
@@ -35,6 +35,8 @@ import {
 	endLiveSession,
 } from "@/features/live/services/liveSessionApi";
 import Leaderboard from "@/components/Dashboard/Leaderboard";
+import Link from "next/link";
+import { CheckCircle2 } from "lucide-react";
 import type { SessionSnapshot, TimerState } from "@/features/live/types";
 import { toast } from "react-toastify";
 
@@ -94,8 +96,9 @@ function mapQuizTypeToTaskType(qtype: string): string {
 			return "truefalse";
 		case "sort_answer_choice":
 			return "shortanswer";
+		// Charted like a choice, but labelled as what it is (the host saw "Single choice").
 		case "fill_in_the_blanks_choice":
-			return "single_choice";
+			return "fill_in_the_blanks_choice";
 		case "wordcloud":
 			return "wordcloud";
 		case "scales":
@@ -302,12 +305,16 @@ export default function LiveQuiz() {
 		role: "host",
 	});
 
+	const router = useRouter();
+	// Ended by this host (the live "session.ended" event may arrive late, or not at all).
+	const [endedHere, setEndedHere] = useState(false);
+	const liveEnded = endedHere || channelState.sessionStatus === "ended";
 	useEffect(() => {
-		if (channelState.sessionStatus === "ended") {
+		if (liveEnded) {
 			setEndModalOpen(false);
 			dispatch(forceEndLive());
 		}
-	}, [channelState.sessionStatus, dispatch]);
+	}, [liveEnded, dispatch]);
 
 	useEffect(() => {
 		const currentItemId =
@@ -624,6 +631,11 @@ export default function LiveQuiz() {
 		if (!quest) return;
 		const currentTask = quest.tasks[currentSlideIndex];
 		if (currentTask) dispatch(setCurrentQsentId(`${currentTask.id}`));
+		// "Finish" on the last question: it re-sent that question (restarting its timer).
+		if (currentSlideIndex >= quest.tasks.length - 1) {
+			setEndModalOpen(true);
+			return;
+		}
 		await handleNext();
 	};
 
@@ -648,6 +660,7 @@ export default function LiveQuiz() {
 			await endLiveSession(liveModule, activeSessionId);
 
 			setEndModalOpen(false);
+			setEndedHere(true);
 			dispatch(forceEndLive());
 		} catch (err) {
 			console.error("Failed to end live", err);
@@ -663,10 +676,15 @@ export default function LiveQuiz() {
 					: "min-h-screen flex flex-col bg-white p-4 pb-24"
 			}`}
 		>
+			{/* Nobody can join once it has ended (the join code stayed on screen). */}
 			<HostLiveHeader
-				onClose={() => setEndModalOpen(true)}
-				joinCode={joinCode}
-				label={mode === "quize" ? "Quiz live" : "Quest live"}
+				onClose={() =>
+					liveEnded
+						? router.push(`/my-library/${mode === "quize" ? "quiz" : "quest"}/${quizeIdString}`)
+						: setEndModalOpen(true)
+				}
+				joinCode={liveEnded ? null : joinCode}
+				label={liveEnded ? "Ended" : mode === "quize" ? "Quiz live" : "Quest live"}
 			/>
 			{!showLeaderboard && (
 				<div className="absolute top-50 left-[20px] z-999">
@@ -677,7 +695,33 @@ export default function LiveQuiz() {
 			)}
 			{showLeaderboard ? (
 				mode === "quize" ? (
-					<Leaderboard scope={scope} />
+					<div className="w-full">
+						{/* The end used to be a bare podium with no way on but the close button. */}
+						{liveEnded && (
+							<div className="mt-6 flex flex-col items-center gap-3 text-center">
+								<span className="inline-flex items-center gap-2 rounded-full bg-secondary/10 px-3 py-1 text-xs font-black uppercase tracking-wide text-secondary">
+									<CheckCircle2 className="h-4 w-4" />
+									Quiz complete
+								</span>
+								<h2 className="text-3xl font-black text-slate-950">Final leaderboard</h2>
+								<div className="flex flex-wrap justify-center gap-2">
+									<Link
+										href={`/quiz-reports/${quizeIdString}`}
+										className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-primary/90"
+									>
+										View full report
+									</Link>
+									<Link
+										href={`/my-library/quiz/${quizeIdString}`}
+										className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+									>
+										Back to quiz
+									</Link>
+								</div>
+							</div>
+						)}
+						<Leaderboard scope={scope} ended={liveEnded} />
+					</div>
 				) : (
 					<QuestCompletedPages pagesStatus={"creator"} />
 				)
@@ -695,7 +739,8 @@ export default function LiveQuiz() {
 				</div>
 			)}
 
-			{scope === "slide" ? (
+			{/* Nothing to step through once it has ended (it showed "Question 6 of 5"). */}
+			{liveEnded ? null : scope === "slide" ? (
 				<HostLiveNavigationControls
 					currentView={viewModel?.currentView || "choice"}
 					isFullscreen={isFullscreen}

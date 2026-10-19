@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { useSelector } from "react-redux";
 import TimeShow from "./TimeShow";
+import { secondsUntil } from "@/features/live/services/liveTimer";
 
 type UserTimeSet = {
 	questId?: string | number;
@@ -18,6 +19,7 @@ type UserTimeSet = {
 	questiQsenStartTime?: string;
 	questiQsenTime?: string | number;
 	questiQsenLateStartTime?: string | boolean; 
+	questiQsenDeadline?: number | null;
 };
 
 type SharedQuestTimerProps = {
@@ -118,11 +120,17 @@ export default function SharedQuestTimer({
 		return () => clearInterval(id);
 	}, [fallbackUserSet, lsKey]);
 
+	// Every caller passes "attempt-<question id>". Effects run child-first, so a new question's
+	// timer mounts while the stored timer still belongs to the previous one; counting that
+	// one's (past) deadline ended the new question at once ("Time's up" on arrival).
+	const forThisQuestion =
+		String(userSet?.questionId ?? "") === String(attemptId).replace(/^attempt-/, "");
 	const ready = Boolean(
 		attemptId &&
 			userSet?.questiQsenStartTime &&
 			userSet?.questiQsenTime &&
-			userSet?.questionId
+			userSet?.questionId &&
+			forThisQuestion
 	);
 
 	const intendedInitial = useMemo(() => {
@@ -187,14 +195,19 @@ const familyPrefix = useMemo(() => {
 
 
 const timeLimit = useMemo(() => {
-  if (!storageKey) return 0;
+  if (!storageKey || !forThisQuestion) return 0;
+
+  // A live question's time left comes from the server, so a reload or reconnect resumes it
+  // exactly (the saved remainder below was stale by the reload, or a whole question old).
+  const live = secondsUntil(userSet?.questiQsenDeadline);
+  if (live !== null) return live;
 
   const cached = readRemain(storageKey);
   if (typeof cached === "number" && cached >= 0) {
     return cached;             
   }
   return intendedInitial;    
-}, [storageKey, intendedInitial, userSet?.questionId]);
+}, [storageKey, forThisQuestion, intendedInitial, userSet?.questionId, userSet?.questiQsenDeadline]);
 
 
 
@@ -229,6 +242,13 @@ const timeLimit = useMemo(() => {
 		if (storageKey) removeRemain(storageKey);
 		onExpire?.();
 	}, [storageKey, onExpire]);
+
+	// Arriving after the time ran out: a zero-length countdown never completes, which left the
+	// question open (and answerable) at 00:00.
+	const expiredOnArrival = Boolean(timerData) && timeLimit === 0;
+	useEffect(() => {
+		if (expiredOnArrival) handleExpire();
+	}, [expiredOnArrival]);
 
 	if (!timerData) return null;
 

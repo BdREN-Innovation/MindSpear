@@ -71,64 +71,65 @@ function JoinPage() {
       }
     }
 
-    const prefix = trimmed.charAt(0).toUpperCase();
-    const withoutPrefix = trimmed.length > 1 ? trimmed.slice(1) : "";
+    // Legacy codes: "Q611576" for a quiz session, "T915122" for a quest. The whole code is sent
+    // (the letter used to be cut off, so no code ever matched); digits alone are tried as a quiz,
+    // then as a quest.
+    const code = trimmed.toUpperCase().replace(/[\s-]+/g, "");
+    const prefix = code.charAt(0);
     const formattedDate = moment().format("YYYY-MM-DD HH:mm:ss");
+    const isDigitsOnly = /^\d+$/.test(code);
 
-    try {
-      if (prefix === "Q") {
-        if (!withoutPrefix) {
-          toast.error("Invalid code. Missing code after prefix.");
-          return;
-        }
-        const obj = { join_code: withoutPrefix, start_time: formattedDate };
-        const response = await axiosInstance.post(`/quiz-attempts-url/code`, obj);
-        router.push(
-          `/attempt/${response?.data?.data.quiz.join_code}?jid=${response?.data?.data.quiz.join_link}&qid=${response?.data?.data.quiz.id}&aid=${response?.data?.data.attempt.id}`
-        );
-        return;
-      }
+    if (prefix === "S") {
+      toast.info("Survey join via code is not available yet.");
+      return;
+    }
 
-      if (prefix === "T") {
-        if (!withoutPrefix) {
-          toast.error("Invalid code. Missing code after prefix.");
-          return;
-        }
-        const questObj = {
-          join_code: withoutPrefix,
-          start_time: formattedDate,
-          name: `${withoutPrefix}`,
-        };
-        const response = await axiosInstance.post(
-          `/quest-attempts-url/join-by-code`,
-          questObj
-        );
-        router.push(
-          `/attempt/quest-live/${response?.data?.data?.quest?.join_code}?jid=${response?.data?.data?.quest?.join_link}&qid=${response?.data?.data?.quest?.id}&secid=${response?.data?.data?.attempt?.id}`
-        );
-        return;
-      }
-
-      if (prefix === "S") {
-        // Not implemented in current codebase
-        toast.info("Survey join via code is not available yet.");
-        return;
-      }
-
+    if (!["Q", "T"].includes(prefix) && !isDigitsOnly) {
       toast.error(
         isV2JoinCode(trimmed)
           ? "We couldn't find a live session with that code. Check the code and try again."
           : "Invalid code. Check the code on the host's screen and try again."
       );
-    } catch (error) {
+      return;
+    }
+
+    const joinQuiz = async () => {
+      const response = await axiosInstance.post(`/quiz-attempts-url/code`, { join_code: code, start_time: formattedDate });
+      const { quiz, session } = response?.data?.data ?? {};
+      // A live session joins through the live lobby; a self-paced link through its own page.
+      const base = session?.is_host_live ? `/attempt/live/${session.join_code}` : `/attempt/${session.join_code}`;
+      router.push(`${base}?jid=${session.join_link}&qid=${quiz.id}&sid=${session.id}`);
+    };
+    const joinQuest = async () => {
+      const response = await axiosInstance.post(`/quest-attempts-url/join-by-code`, { join_code: code, start_time: formattedDate });
+      const { quest, session } = response?.data?.data ?? {};
+      router.push(`/attempt/quest-live/${quest.join_code}?jid=${quest.join_link}&qid=${quest.id}&secid=${session.id}`);
+    };
+
+    const showError = (error: unknown) => {
       const axiosError = error as AxiosError<{ message?: string }>;
       if (axiosError.response) {
-        console.error("Join failed:", axiosError.response.data);
-        toast.error(`Error: ${axiosError.response.data?.message || "Join failed."}`);
+        // A wrong or finished code is the player's to fix, not an app error (it was logged
+        // with console.error, which the dev overlay counted as an issue).
+        toast.error(axiosError.response.data?.message || "We couldn't join with that code.");
       } else {
-        console.error("Unexpected error:", axiosError.message);
-        toast.error("Unexpected error occurred. Please try again.");
+        toast.error("Couldn't reach the server. Check your connection and try again.");
       }
+    };
+
+    try {
+      if (prefix === "T") await joinQuest();
+      else await joinQuiz();
+    } catch (error) {
+      if (isDigitsOnly && (error as AxiosError).response?.status === 404) {
+        try {
+          await joinQuest();
+          return;
+        } catch {
+          // Report the quiz lookup's answer below.
+        }
+      }
+      showError(error);
     }
   };
 

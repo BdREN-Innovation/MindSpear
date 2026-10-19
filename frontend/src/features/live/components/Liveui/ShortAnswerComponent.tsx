@@ -8,7 +8,6 @@ import { useDispatch } from "react-redux";
 import moment from "@/lib/dayjs";
 import axiosInstance from "@/utils/axiosInstance";
 import SharedQuestTimer from "@/components/SharedQuestTimer";
-import { AxiosError } from "axios";
 import {
 	ParticipantStage,
 	ParticipantTimerPanel,
@@ -48,10 +47,8 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	const [error, setError] = useState("");
 	const searchParams = useSearchParams();
 	const attempId = searchParams.get("aid");
-	const joinid = searchParams.get("jid");
 	const [watingData, setwatingData] = useState(true);
-	const [, setchalangeData] = useState<any>({});
-	const [currentTimeGet, setcurrentTimeGet] = useState<any>(0);
+	const [isSending, setIsSending] = useState(false);
 	const maxWords = 5;
 	const startRef = useRef<number>(Date.now());
 	useEffect(() => {
@@ -60,6 +57,8 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		setSubmitted(false);
 		setError("");
 		startRef.current = Date.now();
+		// Already answered (or timed out) before a reload: it showed the question again.
+		setwatingData(!(task?.id && (wasAnswered(task.id) || localStorage.getItem(`timeExpired_${task.id}`))));
 	}, [task?.id]);
 	useEffect(() => {
 		if (value !== undefined && value !== null) {
@@ -77,22 +76,6 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		? answer.trim().split(/\s+/).filter(Boolean).length
 		: 0;
 	const dataNew: any = task;
-	useEffect(() => {
-		const dataFetch = async () => {
-			try {
-				const response = await axiosInstance.get(
-					`/quiz-attempts-url/show/${joinid}`,
-				);
-				setchalangeData(response?.data?.data?.quiz);
-			} catch (error) {
-				const axiosError = error as AxiosError<{
-					message?: string;
-				}>;
-				console.error("Unexpected error:", axiosError.message);
-			}
-		};
-		dataFetch();
-	}, [joinid]);
 
 	// ✅ Debounced live upsert while the user types (also sets selected_time)
 	useEffect(() => {
@@ -130,43 +113,55 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 
 		return () => clearTimeout(t);
 	}, [answer, task, dispatch]);
-	const saveAnswer = async (nextList: any) => {
+	/** Sends the answer; false when it didn't reach the server. */
+	const saveAnswer = async (nextList: any): Promise<boolean> => {
 		try {
-			const currentTime = moment().format("YYYY-MM-DD HH:mm:ss");
-
-			// const rankIndexList = ranked.map((_, i) => i + 1);
 			const payload = {
 				question_id: task?.id,
 				answer_data: {
-					start_time: currentTime,
+					start_time: moment(startRef.current).format("YYYY-MM-DD HH:mm:ss"),
+					end_time: moment().format("YYYY-MM-DD HH:mm:ss"),
 					selected_option: nextList,
 				},
-				time_taken_seconds: currentTimeGet,
+				// Seconds since the question appeared (this sent the seconds left).
+				time_taken_seconds: Math.max(0, Math.round((Date.now() - startRef.current) / 1000)),
 			};
 			await axiosInstance.post(
 				`/quiz-attempts/${attempId}/answer`,
 				payload,
 			);
+			return true;
 		} catch (error) {
 			console.error("Error saving answer:", error);
+			return false;
 		}
 	};
 	const handleSubmit = async () => {
-		markAnswered(task?.id);
 		const trimmed = answer.trim();
 		if (!trimmed) {
 			setError("Please write your answer.");
 			return;
 		}
 		const nextList = [...answersList, trimmed];
-		setAnswersList(nextList);
-		setAnswer("");
-		// (Optional) Upsert again on submit to be absolutely sure
 		const elapsedSec = Math.max(
 			0,
 			Math.round((Date.now() - startRef.current) / 1000),
 		);
-		await saveAnswer(nextList);
+		setIsSending(true);
+		const saved = await saveAnswer(nextList);
+		setIsSending(false);
+		// It said "Answer locked in" even when the answer never arrived (e.g. offline).
+		if (!saved) {
+			setError(
+				typeof navigator !== "undefined" && !navigator.onLine
+					? "You're offline, so your answer wasn't sent. Reconnect and submit again."
+					: "Your answer wasn't sent. Submit again.",
+			);
+			return;
+		}
+		markAnswered(task?.id);
+		setAnswersList(nextList);
+		setAnswer("");
 		dispatch(
 			upsertAnswer({
 				id: (task?.id as number | string) ?? 0,
@@ -192,10 +187,14 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		setwatingData(false);
 		onChange?.(trimmed);
 	};
-	const handleTimeUpdate = (s: any) => {
-		setcurrentTimeGet(s);
-	};
 	const handleExpire = () => {
+		// Time's up with an answer typed but not submitted: send it rather than drop it.
+		const typed = answer.trim();
+		if (watingData && typed && !wasAnswered(task?.id)) {
+			void saveAnswer([...answersList, typed]).then((saved) => {
+				if (saved) markAnswered(task?.id);
+			});
+		}
 		if (task?.id) {
 			localStorage.setItem(
 				`timeExpired_${task.id}`,
@@ -228,7 +227,6 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 								<ParticipantTimerPanel>
 									<SharedQuestTimer
 										attemptId={`attempt-${dataNew?.id}`}
-										onTimeUpdate={handleTimeUpdate}
 										onExpire={handleExpire}
 									/>
 								</ParticipantTimerPanel>
@@ -261,6 +259,7 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 						<StickySubmitBar
 							onSubmit={handleSubmit}
 							disabled={!answer.trim()}
+							busy={isSending}
 							selectedText={answer.trim() ? "Answer ready" : undefined}
 							helperText="Type your answer to unlock submit."
 						/>

@@ -13,6 +13,9 @@ type JoinIntroCardProps = {
 	onSubmit: () => void;
 	countLabel?: string;
 	isSubmitting?: boolean;
+	/** The name this browser already played as in this session, to carry on as that player. */
+	resumeName?: string | null;
+	onResume?: () => void;
 	className?: string;
 };
 
@@ -24,6 +27,8 @@ export function JoinIntroCard({
 	onSubmit,
 	countLabel,
 	isSubmitting = false,
+	resumeName,
+	onResume,
 	className,
 }: JoinIntroCardProps) {
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -72,6 +77,25 @@ export function JoinIntroCard({
 						</p>
 					</div>
 				</div>
+
+				{resumeName && onResume && (
+					<div className="mt-6 rounded-lg border border-primary/30 bg-primary/5 p-4 text-center">
+						<p className="text-sm font-medium text-slate-600">
+							You were playing as <span className="font-black text-slate-900">{resumeName}</span>.
+						</p>
+						<button
+							type="button"
+							onClick={onResume}
+							className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded bg-primary px-6 text-base font-bold text-white shadow-md transition hover:bg-primary/90"
+						>
+							<Play className="h-5 w-5 fill-white" />
+							Continue as {resumeName}
+						</button>
+						<p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+							or join as someone new
+						</p>
+					</div>
+				)}
 
 				<label className="mt-6 block">
 					<span className="mb-2 flex items-center gap-2 text-sm font-black text-slate-800">

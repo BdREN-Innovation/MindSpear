@@ -70,10 +70,52 @@ export function clearLegacyLiveStorage(): void {
 			key.startsWith("timer_") ||
 			key.startsWith("attempt-") ||
 			key.startsWith("timeExpired_") ||
+			// "Answered" marks from an earlier session of the same quiz (same question ids).
+			key.startsWith("answered_") ||
 			key.startsWith("quest:joined:") ||
 			key.startsWith("quiz:joined:")
 		) {
 			window.localStorage.removeItem(key);
 		}
 	});
+}
+
+/**
+ * A player's place in a live session, kept per join link in this browser so they can carry on
+ * after the tab closes or the browser restarts (the participant token above lives in tab-only
+ * storage, so reopening the link used to start them over as a new player with no score).
+ */
+export type LiveSeat = {
+	sessionId: number;
+	attemptId: number;
+	participantToken: string;
+	publicChannelKey: string;
+	name: string;
+	playUrl: string;
+};
+
+const seatKey = (module: LiveModule, joinLink: string) => `${prefix}:seat:${module}:${joinLink}`;
+
+export function rememberLiveSeat(module: LiveModule, joinLink: string, seat: LiveSeat): void {
+	if (typeof window === "undefined") return;
+	try {
+		window.localStorage.setItem(seatKey(module, joinLink), JSON.stringify(seat));
+	} catch {}
+}
+
+export function getLiveSeat(module: LiveModule, joinLink: string | null): LiveSeat | null {
+	if (typeof window === "undefined" || !joinLink) return null;
+	try {
+		const raw = window.localStorage.getItem(seatKey(module, joinLink));
+		return raw ? (JSON.parse(raw) as LiveSeat) : null;
+	} catch {
+		return null;
+	}
+}
+
+export function forgetLiveSeat(module: LiveModule, joinLink: string | null): void {
+	if (typeof window === "undefined" || !joinLink) return;
+	try {
+		window.localStorage.removeItem(seatKey(module, joinLink));
+	} catch {}
 }

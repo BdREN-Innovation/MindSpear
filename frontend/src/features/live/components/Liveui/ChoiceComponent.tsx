@@ -8,7 +8,6 @@ import { upsertAnswer } from "@/features/live/store/leaderboardAnswersSlice";
 import { useDispatch, useSelector } from "react-redux";
 import moment from "@/lib/dayjs";
 import SharedQuestTimer from "@/components/SharedQuestTimer";
-import { AxiosError } from "axios";
 import {
 	AnswerOptionButton,
 	ParticipantStage,
@@ -47,28 +46,14 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	const dispatch = useDispatch();
 	// const answers = useSelector((state: RootState) => state.answers);
 	const searchParams = useSearchParams();
-	const joinid = searchParams.get("jid");
 	const attempId = searchParams.get("aid");
 	const [watingData, setwatingData] = useState(true);
-	const [, setchalangeData] = useState<any>({});
 	const [, setcurrentTimeGet] = useState<any>(0);
+	// Set when the answer couldn't be sent (e.g. the connection dropped): it used to say
+	// "Answer locked in" anyway, and the answer was lost.
+	const [submitError, setSubmitError] = useState("");
+	const [isSending, setIsSending] = useState(false);
 	const questTimeData = useSelector((state: any) => state.questTime);
-	useEffect(() => {
-		const dataFetch = async () => {
-			try {
-				const response = await axiosInstance.get(
-					`/quiz-attempts-url/show/${joinid}`,
-				);
-				setchalangeData(response?.data?.data?.quiz);
-			} catch (error) {
-				const axiosError = error as AxiosError<{
-					message?: string;
-				}>;
-				console.error("Unexpected error:", axiosError.message);
-			}
-		};
-		dataFetch();
-	}, [joinid]);
 	// Quiz questions carry the editor's type names; "multiple_choice" alone missed them, so a
 	// multi-answer quiz question took one pick (the last) and nobody could score on it.
 	const isMulti = MULTI_TYPES.has(`${task?.task_type || task?.question_type || ""}`);
@@ -104,6 +89,7 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		setSelectedIndices([]);
 		setSelectedOptions([]);
 		setwatingData(true);
+		setSubmitError("");
 	}, [task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useEffect(() => {
@@ -252,21 +238,33 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 		}
 	}, [dataNew?.id, task?.id]);
 	const dataSubmit = async () => {
+		setIsSending(true);
+		setSubmitError("");
+		const saved = await saveAnswer();
+		setIsSending(false);
+		if (!saved) {
+			setSubmitError(
+				typeof navigator !== "undefined" && !navigator.onLine
+					? "You're offline, so your answer wasn't sent. Reconnect and tap Submit again."
+					: "Your answer wasn't sent. Tap Submit to try again.",
+			);
+			return;
+		}
 		markAnswered(task?.id);
-		await saveAnswer();
 		if (task?.id) setTaskExpired(task.id);
 		setwatingData(false);
 		if (typeof window !== "undefined") {
 			localStorage.setItem("currentId", `${task?.id}`);
 		}
 	};
-	const saveAnswer = async () => {
+	/** Sends the answer; false when it didn't reach the server. */
+	const saveAnswer = async (): Promise<boolean> => {
 		try {
 			const currentTime = moment().format("YYYY-MM-DD HH:mm:ss");
-			const diffSeconds = moment(currentTime).diff(
-				moment(quizStartTimeTime),
-				"seconds",
-			);
+			// Timed from when this player saw the question (the server times live answers itself).
+			// The host's start time has no AM/PM, so it was read 12 hours off.
+			const shownAt = moment(startRef.current).format("YYYY-MM-DD HH:mm:ss");
+			const diffSeconds = Math.max(0, Math.round((Date.now() - startRef.current) / 1000));
 			// Answer positions in the question: "0,2,3" for several answers, as the scoring expects.
 			const selected = isMulti
 				? selectedIndices
@@ -278,7 +276,7 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 			const payload = {
 				question_id: task?.id,
 				answer_data: {
-					start_time: quizStartTimeTime,
+					start_time: shownAt,
 					end_time: currentTime,
 					selected_option: selected,
 				},
@@ -288,16 +286,19 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 				`/quiz-attempts/${attempId}/answer`,
 				payload,
 			);
+			return true;
 		} catch (error) {
 			console.error("Error saving answer:", error);
+			return false;
 		}
 	};
 	const handleExpire = () => {
 		if (!questTimeData?.questionId) return;
 		// Time's up with an answer picked but not submitted: save it (it used to be dropped).
 		if (watingData && hasSelection) {
-			markAnswered(task?.id);
-			void saveAnswer();
+			void saveAnswer().then((saved) => {
+				if (saved) markAnswered(task?.id);
+			});
 		}
 		const saved = setTaskExpired(questTimeData.questionId);
 		const ok =
@@ -345,14 +346,6 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 	// 	if (typeof handleExpire === "function") handleExpire();
 	// }, [dataNew?.id, handleExpire]);
 
-	// const currentTime = moment(questTimeData?.questiQsenStartTime).format("YYYY-MM-DD HH:mm:ss");
-	const date = questTimeData?.questiQsenStartTime ?? "";
-	const cleanDate = date.replace(/(\d+)(st|nd|rd|th)/, "$1");
-	const quizStartTimeTime = moment(
-		cleanDate,
-		"MMMM D YYYY, h:mm:ss",
-		true,
-	).format("YYYY-MM-DD HH:mm:ss");
 	const htmlToText = (html?: string) => {
 		if (!html) return "";
 		const stripped = html.replace(/<[^>]*>/g, " ");
@@ -394,7 +387,11 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 							<div className="grid gap-4 lg:grid-cols-[1fr_18rem] lg:items-start">
 								<div className="rounded-lg border border-slate-200 bg-gradient-to-br from-white to-primary/10 p-4">
 									<p className="text-xs font-black uppercase tracking-wide text-primary">
-										{isMulti ? "Select all that apply" : "Pick one answer"}
+										{isMulti
+											? "Select all that apply"
+											: `${task?.task_type || task?.question_type || ""}`.startsWith("fill_in_the_blanks")
+												? "Fill in the blank"
+												: "Pick one answer"}
 									</p>
 									<h2 className="mt-2 break-words text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
 										{htmlToText(task?.title)}
@@ -440,6 +437,8 @@ const ChoiceComponent: React.FC<Props> = ({ task, value, onChange }) => {
 						<StickySubmitBar
 							onSubmit={dataSubmit}
 							disabled={!hasSelection}
+							busy={isSending}
+							errorText={submitError || undefined}
 							selectedText={hasSelection ? selectionText : undefined}
 							helperText="Choose an answer to unlock submit."
 						/>

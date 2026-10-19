@@ -9,6 +9,10 @@ type StickySubmitBarProps = {
 	label?: string;
 	helperText?: string;
 	selectedText?: string;
+	/** Shown in place of the selection, e.g. when the answer couldn't be sent. */
+	errorText?: string;
+	/** While the answer is being sent. */
+	busy?: boolean;
 	className?: string;
 };
 
@@ -18,6 +22,8 @@ export function StickySubmitBar({
 	label = "Submit",
 	helperText,
 	selectedText,
+	errorText,
+	busy = false,
 	className,
 }: StickySubmitBarProps) {
 	return (
@@ -29,7 +35,11 @@ export function StickySubmitBar({
 		>
 			<div className="mx-auto flex w-full max-w-3xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 				<div className="min-h-5 min-w-0 text-sm">
-					{selectedText ? (
+					{errorText ? (
+						<p role="alert" className="font-semibold text-red-600">
+							{errorText}
+						</p>
+					) : selectedText ? (
 						<p className="truncate font-semibold text-slate-800">
 							{selectedText}
 						</p>
@@ -42,12 +52,12 @@ export function StickySubmitBar({
 				<button
 					type="button"
 					onClick={onSubmit}
-					disabled={disabled}
+					disabled={disabled || busy}
 					className="group relative inline-flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded bg-gradient-to-r from-primary via-secondary to-accent px-6 text-base font-bold text-white shadow-lg shadow-primary/25 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
 				>
 					<span className="absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-18deg] bg-white/25 transition duration-700 group-hover:left-[120%]" />
 					<Send className="h-4 w-4" />
-					{label}
+					{busy ? "Sending…" : label}
 				</button>
 			</div>
 		</div>

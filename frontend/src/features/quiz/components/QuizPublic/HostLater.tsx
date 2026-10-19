@@ -13,7 +13,6 @@ import { setQuiz } from "@/features/quiz/store/quizInformationSlice";
 import { useDispatch } from "react-redux";
 import { DatePicker } from "antd";
 import dayjs from "dayjs";
-import { Switch } from "@/components/FormElements/switch";
 import moment from "@/lib/dayjs";
 
 import {
@@ -93,17 +92,21 @@ const HostLater: React.FC = () => {
 			const quizresponse = response?.data?.data;
 			console.log(quizresponse, "quizresponsequizresponse");
 
+			// UTC ISO strings from the API: new Date() gives the local time (see QuizeSetting). A
+			// window that has already closed starts from now instead: it was offered as is, and the
+			// link it made was closed on arrival.
+			const savedClose = quizresponse.quiz.close_datetime ? new Date(quizresponse.quiz.close_datetime) : null;
+			const windowOpen = savedClose !== null && savedClose.getTime() > Date.now();
 			reset({
 				title: quizresponse.quiz.title,
 				is_published: quizresponse.quiz.is_published,
-				// UTC ISO strings from the API: new Date() gives the local time (see QuizeSetting).
-				open_datetime: quizresponse.quiz.open_datetime
+				open_datetime: windowOpen && quizresponse.quiz.open_datetime
 					? new Date(quizresponse.quiz.open_datetime)
 					: new Date(),
 
-				close_datetime: quizresponse.quiz.close_datetime
-					? new Date(quizresponse.quiz.close_datetime)
-					: new Date(Date.now() + 24 * 60 * 60 * 1000),
+				close_datetime: windowOpen && savedClose
+					? savedClose
+					: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
 
 				quiztime_mode: Boolean(quizresponse.quiz.quiztime_mode),
 				duration: quizresponse.quiz.duration || 10,
@@ -193,7 +196,7 @@ const HostLater: React.FC = () => {
 
 		try {
 			const respnson = await axiosInstance.post(
-				`/quizes/host-live/${params?.id}`,
+				`/quizes/host-later/${params?.id}`,
 				obj
 			);
 			console.log(
@@ -207,6 +210,8 @@ const HostLater: React.FC = () => {
 			}
 		} catch (error) {
 			console.error("API call failed:", error);
+			// Shown by the caller; it went on to the report as if the link existed.
+			throw error;
 		}
 	};
 

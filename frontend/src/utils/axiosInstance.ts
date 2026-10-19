@@ -102,8 +102,11 @@ axiosInstance.interceptors.request.use(
 );
 
 // Callers of these APIs turn every failure into UI (DeckApiError, library
-// notices), so the generic console logging below is only noise there.
-const QUIET_URL = /(?:^|\/)(?:quests\/v2|quest-sessions\/v2|library)(?:[/?#]|$)/;
+// notices, the join pages' "no quiz with that code" / "link no longer active"),
+// so the generic console logging below is only noise there (in development
+// every console.error also showed as an "Issue" in the Next.js overlay).
+const QUIET_URL =
+	/(?:^|\/)(?:quests\/v2|quest-sessions\/v2|library|quiz-attempts-url\/(?:code|show)|quest-attempts-url\/(?:join-by-code|show-by-link))(?:[/?#]|$)/;
 
 /** Failures the caller expects and handles: cancelled requests, quiet APIs, 4xx with an API error code. */
 const isExpectedFailure = (error: unknown): boolean => {

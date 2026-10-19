@@ -54,6 +54,7 @@ function QuizAttempt() {
 						""
 					}`,
 					questiQsenLateStartTime: false,
+					questiQsenDeadline: timerState?.deadline_ms ?? null,
 				})
 			);
 		},

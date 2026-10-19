@@ -5,8 +5,7 @@ interface DataProps {
 }
 
 // function QuizDateClose() {
-const QuizDateClose: React.FC<DataProps> = ({ errorTest, errorStatus }) => {
-	console.log(errorStatus, "errorStatuserrorStatuserrorStatus");
+const QuizDateClose: React.FC<DataProps> = ({ errorTest }) => {
 	return (
 		<div>
 			<div className=" text-slate-700 min-h-screen flex flex-col items-center justify-center py-4">
@@ -18,21 +17,18 @@ const QuizDateClose: React.FC<DataProps> = ({ errorTest, errorStatus }) => {
 								alt="Logo"
 								width={200}
 								height={102}
-								className="mb-6"
+								className="mb-6 h-auto"
 							/>
-							<h2 className="text-center text-5xl sm:inline-block md:ml-4">
+							<h2 className="text-center text-3xl font-bold sm:inline-block md:ml-4 md:text-4xl">
 								{errorTest}
 							</h2>
 						</header>
 
+						{/* It said "The server cannot process the request due to a client error caused by bad
+						    syntax" (HTTP jargon) under every message, e.g. a quiz that had simply ended. */}
 						<main className="text-center text-xl sm:w-[38rem] mx-auto">
-							<p className="mb-8">
-								The server cannot process the request due
-								to&nbsp;a&nbsp;client error caused by&nbsp;bad
-								syntax.
-							</p>
 							<p>
-								We&nbsp;apologize for any inconvenience caused.
+								Check the link or code with whoever shared it, or ask them for a new one.
 							</p>
 						</main>
 

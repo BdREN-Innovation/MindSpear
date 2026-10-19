@@ -26,7 +26,9 @@ export default function HedaerPublic(): JSX.Element {
 		pathname.includes("join") ||
 		pathname.includes("quiz-public") ||
 		pathname.includes("attempt") ||
-		pathname.includes("live");
+		pathname.includes("live") ||
+		// Players' results after a live quiz (they had the site's Login / Registration menu).
+		pathname.includes("quiz-result-view");
 	const [open, setOpen] = useState<boolean>(false);
 	const isAuthenticated = useSelector(
 		(state: RootState) => state.auth.isAuthenticated

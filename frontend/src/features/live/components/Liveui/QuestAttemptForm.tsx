@@ -10,6 +10,8 @@ import React, { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import {
 	clearLegacyLiveStorage,
+	getLiveSeat,
+	rememberLiveSeat,
 	storeParticipantTokenBundle,
 } from "@/features/live/services/liveStorage";
 import {
@@ -23,6 +25,7 @@ import {
 
 interface QuizResponse {
 	quest: any;
+	questSession?: { id: number } | null;
 }
 function QuestAttemptForm() {
 	const searchParams = useSearchParams();
@@ -38,9 +41,20 @@ function QuestAttemptForm() {
 	>();
 	const [quizErrorStatus, setQuizErrorStatus] = useState<boolean>(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	useEffect(() => {
-		clearLegacyLiveStorage();
-	}, [joinid]);
+	// This browser's earlier place in the same running session (see rememberLiveSeat).
+	const seat = getLiveSeat("quest", joinid);
+	const resumable = seat && quizData?.questSession?.id && Number(seat.sessionId) === Number(quizData.questSession.id) ? seat : null;
+	const resume = () => {
+		if (!resumable) return;
+		storeParticipantTokenBundle({
+			module: "quest",
+			sessionId: resumable.sessionId,
+			attemptId: resumable.attemptId,
+			participantToken: resumable.participantToken,
+			publicChannelKey: resumable.publicChannelKey,
+		});
+		router.push(resumable.playUrl);
+	};
 	useEffect(() => {
 		if (typeof window !== "undefined" && !navigator.onLine) {
 			console.warn("Offline — skipping API call");
@@ -105,6 +119,9 @@ function QuestAttemptForm() {
 			return;
 		}
 		setIsSubmitting(true);
+		// A new player: drop the previous one's per-question marks (cleared on page load before,
+		// which also lost them for a player coming back to carry on).
+		clearLegacyLiveStorage();
 		try {
 			const formattedDate = quizData?.quest?.start_datetime
 				? moment
@@ -143,9 +160,18 @@ function QuestAttemptForm() {
 				participantToken,
 				publicChannelKey,
 			});
-			router.push(
-				`/attempt/quest-live/play/${responseData?.quest?.join_code}?jid=${responseData?.quest?.join_link}&qid=${responseData?.quest?.id}&aid=${attemptId}&sid=${sessionId}&pck=${publicChannelKey}&ujid=${userId}&title=${quizData?.quest?.title}&uname=${currentUserName}`,
-			);
+			const playUrl = `/attempt/quest-live/play/${responseData?.quest?.join_code}?jid=${responseData?.quest?.join_link}&qid=${responseData?.quest?.id}&aid=${attemptId}&sid=${sessionId}&pck=${publicChannelKey}&ujid=${userId}&title=${encodeURIComponent(quizData?.quest?.title ?? "")}&uname=${encodeURIComponent(currentUserName)}`;
+			if (joinid) {
+				rememberLiveSeat("quest", joinid, {
+					sessionId: Number(sessionId),
+					attemptId: Number(attemptId),
+					participantToken,
+					publicChannelKey,
+					name: currentUserName.trim(),
+					playUrl,
+				});
+			}
+			router.push(playUrl);
 		} catch (error) {
 			const axiosError = error as AxiosError<{
 				message?: string;
@@ -227,6 +253,8 @@ function QuestAttemptForm() {
 						: "Ready"
 				}
 				isSubmitting={isSubmitting}
+				resumeName={resumable?.name}
+				onResume={resume}
 			/>
 		</ParticipantShell>
 	);

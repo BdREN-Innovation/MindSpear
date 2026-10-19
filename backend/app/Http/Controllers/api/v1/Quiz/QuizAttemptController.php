@@ -183,11 +183,26 @@ class QuizAttemptController extends ApiBaseController
                 'attempt_id' => $attemptId,
             ]);
 
+            // In a live session, time the answer by the server's clock from when the host opened the
+            // question: the browser's figure was 12 hours off (it read the host's start time as AM),
+            // and a reconnecting player's clock can't be trusted. Game mode breaks ties on it.
+            $timeTaken = (int) ($validated['time_taken_seconds'] ?? 0);
+            $liveSession = $attempt->quiz_session_id ? $attempt->quizSession : null;
+            if ($liveSession && (int) $liveSession->current_question_id === (int) $validated['question_id']) {
+                $timer = is_array($liveSession->timer_state) ? $liveSession->timer_state : null;
+                $elapsed = app(LiveSessionService::class)->secondsSinceTimerStart($timer);
+                if ($elapsed !== null) {
+                    $timeTaken = is_numeric($timer['duration_seconds'] ?? null)
+                        ? min($elapsed, (int) $timer['duration_seconds'])
+                        : $elapsed;
+                }
+            }
+
             // Use query builder to avoid Eloquent memory usage, and handle created_at only on insert
             $now = now();
             $values = [
                 'answer_data' => json_encode($answerData, JSON_UNESCAPED_UNICODE),
-                'time_taken_seconds' => $validated['time_taken_seconds'] ?? 0,
+                'time_taken_seconds' => $timeTaken,
                 'updated_at' => $now,
             ];
 
@@ -233,7 +248,7 @@ class QuizAttemptController extends ApiBaseController
                     'quiz_participant_id' => (int) $attemptId,
                     'question_id' => (int) $validated['question_id'],
                     'answer_data' => $answerData,
-                    'time_taken_seconds' => (int) ($validated['time_taken_seconds'] ?? 0),
+                    'time_taken_seconds' => $timeTaken,
                 ],
             ], __('Answer recorded successfully'));
         } catch (QueryException $qe) {
@@ -425,7 +440,8 @@ class QuizAttemptController extends ApiBaseController
                 ->first();
 
             if (! $quiz) {
-                return $this->notFoundResponse([], __('Quiz not found or not available.'));
+                // An ended session's link is cleared, so this is also what a late player sees.
+                return $this->notFoundResponse([], __('This quiz link is no longer active. The quiz may have ended.'));
             }
 
             $now = now();
@@ -610,68 +626,30 @@ class QuizAttemptController extends ApiBaseController
     // }
 
     /**
-     * Join a quiz using join code.
+     * Find a quiz session by the code on the host's screen ("Q611576"; the letter, case, spaces
+     * and dashes are optional). The join page sent the digits only and this matched the whole
+     * code, so every code was "not found"; it also opened a transaction it never committed.
      */
     public function joinByCode(JoinByCodeRequest $request): JsonResponse
     {
-        DB::beginTransaction();
-
         try {
-            $quizSession = QuizSession::where('join_code', $request->join_code)->first();
+            $code = strtoupper(preg_replace('/[\s-]+/', '', (string) $request->join_code));
+            // Stored without the letter; the model adds it for display.
+            $digits = ltrim($code, 'Q');
 
-            if (! $quizSession) {
-                return $this->notFoundResponse([], __('Quest not found or not available.'));
+            $quizSession = QuizSession::with('quiz')
+                ->where('join_code', $digits)
+                ->where('running_status', true)
+                ->latest('id')
+                ->first();
+
+            if (! $quizSession || ! $quizSession->quiz) {
+                return $this->notFoundResponse([], __("There's no quiz running with that code. Check the code on the host's screen."));
             }
 
-            // if (! $quest->is_published || ! $quest->start_datetime || ! $quest->end_datetime) {
-            //     return $this->forbiddenResponse([], __('This quest is not currently live.'));
-            // }
-
-            // $validationResponse = $this->validateQuestAvailability($quest);
-
-            // if ($validationResponse) {
-            //     return $validationResponse;
-            // }
-
-            $userId = Auth::guard('api')->id();
-
-            // if ($quizSession->logged_in_users_only && ! $userId) {
-            //     return $this->unauthorizedResponse(
-            //         [],
-            //         __('You need to be logged in to join this quest.')
-            //     );
-            // }
-
-            // $existingAttempt = $this->checkExistingAttempt($quest, $existingSession, $userId, $request);
-
-            // if ($existingAttempt) {
-            //     return $existingAttempt;
-            // }
-
-            // $anonymousName = $request->input('anonymous_name');
-
-            // if (! $userId && ! $anonymousName) {
-            //     return $this->badRequestResponse(
-            //         [],
-            //         __('Anonymous name is required for anonymous users.')
-            //     );
-            // }
-
-            // if (! $userId) {
-            //     $anonymousName = $this->generateUniqueAnonymousName($quest, $anonymousName);
-            // }
-
-            // $attempt = $this->createNewAttempt($quest, $userId, $request);
-
-            // DB::commit();
-
-            // return $this->createdResponse(
-            //     [
-            //         'quest' => $quest,
-            //         'attempt' => $attempt,
-            //     ],
-            //     __('Quest attempt started successfully.')
-            // );
+            if ($quizSession->end_datetime && now()->greaterThan($quizSession->end_datetime)) {
+                return $this->badRequestResponse([], __('This quiz session has already closed.'));
+            }
 
             app(LiveSessionService::class)->ensurePublicChannelKey($quizSession);
 
@@ -682,13 +660,9 @@ class QuizAttemptController extends ApiBaseController
                 'public_channel' => app(LiveSessionService::class)->publicChannel(LiveSessionService::MODULE_QUIZ, $quizSession->public_channel_key),
             ], __('Quiz retrieved successfully.'));
         } catch (\Exception $e) {
-            DB::rollBack();
             Log::error('Quiz join by code failed: ' . $e->getMessage());
 
-            return $this->serverErrorResponse(
-                [],
-                __('Failed to join quiz. Please try again.')
-            );
+            return $this->serverErrorResponse([], __('Failed to join quiz. Please try again.'));
         }
     }
     // {
@@ -971,7 +945,8 @@ class QuizAttemptController extends ApiBaseController
 
             $quizSessions = $quizSessions->orderBy('created_at', 'desc')
                 ->withCount('participants')
-                ->whereHas('participants', function ($q) {}, '>', 1)
+                // Sessions anyone joined ("> 1" hid every session with a single player).
+                ->whereHas('participants')
                 ->paginate($request->input('per_page', 10));
 
             return $this->okResponse(

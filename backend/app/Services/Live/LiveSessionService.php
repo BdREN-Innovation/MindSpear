@@ -117,6 +117,50 @@ class LiveSessionService
         });
     }
 
+    /**
+     * Marks when the host opened the question, by the server's clock. The host's own start time
+     * is a display string with no AM/PM or timezone, so players couldn't tell how much time was
+     * left after reloading or reconnecting, and answers were timed 12 hours off.
+     */
+    public function stampTimer(?array $timer): ?array
+    {
+        if (! is_array($timer) || ! is_numeric($timer['duration_seconds'] ?? null)) {
+            return $timer;
+        }
+
+        return [...$timer, 'started_at' => now()->toISOString()];
+    }
+
+    /** Seconds since the current question opened, or null when the timer wasn't stamped. */
+    public function secondsSinceTimerStart(?array $timer): ?int
+    {
+        if (! is_array($timer) || empty($timer['started_at'])) {
+            return null;
+        }
+
+        try {
+            return max(0, (int) floor(\Carbon\Carbon::parse($timer['started_at'])->diffInSeconds(now(), false)));
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /** The timer with the time left right now, so a player arriving mid-question counts down from it. */
+    public function liveTimer(?array $timer): ?array
+    {
+        $elapsed = $this->secondsSinceTimerStart($timer);
+
+        if ($elapsed === null || ! is_numeric($timer['duration_seconds'] ?? null)) {
+            return $timer;
+        }
+
+        return [
+            ...$timer,
+            'remaining_seconds' => max(0, (int) $timer['duration_seconds'] - $elapsed),
+            'server_time' => now()->toISOString(),
+        ];
+    }
+
     public function state(string $module, QuestSession|QuizSession $session): array
     {
         $this->ensurePublicChannelKey($session);
@@ -133,7 +177,7 @@ class LiveSessionService
             'running_status' => (bool) $session->running_status,
             'current_question_id' => $module === self::MODULE_QUIZ ? $session->current_question_id : null,
             'current_task_id' => $module === self::MODULE_QUEST ? $session->current_task_id : null,
-            'timer_state' => $session->timer_state,
+            'timer_state' => $this->liveTimer($session->timer_state),
             'participant_count' => $session->participants_count,
             'start_datetime' => optional($session->start_datetime)->toISOString(),
             'end_datetime' => optional($session->end_datetime)->toISOString(),
