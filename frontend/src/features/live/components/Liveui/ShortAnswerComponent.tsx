@@ -222,6 +222,15 @@ const ShortAnswerComponent: React.FC<Props> = ({ task, value, onChange }) => {
 									<h2 className="mt-2 break-words text-2xl font-black leading-tight text-slate-950 sm:text-3xl">
 										{task?.title || "Short Answer"}
 									</h2>
+									{/* The question's picture (the host's screen showed it; players didn't get it). */}
+									{task?.source_content_url && (
+										// eslint-disable-next-line @next/next/no-img-element
+										<img
+											src={task.source_content_url}
+											alt=""
+											className="mt-4 max-h-64 w-full rounded-lg object-contain"
+										/>
+									)}
 								</div>
 
 								<ParticipantTimerPanel>
