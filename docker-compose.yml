@@ -132,24 +132,31 @@ services:
     restart: unless-stopped
     command: php artisan queue:work redis --queue=default --sleep=0.2 --tries=3 --max-time=3600
 
+  # The production build (frontend/Dockerfile, "run" stage): no hot reload, so code changes
+  # need `docker compose up -d --build frontend`. For `next dev` with hot reload, build
+  # Dockerfile.dev instead and mount the source (./frontend:/app, /app/node_modules, /app/.next).
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: run
+      # NEXT_PUBLIC_* are compiled into the browser bundle at build time (setting them on the
+      # running container does nothing). The browser is outside the docker network, so they use
+      # the host-published ports. The Reverb key is the public one every browser receives.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+        NEXT_PUBLIC_APP_URL: http://localhost:2000
+        NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
+        NEXT_PUBLIC_REVERB_HOST: localhost
+        NEXT_PUBLIC_REVERB_PORT: 8080
+        NEXT_PUBLIC_REVERB_SCHEME: http
     env_file: ./frontend/.env
     environment:
       # Server-side (SSR / route handler) calls reach Laravel over the docker network.
       INTERNAL_API_BASE_URL: http://backend:8000/api/v1
-      # NEXT_PUBLIC_* run in the browser, which is outside the docker network,
-      # so they use the host-published ports.
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
-      NEXT_PUBLIC_REVERB_HOST: localhost
-      NEXT_PUBLIC_REVERB_PORT: 8080
-      NEXT_PUBLIC_APP_URL: http://localhost:2000
     ports:
-      - "2000:2000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      # The production server listens on 3000 inside the container.
+      - "2000:3000"
     networks:
       - mindspear
     depends_on:
