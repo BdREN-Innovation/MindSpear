@@ -66,6 +66,8 @@ export default function HostLiveQuestionView({
 	} = useSelector((state: any) => state.leaderboard);
 	const questTimeData = useSelector((state: any) => state.questTime);
 	const { questId, questionId, questiQsenTime } = questTimeData;
+	const deadline: number | null =
+		typeof questTimeData.questiQsenDeadline === "number" ? questTimeData.questiQsenDeadline : null;
 
 	const total = useMemo<number>(() => {
 		const raw = Number(questiQsenTime);
@@ -80,8 +82,8 @@ export default function HostLiveQuestionView({
 		() => (questId && questionId ? `timer_${questId}_${questionId}` : null),
 		[questId, questionId],
 	);
-	// A new question starts with its answer hidden.
-	useEffect(() => setTimeUp(false), [storageKey]);
+	// A new question starts with its answer hidden (also one the host goes back to: it restarts).
+	useEffect(() => setTimeUp(false), [storageKey, deadline]);
 
 	const getCachedTime = useCallback(() => {
 		if (!storageKey) return null;
@@ -188,38 +190,54 @@ export default function HostLiveQuestionView({
 			return;
 		}
 
-		if (forceRestartRef.current) {
-			const startTime = Date.now();
-			saveCurrentTime(startTime, total, false);
-
-			progressRef.current.style.transition = "none";
-			progressRef.current.style.width = "0%";
-			timeRef.current.textContent = formatMMSS(total);
-
-			forceRestartRef.current = false;
-		}
-
-		const cachedRemaining = getCachedTime();
-		if (cachedRemaining === 0) {
-			progressRef.current.style.transition = "none";
-			progressRef.current.style.width = "100%";
-			timeRef.current.textContent = "0:00";
-			// Already over (e.g. the page was reloaded): the answer stays revealed.
-			setTimeUp(true);
-			return;
-		}
-
 		let startTime: number;
 		let initialRemaining: number;
 
-		if (cachedRemaining !== null && cachedRemaining > 0) {
-			initialRemaining = cachedRemaining;
-			const elapsed = total - cachedRemaining;
-			startTime = Date.now() - elapsed * 1000;
+		if (deadline !== null) {
+			// The server's deadline: the moment the players' countdowns end too, also after a reload
+			// in another browser (the cached start below then restarted the full time).
+			initialRemaining = Math.min(total, Math.max(0, (deadline - Date.now()) / 1000));
+			startTime = deadline - total * 1000;
+			forceRestartRef.current = false;
+			saveCurrentTime(startTime, total, initialRemaining === 0);
+			if (initialRemaining === 0) {
+				progressRef.current.style.transition = "none";
+				progressRef.current.style.width = "100%";
+				timeRef.current.textContent = "0:00";
+				setTimeUp(true);
+				return;
+			}
 		} else {
-			initialRemaining = total;
-			startTime = Date.now();
-			saveCurrentTime(startTime, total, false);
+			if (forceRestartRef.current) {
+				const startTime = Date.now();
+				saveCurrentTime(startTime, total, false);
+
+				progressRef.current.style.transition = "none";
+				progressRef.current.style.width = "0%";
+				timeRef.current.textContent = formatMMSS(total);
+
+				forceRestartRef.current = false;
+			}
+
+			const cachedRemaining = getCachedTime();
+			if (cachedRemaining === 0) {
+				progressRef.current.style.transition = "none";
+				progressRef.current.style.width = "100%";
+				timeRef.current.textContent = "0:00";
+				// Already over (e.g. the page was reloaded): the answer stays revealed.
+				setTimeUp(true);
+				return;
+			}
+
+			if (cachedRemaining !== null && cachedRemaining > 0) {
+				initialRemaining = cachedRemaining;
+				const elapsed = total - cachedRemaining;
+				startTime = Date.now() - elapsed * 1000;
+			} else {
+				initialRemaining = total;
+				startTime = Date.now();
+				saveCurrentTime(startTime, total, false);
+			}
 		}
 
 		const initialElapsed = total - initialRemaining;
@@ -271,7 +289,7 @@ export default function HostLiveQuestionView({
 
 		rafId = requestAnimationFrame(tick);
 		return () => cancelAnimationFrame(rafId);
-	}, [total, storageKey, getCachedTime, saveCurrentTime]);
+	}, [total, storageKey, deadline, getCachedTime, saveCurrentTime]);
 
 	const cleanTitle = useMemo(
 		() => DOMPurify.sanitize(viewModel.title),

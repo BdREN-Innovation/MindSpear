@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import Summary from "@/features/quiz/components/QuizReports/Summary";
 import moment from "@/lib/dayjs";
+import { deadlineOf } from "@/features/live/services/liveTimer";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import axiosInstance from "@/utils/axiosInstance";
 import { AxiosError } from "axios";
@@ -357,6 +358,7 @@ function QuizReport() {
 				questiQsenStartTime: quizQsenStartTime,
 				questiQsenTime: `${timeLimit || ""}`,
 				questiQsenLateStartTime: false,
+				questiQsenDeadline: deadlineOf(liveState.timer_state),
 			})
 		);
 

@@ -37,6 +37,7 @@ import {
 	Users,
 } from "lucide-react";
 import moment from "@/lib/dayjs";
+import { deadlineOf } from "@/features/live/services/liveTimer";
 import { toast } from "react-toastify";
 import {
 	QuestHostConnectionPill,
@@ -330,6 +331,7 @@ function QuizReport() {
 				questiQsenStartTime,
 				questiQsenTime: `${timeLimit || ""}`,
 				questiQsenLateStartTime: false,
+				questiQsenDeadline: deadlineOf(liveState.timer_state),
 			}),
 		);
 

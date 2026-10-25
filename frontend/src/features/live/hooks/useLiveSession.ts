@@ -233,7 +233,9 @@ export function useLiveSession({
 	const effectivePublicChannelKey =
 		publicChannelKey ?? snapshot?.public_channel_key ?? null;
 
-	const applySnapshot = useCallback((nextSnapshot: SessionSnapshot) => {
+	const applySnapshot = useCallback((received: SessionSnapshot, measuredAt?: number) => {
+		// Also the host's own change-question replies, so both sides count to the same deadline.
+		const nextSnapshot = { ...received, timer_state: withDeadline(received.timer_state, measuredAt) };
 		setSnapshot(nextSnapshot);
 		setChannelState((previous) => ({
 			...previous,
@@ -250,13 +252,13 @@ export function useLiveSession({
 		setIsSyncing(true);
 
 		try {
-			const fetched = await getSessionState(
+			const sentAt = Date.now();
+			const nextSnapshot = await getSessionState(
 				module,
 				sessionId,
 				participantToken
 			);
-			const nextSnapshot = { ...fetched, timer_state: withDeadline(fetched.timer_state) };
-			applySnapshot(nextSnapshot);
+			applySnapshot(nextSnapshot, Math.round((sentAt + Date.now()) / 2));
 			setError(null);
 
 			return nextSnapshot;

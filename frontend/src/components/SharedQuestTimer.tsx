@@ -245,7 +245,7 @@ const timeLimit = useMemo(() => {
 
 	// Arriving after the time ran out: a zero-length countdown never completes, which left the
 	// question open (and answerable) at 00:00.
-	const expiredOnArrival = Boolean(timerData) && timeLimit === 0;
+	const expiredOnArrival = Boolean(timerData) && timeLimit <= 0;
 	useEffect(() => {
 		if (expiredOnArrival) handleExpire();
 	}, [expiredOnArrival]);

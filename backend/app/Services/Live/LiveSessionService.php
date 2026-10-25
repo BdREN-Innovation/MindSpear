@@ -145,18 +145,29 @@ class LiveSessionService
         }
     }
 
-    /** The timer with the time left right now, so a player arriving mid-question counts down from it. */
+    /**
+     * The timer with the time left right now, so a player arriving mid-question counts down from it.
+     * remaining_ms is exact: whole seconds overstated it by up to a second, so players' countdowns
+     * ended after the host's (who could reveal the answer while they could still submit).
+     */
     public function liveTimer(?array $timer): ?array
     {
-        $elapsed = $this->secondsSinceTimerStart($timer);
-
-        if ($elapsed === null || ! is_numeric($timer['duration_seconds'] ?? null)) {
+        if (! is_array($timer) || empty($timer['started_at']) || ! is_numeric($timer['duration_seconds'] ?? null)) {
             return $timer;
         }
 
+        try {
+            $elapsedMs = max(0, (int) \Carbon\Carbon::parse($timer['started_at'])->diffInMilliseconds(now(), false));
+        } catch (Throwable) {
+            return $timer;
+        }
+
+        $remainingMs = max(0, (int) $timer['duration_seconds'] * 1000 - $elapsedMs);
+
         return [
             ...$timer,
-            'remaining_seconds' => max(0, (int) $timer['duration_seconds'] - $elapsed),
+            'remaining_seconds' => (int) ceil($remainingMs / 1000),
+            'remaining_ms' => $remainingMs,
             'server_time' => now()->toISOString(),
         ];
     }

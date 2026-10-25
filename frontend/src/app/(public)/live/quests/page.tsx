@@ -20,6 +20,7 @@ import { useSearchParams } from "next/navigation";
 
 import axiosInstance from "@/utils/axiosInstance";
 import moment from "@/lib/dayjs";
+import { deadlineOf } from "@/features/live/services/liveTimer";
 import { setQuestData } from "@/features/quest/store/questQuestionTimeSlice";
 import { Modal } from "@/components/ui";
 import { useLiveSession } from "@/features/live/hooks/useLiveSession";
@@ -266,6 +267,8 @@ export default function LiveQuiz() {
 					""
 				}`,
 				questiQsenLateStartTime: false,
+				// The same server deadline the players count to (a reloaded host restarted the full time).
+				questiQsenDeadline: channelState.timerState?.deadline_ms ?? null,
 			})
 		);
 	}, [
@@ -453,6 +456,7 @@ export default function LiveQuiz() {
 					""
 				}`,
 				questiQsenLateStartTime: false,
+				questiQsenDeadline: deadlineOf(liveState.timer_state),
 			})
 		);
 		dispatch(setCurrentSlideIndex(index));

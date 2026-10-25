@@ -24,6 +24,7 @@ use App\Services\Quiz\LegacyQuizScorer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\QueryException;
@@ -1343,77 +1344,71 @@ class QuizAttemptController extends ApiBaseController
     }
 
     /**
-     * Export quiz session attempts to Excel
+     * Download one quiz session's players and answers as an Excel sheet (the quiz page's Excel
+     * button; it called the quest export with an id a quiz session doesn't have, and failed).
      */
     public function downloadSessionAttemptsExcel(int $sessionId): BinaryFileResponse|JsonResponse
     {
+        return $this->downloadSessionAttempts($sessionId, \Maatwebsite\Excel\Excel::XLSX);
+    }
+
+    /**
+     * Download one quiz session's players and answers as CSV (the quiz page's CSV button).
+     */
+    public function downloadSessionAttemptsCsv(int $sessionId): BinaryFileResponse|JsonResponse
+    {
+        return $this->downloadSessionAttempts($sessionId, \Maatwebsite\Excel\Excel::CSV);
+    }
+
+    private function downloadSessionAttempts(int $sessionId, string $format): BinaryFileResponse|JsonResponse
+    {
         try {
-            $quizSession = QuizSession::with([
-                'participants.user', // Make sure this includes the basic participant info
-                'participants.userQuizAnswers.question',
-            ])->find($sessionId);
+            $quizSession = QuizSession::with(['quiz', 'participants.user', 'participants.userQuizAnswers'])->find($sessionId);
 
             if (! $quizSession) {
                 return $this->notFoundResponse([], __('Quiz session not found'));
             }
 
-            // Add unique tasks to the session object
-            $uniqueTasks = $quizSession->participants
-                ->flatMap(function ($participant) {
-                    return $participant->userQuizAnswers;
-                })
-                ->pluck('question')
-                ->unique('id')
-                ->values();
+            if ($response = $this->ensureSessionExportAllowed($quizSession)) {
+                return $response;
+            }
 
-            return Excel::download(new QuizSessionAttemptsExport($quizSession, $uniqueTasks), "quiz_{$quizSession->quiz_id}_session_{$sessionId}_attempts.xlsx");
+            // Every question of the quiz, in its order (not only the ones somebody answered).
+            $questions = $quizSession->quiz->questions()->authored()->get();
+            $extension = $format === \Maatwebsite\Excel\Excel::CSV ? 'csv' : 'xlsx';
+            $filename = Str::slug($quizSession->quiz->title ?: 'quiz') . "-session-{$sessionId}-answers.{$extension}";
 
-        } catch (\Exception $e) {
-            Log::error('Error exporting quiz session attempts to Excel: ' . $e->getMessage());
-
-            return $this->serverErrorResponse(
-                [],
-                __('An error occurred while retrieving the quiz session attempts')
+            return Excel::download(
+                new QuizSessionAttemptsExport($quizSession, $questions),
+                $filename,
+                $format,
+                $format === \Maatwebsite\Excel\Excel::CSV ? ['Content-Type' => 'text/csv'] : [],
             );
+        } catch (\Exception $e) {
+            Log::error('Error exporting quiz session attempts: ' . $e->getMessage());
+
+            return $this->serverErrorResponse([], __('An error occurred while preparing the download.'));
         }
     }
 
     /**
-     * Export quiz session attempts to CSV
+     * Only the quiz's owner may download its players' names, emails and answers (these routes are
+     * public, like the rest of the leaderboard, so anyone with a session number could).
      */
-    public function downloadSessionAttemptsCsv(int $sessionId): BinaryFileResponse|JsonResponse
+    private function ensureSessionExportAllowed(QuizSession $quizSession): ?JsonResponse
     {
-        try {
-            $quizSession = QuizSession::with([
-                'participants.user', // Make sure this includes the basic participant info
-                'participants.userQuizAnswers.question',
-            ])->find($sessionId);
+        // The bearer token the app sends (these routes have no auth middleware).
+        $userId = Auth::guard('sanctum')->id();
 
-            if (! $quizSession) {
-                return $this->notFoundResponse([], __('Quiz session not found'));
-            }
-
-            // Add unique tasks to the session object
-            $uniqueQuestions = $quizSession->participants
-                ->flatMap(function ($participant) {
-                    return $participant->userQuizAnswers;
-                })
-                ->pluck('question')
-                ->unique('id')
-                ->values();
-
-            return Excel::download(new QuizSessionAttemptsExport($quizSession, $uniqueQuestions), "quiz_{$quizSession->quiz_id}_session_{$sessionId}_attempts.csv", \Maatwebsite\Excel\Excel::CSV, [
-                'Content-Type' => 'text/csv',
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error exporting quiz session attempts to CSV: ' . $e->getMessage());
-
-            return $this->serverErrorResponse(
-                [],
-                __('An error occurred while retrieving the quiz session attempts')
-            );
+        if (! $userId) {
+            return $this->unauthorizedResponse([], __('Sign in to download these results.'));
         }
+
+        if ((int) $quizSession->quiz?->user_id !== (int) $userId) {
+            return $this->forbiddenResponse([], __('You are not allowed to download these results.'));
+        }
+
+        return null;
     }
 
     /**
@@ -1429,6 +1424,10 @@ class QuizAttemptController extends ApiBaseController
 
             if (! $quizSession) {
                 return $this->notFoundResponse([], __('Quiz session not found'));
+            }
+
+            if ($response = $this->ensureSessionExportAllowed($quizSession)) {
+                return $response;
             }
 
             // Add unique tasks to the session object
@@ -1465,6 +1464,10 @@ class QuizAttemptController extends ApiBaseController
 
             if (! $quizSession) {
                 return $this->notFoundResponse([], __('Quiz session not found'));
+            }
+
+            if ($response = $this->ensureSessionExportAllowed($quizSession)) {
+                return $response;
             }
 
             // Add unique tasks to the session object
@@ -1505,6 +1508,10 @@ class QuizAttemptController extends ApiBaseController
                 return $this->notFoundResponse([], __('Quiz session not found'));
             }
 
+            if ($response = $this->ensureSessionExportAllowed($quizSession)) {
+                return $response;
+            }
+
             // Add unique tasks to the session object
             $uniqueTasks = $quizSession->participants
                 ->flatMap(function ($participant) {
@@ -1539,6 +1546,10 @@ class QuizAttemptController extends ApiBaseController
 
             if (! $quizSession) {
                 return $this->notFoundResponse([], __('Quiz session not found'));
+            }
+
+            if ($response = $this->ensureSessionExportAllowed($quizSession)) {
+                return $response;
             }
 
             // Add unique tasks to the session object

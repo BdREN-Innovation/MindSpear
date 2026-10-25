@@ -15,6 +15,8 @@ export type TimerState = {
 	duration_seconds?: number;
 	/** Set by the server when the host opens the question (ISO). */
 	started_at?: string;
+	/** Exact time left when the server answered. */
+	remaining_ms?: number;
 	/** When the question's time runs out, by this device's clock (see withDeadline). */
 	deadline_ms?: number;
 	[key: string]: unknown;

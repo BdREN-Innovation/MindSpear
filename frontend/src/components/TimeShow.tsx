@@ -63,14 +63,13 @@ function TimeShow({
     onTimeUpdateRef.current = onTimeUpdate;
   }, [onTimeUpdate]);
 
-  // Per-item only (your use case)
-  const totalSeconds = useMemo(
-    () => Math.max(0, Math.floor(time_limit) || 0),
+  // The fraction is kept, so a live countdown ends exactly at the server's deadline (rounding to
+  // whole seconds put players up to a second behind the host). The ring is whole seconds long.
+  const initialRemaining = useMemo(
+    () => Math.max(0, Number(time_limit) || 0),
     [time_limit]
   );
-
-  // Make sure initialRemaining equals totalSeconds on mount (resume is done in parent)
-  const initialRemaining = totalSeconds;
+  const totalSeconds = Math.ceil(initialRemaining);
 
   // Key forces remount when question changes or time changes
   const timerKey = `per-item-${id}-${totalSeconds}`;

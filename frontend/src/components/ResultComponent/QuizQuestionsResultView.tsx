@@ -81,16 +81,14 @@ function QuizQuestionsResultView({ list }: any) {
 		try {
 			setIsDownloading(true);
 			setActiveId(data?.id);
+			// This session's players and answers (it called the quest export with a quest id a quiz
+			// session doesn't have, so every download failed).
 			const response = await axiosInstance.get(
-				`/quest-leaderboard/download-session-list/${data?.quest_id}/export/csv`,
+				`/quiz-leaderboard/download-session-attempts/${data?.id}/export/csv`,
 				{ responseType: "blob" },
 			);
 			const blob = new Blob([response.data], { type: "text/csv" });
-			downloadFile(
-				blob,
-				`session-data-${data?.quest_id || "export"}.csv`,
-				response,
-			);
+			downloadFile(blob, `quiz-session-${data?.id}-answers.csv`, response);
 		} catch (error) {
 			handleDownloadError(error, "CSV");
 		} finally {
@@ -103,17 +101,13 @@ function QuizQuestionsResultView({ list }: any) {
 			setIsDownloadingExel(true);
 			setActiveId(data?.id);
 			const response = await axiosInstance.get(
-				`/quest-leaderboard/download-session-list/${data?.quest_id}/export/excel`,
+				`/quiz-leaderboard/download-session-attempts/${data?.id}/export/excel`,
 				{ responseType: "blob" },
 			);
 			const blob = new Blob([response.data], {
 				type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 			});
-			downloadFile(
-				blob,
-				`session-data-${data?.quest_id || "export"}.xlsx`,
-				response,
-			);
+			downloadFile(blob, `quiz-session-${data?.id}-answers.xlsx`, response);
 		} catch (error) {
 			handleDownloadError(error, "Excel");
 		} finally {
@@ -134,8 +128,9 @@ function QuizQuestionsResultView({ list }: any) {
 		if (response?.headers) {
 			const contentDisposition = response.headers["content-disposition"];
 			if (contentDisposition) {
+				// Without the closing quote (the old pattern kept it in the name).
 				const filenameMatch =
-					contentDisposition.match(/filename="?(.+)"?/);
+					contentDisposition.match(/filename="?([^";]+)"?/);
 				if (filenameMatch && filenameMatch[1]) {
 					filename = filenameMatch[1];
 				}
@@ -149,12 +144,19 @@ function QuizQuestionsResultView({ list }: any) {
 		window.URL.revokeObjectURL(url);
 	};
 
-	const handleDownloadError = (error: any, fileType: string) => {
-		const axiosError = error as AxiosError<{ message?: string }>;
+	const handleDownloadError = async (error: any, fileType: string) => {
+		const axiosError = error as AxiosError<any>;
 		if (axiosError.response) {
-			toast.error(
-				`Error: ${axiosError.response.data?.message || `${fileType} download failed.`}`,
-			);
+			// A blob was asked for, so the server's error message arrives as a blob too.
+			let message: string | undefined = axiosError.response.data?.message;
+			if (axiosError.response.data instanceof Blob) {
+				try {
+					message = JSON.parse(await axiosError.response.data.text())?.message;
+				} catch {
+					message = undefined;
+				}
+			}
+			toast.error(message || `${fileType} download failed.`);
 		} else {
 			toast.error("Unexpected error occurred. Please try again.");
 		}

@@ -44,6 +44,7 @@ it('times a live question by the server clock from when the host opened it', fun
     $token = app(ParticipantTokenService::class)->issue($participant, $session);
 
     Sanctum::actingAs($owner);
+    $this->freezeTime();
     // The host's own start time has no AM/PM or timezone.
     $this->postJson("/api/v1/quiz-sessions/{$session->id}/change-question", [
         'question_id' => $question->id,
@@ -55,6 +56,7 @@ it('times a live question by the server clock from when the host opened it', fun
     $this->getJson("/api/v1/quiz-sessions/{$session->id}/state")
         ->assertOk()
         ->assertJsonPath('data.state.timer_state.remaining_seconds', 18)
+        ->assertJsonPath('data.state.timer_state.remaining_ms', 18000)
         ->assertJsonPath('data.state.timer_state.duration_seconds', 30);
 
     // The browser's figure was 12 hours off; the answer is timed from the stamp instead.

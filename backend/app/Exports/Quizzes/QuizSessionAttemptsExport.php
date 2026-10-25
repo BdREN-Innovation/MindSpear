@@ -2,420 +2,189 @@
 
 namespace App\Exports\Quizzes;
 
+use App\Models\Quiz\QuizParticipant;
 use App\Models\Quiz\QuizSession;
+use App\Services\Quiz\LegacyQuizScorer;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithCustomCsvSettings;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\WithStrictNullComparison;
 use Maatwebsite\Excel\Concerns\WithStyles;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class QuizSessionAttemptsExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithStyles
+/**
+ * One row per player of a quiz session: who they are, their score, and what they answered to each
+ * question (as text, marked correct or wrong).
+ *
+ * It used to list only questions somebody had answered (in no set order), dropped empty options
+ * and renumbered the rest (shifting answers onto the wrong option), showed multiple-answer picks
+ * as "0,2,3", and had University / Designation columns that were always empty. Strict null
+ * comparison keeps a score of 0 (it was written as an empty cell).
+ */
+class QuizSessionAttemptsExport implements FromCollection, ShouldAutoSize, WithCustomCsvSettings, WithHeadings, WithMapping, WithStrictNullComparison, WithStyles
 {
-    protected $quizSession;
+    private const MULTI_TYPES = ['quiz_multiple_choice', 'fill_in_the_blanks_multiple_choice', 'multiple_choice'];
 
-    protected $uniqueQuestions;
+    private const TYPED_TYPES = ['sort_answer_choice', 'sort_answer', 'short_answer_choice', 'short_answer'];
 
-    protected $questionsWithOptions = [];
+    private LegacyQuizScorer $scorer;
 
-    public function __construct(QuizSession $quizSession, $uniqueQuestions)
+    /**
+     * @param  Collection  $questions  The quiz's questions, in quiz order.
+     */
+    public function __construct(protected QuizSession $quizSession, protected Collection $questions)
     {
-        $this->quizSession = $quizSession;
-        $this->uniqueQuestions = $uniqueQuestions;
-
-        // Pre-process questions to extract options
-        foreach ($uniqueQuestions as $question) {
-            $this->questionsWithOptions[$question->id] = $this->extractQuestionOptions($question);
-        }
+        $this->scorer = app(LegacyQuizScorer::class);
     }
 
     public function collection()
     {
-        // Load participants with their answers
-        return $this->quizSession->participants()->with('userQuizAnswers')->get();
+        // Best first, like the leaderboard.
+        return $this->quizSession->participants
+            ->map(fn (QuizParticipant $participant) => [$participant, $this->results($participant)])
+            ->sortBy([
+                fn ($a, $b) => $b[1]['score'] <=> $a[1]['score'],
+                fn ($a, $b) => strcasecmp($this->name($a[0]), $this->name($b[0])),
+            ])
+            ->values();
     }
 
     public function headings(): array
     {
-        $baseHeadings = [
-            'Timestamp',
-            'Name',
-            'Email',
-            'University',
-            'Type of University',
-            'Designation',
+        $headings = ['Name', 'Email', 'Joined at', 'Status', 'Score', 'Correct answers'];
+
+        foreach ($this->questions->values() as $index => $question) {
+            $headings[] = 'Q' . ($index + 1) . '. ' . $this->plainText($question->question_text);
+        }
+
+        return $headings;
+    }
+
+    public function map($row): array
+    {
+        [$participant, $results] = $row;
+
+        return [
+            $this->name($participant),
+            $participant->user->email ?? ($participant->anonymous_details['email'] ?? ''),
+            // In the session's timezone (times are stored in UTC).
+            optional($participant->start_time ?? $participant->created_at)
+                ?->copy()->timezone($this->quizSession->timezone ?: 'UTC')->format('Y-m-d H:i'),
+            $participant->status ?? '',
+            $results['score'],
+            $results['correct'] . ' of ' . $this->questions->count(),
+            ...$results['cells'],
         ];
-
-        $questionHeadings = [];
-
-        foreach ($this->uniqueQuestions as $question) {
-            $questionText = $question->question_text ?? 'Quiz Question';
-
-            // Check if we have options to display
-            if (isset($this->questionsWithOptions[$question->id]['has_options']) &&
-                $this->questionsWithOptions[$question->id]['has_options']) {
-
-                $options = $this->questionsWithOptions[$question->id]['options'];
-                $formattedOptions = [];
-
-                // Only show the actual number of available options
-                $optionCount = count($options);
-                for ($i = 0; $i < $optionCount; $i++) {
-                    if (! empty($options[$i])) { // Skip empty options
-                        $formattedOptions[] = ($i + 1) . ' - ' . $options[$i];
-                    }
-                }
-
-                if (! empty($formattedOptions)) {
-                    // Add line break after question text
-                    $questionText .= "\n" . implode("\n", $formattedOptions);
-                }
-            }
-
-            $questionHeadings[] = $questionText;
-        }
-
-        return array_merge($baseHeadings, $questionHeadings);
     }
 
-    public function map($participant): array
+    /**
+     * The player's answer to each question, and their score from them (the same rules as the quiz).
+     */
+    private function results(QuizParticipant $participant): array
     {
-        $name = $this->extractNameFromAnonymousDetails($participant);
-        $email = $this->extractEmailFromAnonymousDetails($participant);
+        $answers = $participant->userQuizAnswers->keyBy('question_id');
+        $score = 0;
+        $correct = 0;
+        $cells = [];
 
-        $rowData = [
-            $participant->created_at ?? '',
-            $name,
-            $email,
-            $participant->university ?? $participant->institution ?? $participant->university_name ?? '',
-            $participant->type_of_university ?? $participant->university_type ?? $participant->institution_type ?? '',
-            $participant->designation ?? $participant->role ?? $participant->title ?? $participant->position ?? '',
-        ];
+        foreach ($this->questions as $question) {
+            $answer = $answers->get($question->id);
+            $selected = $answer?->answer_data['selected_option'] ?? null;
 
-        // Add answer data for each question
-        foreach ($this->uniqueQuestions as $question) {
-            $answer = $this->findAnswerForQuestion($participant, $question->id);
-            $rowData[] = $this->formatAnswerData($answer, $question);
+            if ($selected === null || $selected === '' || $selected === []) {
+                $cells[] = 'Not answered';
+
+                continue;
+            }
+
+            $isCorrect = $this->isCorrect($question, $selected);
+            if ($isCorrect) {
+                $score += (int) ($question->points ?? 0);
+                $correct++;
+            }
+
+            $cells[] = $this->answerText($question, $selected) . ($isCorrect ? ' (correct)' : ' (wrong)');
         }
 
-        return $rowData;
+        return ['score' => $score, 'correct' => $correct, 'cells' => $cells];
     }
 
-    private function extractQuestionOptions($question)
+    private function isCorrect($question, $selected): bool
     {
-        $result = [
-            'has_options' => false,
-            'options' => [],
-        ];
+        $options = is_array($question->options) ? $question->options : [];
+        $correct = $options['correct_answer'] ?? null;
 
-        if (empty($question->options)) {
-            return $result;
+        if (in_array($question->question_type, self::TYPED_TYPES, true)) {
+            return $this->scorer->shortAnswerMatches($selected, $options);
         }
 
-        $optionsData = $this->parseJsonData($question->options);
-
-        // Try different possible structures
-        if (isset($optionsData['choices']) && is_array($optionsData['choices'])) {
-            // Filter out empty choices
-            $filteredChoices = array_filter($optionsData['choices'], function ($choice) {
-                return ! empty($choice) && trim($choice) !== '';
-            });
-
-            if (! empty($filteredChoices)) {
-                $result['has_options'] = true;
-                $result['options'] = array_values($filteredChoices); // Re-index array
-            }
-        } elseif (isset($optionsData['options']) && is_array($optionsData['options'])) {
-            // Filter out empty options
-            $filteredOptions = array_filter($optionsData['options'], function ($option) {
-                return ! empty($option) && trim($option) !== '';
-            });
-
-            if (! empty($filteredOptions)) {
-                $result['has_options'] = true;
-                $result['options'] = array_values($filteredOptions); // Re-index array
-            }
-        } elseif (is_array($optionsData) && ! empty($optionsData)) {
-            // Check if it's a simple array of options
-            // Filter out empty values
-            $filteredData = array_filter($optionsData, function ($item) {
-                return ! empty($item) && trim($item) !== '';
-            });
-
-            if (! empty($filteredData)) {
-                $firstElement = reset($filteredData);
-                if (is_string($firstElement) || is_numeric($firstElement)) {
-                    $result['has_options'] = true;
-                    $result['options'] = array_values($filteredData); // Re-index array
-                }
-            }
+        if (in_array($question->question_type, self::MULTI_TYPES, true)) {
+            return $this->scorer->sameIndexSet($selected, $correct);
         }
 
-        return $result;
+        return $correct !== null && ! is_array($selected) && (string) $selected === (string) $correct;
     }
 
-    private function findAnswerForQuestion($participant, $questionId)
+    /** What the player answered, in words: option texts for a pick, their own text for a typed answer. */
+    private function answerText($question, $selected): string
     {
-        if (! $participant->relationLoaded('userQuizAnswers')) {
-            return null;
+        if (in_array($question->question_type, self::TYPED_TYPES, true)) {
+            return collect((array) $selected)->map(fn ($part) => trim((string) $part))->filter()->implode(', ');
         }
 
-        return $participant->userQuizAnswers->firstWhere('question_id', $questionId);
+        $choices = is_array($question->options['choices'] ?? null) ? $question->options['choices'] : [];
+        $picked = is_array($selected) ? $selected : explode(',', (string) $selected);
+
+        return collect($picked)
+            ->map(fn ($index) => trim((string) $index))
+            ->filter(fn ($index) => is_numeric($index))
+            ->map(fn ($index) => (int) $index)
+            ->unique()
+            ->sort()
+            ->map(fn (int $index) => trim((string) ($choices[$index] ?? '')) ?: 'Option ' . ($index + 1))
+            ->implode(', ');
     }
 
-    private function extractNameFromAnonymousDetails($participant): string
+    private function name(QuizParticipant $participant): string
     {
-        // First, try direct name field
-        if (! empty($participant->name)) {
-            return $participant->name;
-        }
-
-        // Then try anonymous_details JSON
-        if (! empty($participant->anonymous_details)) {
-            $anonymousData = $this->parseJsonData($participant->anonymous_details);
-
-            if (isset($anonymousData['name'])) {
-                return $anonymousData['name'];
-            }
-
-            if (isset($anonymousData['full_name'])) {
-                return $anonymousData['full_name'];
-            }
-
-            if (isset($anonymousData['user_name'])) {
-                return $anonymousData['user_name'];
-            }
-        }
-
-        // Then try user relationship
-        if ($participant->relationLoaded('user') && $participant->user) {
-            return $participant->user->name ?? $participant->user->full_name ?? '';
-        }
-
-        return 'Unknown';
+        return $participant->user->full_name
+            ?? $participant->user->name
+            ?? ($participant->anonymous_details['name'] ?? 'Unknown player');
     }
 
-    private function extractEmailFromAnonymousDetails($participant): string
+    private function plainText(?string $html): string
     {
-        // First, try direct email field
-        if (! empty($participant->email)) {
-            return $participant->email;
-        }
-
-        // Then try anonymous_details JSON
-        if (! empty($participant->anonymous_details)) {
-            $anonymousData = $this->parseJsonData($participant->anonymous_details);
-
-            if (isset($anonymousData['email'])) {
-                return $anonymousData['email'];
-            }
-
-            if (isset($anonymousData['email_address'])) {
-                return $anonymousData['email_address'];
-            }
-        }
-
-        // Then try user relationship
-        if ($participant->relationLoaded('user') && $participant->user) {
-            return $participant->user->email ?? '';
-        }
-
-        return '';
+        return trim(preg_replace('/\s+/', ' ', html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5)));
     }
 
-    private function formatAnswerData($answer, $question): string
+    /** A byte-order mark, so Excel opens the CSV as UTF-8 (names with accents came out garbled). */
+    public function getCsvSettings(): array
     {
-        if (! $answer) {
-            return 'Not answered';
-        }
-
-        // Get answer data
-        $answerData = $this->extractAnswerData($answer);
-
-        if (empty($answerData)) {
-            return 'No answer data';
-        }
-
-        $selectedOption = $answerData['selected_option'] ?? null;
-
-        if ($selectedOption === null) {
-            return 'Not answered';
-        }
-
-        // Handle different data types
-        if (is_array($selectedOption)) {
-            // For array answers (multiple choice or word cloud)
-            return $this->formatArrayAnswer($selectedOption, $question);
-        }
-
-        if (is_numeric($selectedOption)) {
-            // For numeric answers (single choice index)
-            return $this->formatNumericAnswer($selectedOption, $question);
-        }
-
-        if (is_string($selectedOption) && ! empty($selectedOption)) {
-            // For string answers
-            return $selectedOption;
-        }
-
-        return 'Answered';
-    }
-
-    private function extractAnswerData($answer)
-    {
-        // Try different possible answer data fields
-        $fieldsToCheck = ['answer_data', 'completion_data', 'data', 'answer'];
-
-        foreach ($fieldsToCheck as $field) {
-            if (! empty($answer->{$field})) {
-                $data = $this->parseJsonData($answer->{$field});
-                if (! empty($data)) {
-                    return $data;
-                }
-            }
-        }
-
-        return [];
-    }
-
-    private function parseJsonData($data)
-    {
-        if (empty($data)) {
-            return [];
-        }
-
-        if (is_array($data)) {
-            return $data;
-        }
-
-        if (is_string($data)) {
-            $decoded = json_decode($data, true);
-
-            return json_last_error() === JSON_ERROR_NONE ? $decoded : [];
-        }
-
-        if (is_object($data)) {
-            return (array) $data;
-        }
-
-        return [];
-    }
-
-    private function formatArrayAnswer($selectedOption, $question): string
-    {
-        if (empty($selectedOption)) {
-            return 'Not answered';
-        }
-
-        // Check if it's an array of strings (like word cloud or text answers)
-        if (isset($selectedOption[0]) && is_string($selectedOption[0])) {
-            return implode(', ', $selectedOption);
-        }
-
-        // Check if it's an array of indices (multiple choice)
-        if (is_array($selectedOption)) {
-            // Get options for this question
-            $options = $this->questionsWithOptions[$question->id]['options'] ?? [];
-
-            if (empty($options)) {
-                // If no options available, return the indices
-                $indices = array_map(function ($index) {
-                    return 'Option ' . ($index + 1);
-                }, $selectedOption);
-
-                return implode(', ', $indices);
-            }
-
-            // Map indices to option texts
-            $selectedTexts = [];
-            foreach ($selectedOption as $index) {
-                if (isset($options[$index])) {
-                    $selectedTexts[] = $options[$index];
-                } else {
-                    $selectedTexts[] = 'Option ' . ($index + 1);
-                }
-            }
-
-            return implode(', ', $selectedTexts);
-        }
-
-        return 'Unknown array format';
-    }
-
-    private function formatNumericAnswer($selectedOption, $question): string
-    {
-        // Get options for this question
-        $options = $this->questionsWithOptions[$question->id]['options'] ?? [];
-
-        if (empty($options)) {
-            return 'Option ' . ($selectedOption + 1);
-        }
-
-        if (isset($options[$selectedOption])) {
-            return $options[$selectedOption];
-        }
-
-        return 'Option ' . ($selectedOption + 1);
+        return ['use_bom' => true];
     }
 
     public function styles(Worksheet $sheet)
     {
-        $highestRow = $sheet->getHighestRow();
-        $highestColumn = $sheet->getHighestColumn();
+        $lastCell = $sheet->getHighestColumn() . $sheet->getHighestRow();
 
-        // Apply wrap text and alignment to entire sheet
-        $sheet->getStyle('A1:' . $highestColumn . $highestRow)
-            ->getAlignment()
+        $sheet->getStyle('A1:' . $lastCell)->getAlignment()
             ->setWrapText(true)
             ->setVertical(Alignment::VERTICAL_TOP)
             ->setHorizontal(Alignment::HORIZONTAL_LEFT);
 
-        // Set row height for header row to accommodate multi-line content
-        $sheet->getRowDimension(1)->setRowHeight(80); // Increased height for header
-
-        // Auto size columns
-        foreach (range('A', $highestColumn) as $column) {
-            $sheet->getColumnDimension($column)->setAutoSize(true);
-        }
-
         return [
-            // Header row style - bold text with background color
             1 => [
-                'font' => [
-                    'bold' => true,
-                    'color' => ['rgb' => 'FFFFFF'],
-                ],
-                'fill' => [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => '6A5ACD'],
-                ],
-                'borders' => [
-                    'allBorders' => [
-                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
-                        'color' => ['rgb' => 'FFFFFF'],
-                    ],
-                ],
-                'alignment' => [
-                    'wrapText' => true,
-                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
-                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT,
-                ],
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '6A5ACD']],
             ],
-
-            // Data rows style - apply to all rows from 2 to the end
-            'A2:' . $highestColumn . $highestRow => [
-                'alignment' => [
-                    'wrapText' => true,
-                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
-                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT,
-                ],
-                'borders' => [
-                    'allBorders' => [
-                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
-                        'color' => ['rgb' => 'DDDDDD'],
-                    ],
-                ],
+            'A1:' . $lastCell => [
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'DDDDDD']]],
             ],
         ];
     }
