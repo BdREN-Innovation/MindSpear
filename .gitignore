@@ -9,6 +9,7 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.production
+!.env.prod.example
 # Dependencies
 node_modules/
 vendor/
@@ -76,3 +77,6 @@ a.out
 db_dumps/
 /*.sql
 *.dump
+.claude
+.agents
+.impeccable

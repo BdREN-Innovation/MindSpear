@@ -27,11 +27,12 @@ export const NAV_DATA = [
 						url: "/my-library/quiz-page",
 						icon: "/images/icons/quiz.svg",
 					},
-						{
-							title: "Survey",
-							url: "/my-library/survey-page",
-							icon:  "/images/icons/survey.svg",
-						},
+					// Surveys are switched off for now.
+					// {
+					// 	title: "Survey",
+					// 	url: "/my-library/survey-page",
+					// 	icon: "/images/icons/survey.svg",
+					// },
 					{
 						title: "Quest",
 						url: "/my-library/quest-page",
@@ -50,11 +51,12 @@ export const NAV_DATA = [
 						url: "/discover/discover-quiz",
 						icon: "/images/icons/quiz.svg",
 					},
-					{
-						title: "Survey",
-						url: "/discover/discover-survey",
-						icon: "/images/icons/survey.svg",
-					},
+					// Surveys are switched off for now.
+					// {
+					// 	title: "Survey",
+					// 	url: "/discover/discover-survey",
+					// 	icon: "/images/icons/survey.svg",
+					// },
 					{
 						title: "Quest",
 						url: "/discover/discover-quest",

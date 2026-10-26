@@ -1,4 +1,4 @@
-import { FaRegListAlt, FaPoll, FaTasks } from "react-icons/fa";
+import { FaRegListAlt, /* FaPoll, */ FaTasks } from "react-icons/fa";
 import { ChevronRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -66,8 +66,8 @@ const StatsOverview = () => {
 				<h4 className="text-xl font-semibold text-[#222] dark:text-white w-full mb-3">
 					Dashboard Overview
 				</h4>
-				<div className="grid grid-cols-1 mb-3 sm:grid-cols-3 gap-6 w-full">
-					{[1, 2, 3].map((item) => (
+				<div className="grid grid-cols-1 mb-3 sm:grid-cols-2 gap-6 w-full">
+					{[1, 2].map((item) => (
 						<div
 							key={item}
 							className={`
@@ -91,8 +91,8 @@ const StatsOverview = () => {
 				</div>
 
 				{/* Charts Skeleton */}
-				<div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-					{[1, 2, 3].map((item) => (
+				<div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+					{[1, 2].map((item) => (
 						<div
 							key={item}
 							className={`
@@ -187,6 +187,7 @@ const StatsOverview = () => {
 	];
 
 	// Chart data for Survey items
+	/* Surveys are switched off for now.
 	const surveyChartOptions = {
 		chart: {
 			toolbar: { show: false },
@@ -228,6 +229,7 @@ const StatsOverview = () => {
 			]
 		},
 	];
+	*/
 
 	// Chart data for Quest items
 	const questChartOptions = {
@@ -283,15 +285,16 @@ const StatsOverview = () => {
 			color: "text-[#ed3a76]",
 			border: "border-[#ed3a76]/20",
 		},
-		{
-			label: "Total Surveys",
-			value: stats.total_survey_count,
-			href: "/my-library/survey-page",
-			icon: <FaPoll size={32} />,
-			gradient: "#fda148",
-			color: "text-[#fda148]",
-			border: "border-[#fda148]/20",
-		},
+		// Surveys are switched off for now.
+		// {
+		// 	label: "Total Surveys",
+		// 	value: stats.total_survey_count,
+		// 	href: "/my-library/survey-page",
+		// 	icon: <FaPoll size={32} />,
+		// 	gradient: "#fda148",
+		// 	color: "text-[#fda148]",
+		// 	border: "border-[#fda148]/20",
+		// },
 		{
 			label: "Total Quests",
 			value: stats.total_quest_count,
@@ -310,7 +313,7 @@ const StatsOverview = () => {
 			<h4 className="text-xl font-semibold text-[#222] dark:text-white w-full mb-3">
 				Dashboard Overview
 			</h4>
-			<div className="grid grid-cols-1 mb-3 sm:grid-cols-3 gap-6 w-full ">
+			<div className="grid grid-cols-1 mb-3 sm:grid-cols-2 gap-6 w-full ">
 				{/* Each card opens its list in My Library. */}
 				{statsData.map((item) => (
 					<Link
@@ -364,7 +367,7 @@ const StatsOverview = () => {
 			</div>
 
 			{/* Charts Section - Total Overview with three charts for each type */}
-			<div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+			<div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
 				{/* Quiz Charts */}
 				<div
 					className={`
@@ -389,7 +392,7 @@ const StatsOverview = () => {
 					</div>
 				</div>
 
-				{/* Survey Charts */}
+				{/* Survey Charts (surveys are switched off for now)
 				<div
 					className={`
             relative
@@ -412,6 +415,7 @@ const StatsOverview = () => {
 						/>
 					</div>
 				</div>
+				*/}
 
 				{/* Quest Charts */}
 				<div

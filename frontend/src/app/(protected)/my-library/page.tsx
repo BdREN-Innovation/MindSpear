@@ -3,15 +3,16 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import NewQuiz from "@/features/dashboard/components/Library/NewQuiz";
-import NewSurvey from "@/features/dashboard/components/Library/NewSurvey";
+// Surveys are switched off for now.
+// import NewSurvey from "@/features/dashboard/components/Library/NewSurvey";
 import NewQuest from "@/features/dashboard/components/Library/NewQuest";
 
-const TABS = ["Quiz", "Survey", "Quest"] as const;
+const TABS = ["Quiz", /* "Survey", */ "Quest"] as const;
 type TabType = (typeof TABS)[number];
 
 const TAB_MAPPING: Record<string, TabType> = {
 	quiz: "Quiz",
-	survey: "Survey",
+	// survey: "Survey",
 	quest: "Quest",
 };
 
@@ -33,8 +34,8 @@ export default function MyLibraryPage() {
 		switch (activeTab) {
 			case "Quiz":
 				return <NewQuiz />;
-			case "Survey":
-				return <NewSurvey />;
+			// case "Survey":
+			// 	return <NewSurvey />;
 			case "Quest":
 				return <NewQuest />;
 			default:

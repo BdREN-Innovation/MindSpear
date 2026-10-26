@@ -2,12 +2,13 @@
 
 import React, { useEffect } from "react";
 import CreateQuiz from "@/features/quiz/components/CreateQuiz";
-import CreateSurvey from "@/features/survey/components/CreateSurvey";
+// Surveys and reports are switched off for now.
+// import CreateSurvey from "@/features/survey/components/CreateSurvey";
 import CreateQuest from "@/features/quest/components/CreateQuest";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/stores/store";
 import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice"
-import ReportDashboard from "@/features/dashboard/views/ReportDashboard";
+// import ReportDashboard from "@/features/dashboard/views/ReportDashboard";
 import StatsOverview from "@/features/dashboard/views/StatsOverview";
 // import ReportSlider from "@/features/dashboard/views/ReportSlider";
 
@@ -46,9 +47,9 @@ export default function Dashboard() {
 
 			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
 				<CreateQuiz />
-				<CreateSurvey />
+				{/* <CreateSurvey /> */}
 				<CreateQuest />
-				<ReportDashboard />
+				{/* <ReportDashboard /> */}
 				{/* <Reports /> */}
 			</div>
 			<div>
