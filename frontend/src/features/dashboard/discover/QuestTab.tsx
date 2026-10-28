@@ -48,7 +48,11 @@ interface QuestApiResponse {
 	};
 }
 
-export default function QuestTab() {
+/**
+ * Public v1 quests. `legacy`: shown under the v2 Discover list, so it renders
+ * nothing while loading or when there are none, under a "Classic" heading.
+ */
+export default function QuestTab({ legacy = false }: { legacy?: boolean }) {
 	const [quests, setQuests] = useState<CardItem[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [currentPage, setCurrentPage] = useState(1);
@@ -169,6 +173,8 @@ export default function QuestTab() {
 		toast.error(`Opening preview for "${item.title}"...`);
 	};
 
+	if (loading && legacy) return null;
+
 	if (loading) {
 		return (
 			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8 auto-rows-fr">
@@ -186,8 +192,16 @@ export default function QuestTab() {
 		);
 	}
 
+	if (legacy && totalItems === 0) return null;
+
 	return (
 		<>
+			{legacy ? (
+				<div className="mb-4 border-t border-gray-200 pt-8">
+					<h3 className="text-lg font-semibold text-gray-900">Classic quests</h3>
+					<p className="text-sm text-gray-600">Shared from the previous quest editor.</p>
+				</div>
+			) : null}
 			{totalItems > 0 && (
 				<div className="mb-6 text-sm text-gray-600">
 					Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}

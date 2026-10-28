@@ -1,4 +1,6 @@
 // Generating questions from a document in My Files, for quizzes, quests and fun games.
+// The prompts, schemas and the model call live in the AI server (ai-server/); this
+// feature sends the request (aiClient.ts) and maps the answer into editor payloads.
 // `quest` feeds the legacy (v1) quest editor; `quest_v2` writes slides for the
 // slide-based Quest v2 editor (backend type keys, saved through slides/bulk).
 // `quiz` feeds the legacy quiz creator; `quiz_v2` writes scored slides (with
@@ -66,7 +68,7 @@ export interface QuizV2AiChoice {
 
 /**
  * One Quiz v2 question with its correct answer, in the strict shape the
- * prompt asks for (validated by schema.ts before it reaches the editor).
+ * prompt asks for (validated by the AI server before it reaches the editor).
  */
 export type QuizV2AiSlide =
 	| { type: "pick_answer_single" | "pick_answer_multi"; title: string; options: QuizV2AiChoice[] }

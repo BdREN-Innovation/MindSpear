@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Check, CircleDot, Loader2, MonitorPlay, Play, Settings2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CircleDot, Globe, Loader2, Lock, MonitorPlay, Play, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DECK_LIMITS, type DeckProduct } from "@/features/deck/types";
+import { DECK_LIMITS, type DeckProduct, type DeckVisibility } from "@/features/deck/types";
 import { productCopy } from "./productCopy";
 import type { SaveStatus } from "./useDeckEditor";
 
@@ -15,6 +15,8 @@ export interface EditorHeaderProps {
 	product?: DeckProduct;
 	canPresent: boolean;
 	presenting?: boolean;
+	/** Shown as a Private / Public button that opens the settings (Sharing). */
+	visibility?: DeckVisibility;
 	onTitleChange(title: string): void;
 	onTitleCommit(): void;
 	onRetrySave(): void;
@@ -59,6 +61,7 @@ export function EditorHeader({
 	product = "quest",
 	canPresent,
 	presenting,
+	visibility = "private",
 	onTitleChange,
 	onTitleCommit,
 	onRetrySave,
@@ -94,6 +97,16 @@ export function EditorHeader({
 			</div>
 
 			<div className="flex shrink-0 items-center gap-2">
+				<button
+					type="button"
+					onClick={onOpenSettings}
+					className={secondaryButton}
+					title={visibility === "public" ? "Listed in Discover. Change it in Settings." : "Only you can see it. Share it in Settings."}
+				>
+					{visibility === "public" ? <Globe className="h-4 w-4 text-green" aria-hidden /> : <Lock className="h-4 w-4" aria-hidden />}
+					<span className="hidden md:inline">{visibility === "public" ? "Public" : "Private"}</span>
+					<span className="sr-only md:hidden">{visibility === "public" ? "Public, in Discover" : "Private"}</span>
+				</button>
 				<button type="button" onClick={onPreview} className={secondaryButton} disabled={!canPresent}>
 					<Play className="h-4 w-4" aria-hidden />
 					<span className="hidden lg:inline">Preview</span>

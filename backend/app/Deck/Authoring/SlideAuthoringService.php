@@ -339,9 +339,17 @@ class SlideAuthoringService
         return $slide;
     }
 
-    /** Copies $slide (with its loaded `options`) into deck $deckId at $position. */
-    public function copy(Slide $slide, int $deckId, int $position): Slide
+    /**
+     * Copies $slide (with its loaded `options`) into deck $deckId at $position.
+     * $files maps My Files ids (media, option images) to the ones the copy
+     * uses; ids it does not list are kept.
+     *
+     * @param  array<int, int>  $files
+     */
+    public function copy(Slide $slide, int $deckId, int $position, array $files = []): Slide
     {
+        $file = fn ($id) => $id === null ? null : ($files[(int) $id] ?? (int) $id);
+
         $copy = Slide::create([
             'deck_id' => $deckId,
             'type' => $slide->type,
@@ -349,7 +357,7 @@ class SlideAuthoringService
             'title' => $slide->title,
             'body' => $slide->body,
             'config' => $slide->config ?? [],
-            'media_file_id' => $slide->media_file_id,
+            'media_file_id' => $file($slide->media_file_id),
             'time_limit_seconds' => $slide->time_limit_seconds,
             'get_ready_seconds' => $slide->get_ready_seconds,
             'points_min' => $slide->points_min,
@@ -360,7 +368,7 @@ class SlideAuthoringService
         self::insertOptions(self::optionRows($copy->id, $slide->options->map(fn (SlideOption $option) => [
             'label' => $option->label,
             'payload' => $option->payload ?? [],
-            'image_file_id' => $option->image_file_id,
+            'image_file_id' => $file($option->image_file_id),
             'is_correct' => $option->is_correct,
         ])->all()));
 

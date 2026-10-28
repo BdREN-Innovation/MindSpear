@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { DeckTheme } from "@/features/deck/theme";
@@ -15,6 +15,8 @@ export interface PreviewOverlayProps {
 	startIndex: number;
 	theme: DeckTheme;
 	title: string;
+	/** Extra buttons in the top bar, before Close (Discover: "Use this template"). */
+	actions?: ReactNode;
 	/** Called with the slide shown last, so the editor can select it. */
 	onClose(lastSlideId: number | null): void;
 }
@@ -23,7 +25,7 @@ const navButton =
 	"flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-30";
 
 /** Full-screen read-only walkthrough of the deck (plan §5.3): arrows / Space navigate, Esc closes. */
-export function PreviewOverlay({ product = "quest", slides, startIndex, theme, title, onClose }: PreviewOverlayProps) {
+export function PreviewOverlay({ product = "quest", slides, startIndex, theme, title, actions, onClose }: PreviewOverlayProps) {
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(slides.length - 1, startIndex)));
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const slide = slides[index] ?? null;
@@ -113,9 +115,12 @@ export function PreviewOverlay({ product = "quest", slides, startIndex, theme, t
 				<p className="text-sm tabular-nums text-white/80" aria-live="polite" aria-atomic="true">
 					Slide {slides.length ? index + 1 : 0} of {slides.length}
 				</p>
-				<button type="button" onClick={close} className={navButton} aria-label="Close preview (Esc)">
-					<X className="h-5 w-5" aria-hidden />
-				</button>
+				<div className="flex shrink-0 items-center gap-2">
+					{actions}
+					<button type="button" onClick={close} className={navButton} aria-label="Close preview (Esc)">
+						<X className="h-5 w-5" aria-hidden />
+					</button>
+				</div>
 			</div>
 
 			<div className="relative min-h-0 flex-1 px-4 pb-2">

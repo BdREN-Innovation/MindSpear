@@ -4,14 +4,15 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui";
 import { isDeckApiError } from "@/features/deck/api/errors";
 import { getDeckTheme } from "@/features/deck/theme";
-import type { DeckProduct, DeckQaSort, DeckSettings, DeckSettingsPatch } from "@/features/deck/types";
+import type { DeckProduct, DeckQaSort, DeckSettings, DeckSettingsPatch, DeckVisibility } from "@/features/deck/types";
 import { SegmentedField, SelectField, ToggleField, type ChoiceOption } from "../slides/shared";
 import { ThemeGrid } from "./inspector/DesignTab";
 import { GET_READY_CHOICES, timeLimitOptions } from "./inspector/SettingsTab";
 import { productCopy } from "./productCopy";
 
 // Deck-wide settings (backend DeckRequest → DeckSettings): default_time_limit,
-// get_ready_seconds, theme, show_qr_sidebar, default_qa_sort. The timer
+// get_ready_seconds, theme, show_qr_sidebar, default_qa_sort, plus the deck's
+// visibility (private / public in Discover), saved on its own. The timer
 // defaults only seed slides added later; existing slides keep their own.
 // Quiz decks have no Q&A slides, so the Q&A order is Quest-only; their
 // get-ready countdown defaults to 5 s (resolveDeckSettings(…, 'quiz')).
@@ -21,8 +22,10 @@ export interface DeckSettingsModalProps {
 	/** Default quest. */
 	product?: DeckProduct;
 	settings: DeckSettings;
+	visibility: DeckVisibility;
 	onClose(): void;
 	onSave(patch: DeckSettingsPatch): Promise<void>;
+	onSaveVisibility(visibility: DeckVisibility): Promise<void>;
 }
 
 const QA_SORTS: ChoiceOption<DeckQaSort>[] = [
@@ -32,10 +35,24 @@ const QA_SORTS: ChoiceOption<DeckQaSort>[] = [
 
 const GET_READY_OPTIONS: ChoiceOption<number>[] = [{ value: 0, label: "Off" }, ...GET_READY_CHOICES];
 
-export function DeckSettingsModal({ open, product = "quest", settings, onClose, onSave }: DeckSettingsModalProps) {
+const VISIBILITIES: ChoiceOption<DeckVisibility>[] = [
+	{ value: "private", label: "Only me" },
+	{ value: "public", label: "Public in Discover" },
+];
+
+export function DeckSettingsModal({
+	open,
+	product = "quest",
+	settings,
+	visibility,
+	onClose,
+	onSave,
+	onSaveVisibility,
+}: DeckSettingsModalProps) {
 	const copy = productCopy(product);
 	const quiz = product === "quiz";
 	const [draft, setDraft] = useState<DeckSettings>(settings);
+	const [sharing, setSharing] = useState<DeckVisibility>(visibility);
 	const [errors, setErrors] = useState<Record<string, string[]>>({});
 	const [formError, setFormError] = useState<string | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -44,6 +61,7 @@ export function DeckSettingsModal({ open, product = "quest", settings, onClose, 
 	useEffect(() => {
 		if (open) {
 			setDraft(settings);
+			setSharing(visibility);
 			setErrors({});
 			setFormError(null);
 		}
@@ -57,7 +75,8 @@ export function DeckSettingsModal({ open, product = "quest", settings, onClose, 
 		(Object.keys(draft) as (keyof DeckSettings)[]).forEach((key) => {
 			if (draft[key] !== settings[key]) (patch as Record<string, unknown>)[key] = draft[key];
 		});
-		if (Object.keys(patch).length === 0) {
+		const visibilityChanged = sharing !== visibility;
+		if (Object.keys(patch).length === 0 && !visibilityChanged) {
 			onClose();
 			return;
 		}
@@ -65,7 +84,8 @@ export function DeckSettingsModal({ open, product = "quest", settings, onClose, 
 		setErrors({});
 		setFormError(null);
 		try {
-			await onSave(patch);
+			if (Object.keys(patch).length > 0) await onSave(patch);
+			if (visibilityChanged) await onSaveVisibility(sharing);
 			onClose();
 		} catch (error) {
 			if (isDeckApiError(error) && error.status === 422) {
@@ -118,6 +138,22 @@ export function DeckSettingsModal({ open, product = "quest", settings, onClose, 
 					void save();
 				}}
 			>
+				<fieldset className="flex flex-col gap-3">
+					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Sharing</legend>
+					<SegmentedField<DeckVisibility>
+						label={`Who can find this ${copy.noun}`}
+						hint={
+							sharing === "public"
+								? `Anyone signed in can find it in Discover, preview it and copy it to their own library. Your sessions and results stay private, and copies never change your ${copy.noun}.`
+								: `Only you can see and present it.`
+						}
+						value={sharing}
+						options={VISIBILITIES}
+						error={errors.visibility}
+						onChange={setSharing}
+					/>
+				</fieldset>
+
 				<fieldset className="flex flex-col gap-4">
 					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Defaults for new slides</legend>
 					<SelectField<number>

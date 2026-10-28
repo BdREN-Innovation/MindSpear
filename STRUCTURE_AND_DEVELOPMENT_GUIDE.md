@@ -1043,15 +1043,21 @@ A block-based content editor built on **Tiptap** (ProseMirror):
 
 **Templates** (`constants/templates.ts`): Predefined layouts — Image+Text, Text+Image, Two Columns, Three Columns, Image Gallery.
 
-### 5.10 AI Features (OpenAI)
+### 5.10 AI Features (the AI server)
 
-**Endpoint**: `app/api/generate-quiz/route.ts`
+AI generation runs in its own service, `ai-server/` (FastAPI + LangGraph + Pydantic; see `ai-server/README.md`).
+The frontend no longer holds prompts, schemas or an OpenAI key.
 
-- Uses OpenAI GPT-4o model
-- Generates quiz questions from PDF pages or text content
-- Input: `selectedPages`, `topic`, `questionCount`, `questionType`, `difficulty`, `textData`, `audienceLevel`, `focusArea`
-- Output: JSON array of quiz questions
-- Requires `OPENAI_API_KEY` environment variable
+- Frontend side (`src/features/ai-generate/`): the document wizard (`components/`), the request/response types and
+  UI labels (`types.ts`), the client (`aiClient.ts`, `POST {NEXT_PUBLIC_AI_API_URL}/v1/generate` with the user's
+  bearer token) and the mappers that turn the answer into editor payloads (`mappers.ts`).
+- Server side (`ai-server/app/generation/targets/`): one module per target (`quiz`, `quiz_v2`, `quest`, `quest_v2`,
+  `fungame`) holding its question types, prompt rules, output shapes and item models. The LangGraph workflow builds the
+  prompt, calls the model with structured output, validates item by item, retries when nothing is usable and tops up
+  when fewer items than asked came back.
+- Auth: the server verifies the Sanctum token against `LARAVEL_API_URL/profile/show` and rate-limits per token.
+- Env: `NEXT_PUBLIC_AI_API_URL` (frontend; `/ai-api` with `AI_PROXY_URL` set, or the server's URL with CORS),
+  `OPENAI_API_KEY` / `OPENAI_MODEL` / `LARAVEL_API_URL` (server; `ai-server/.env.example`).
 
 ---
 

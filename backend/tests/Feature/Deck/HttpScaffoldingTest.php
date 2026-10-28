@@ -449,7 +449,7 @@ it('presents a full deck with slides, options and resolved files', function () {
     $data = DeckPresenter::detail($deck->fresh());
     $registry = app(SlideTypeRegistry::class);
 
-    expect(array_keys($data))->toBe(['id', 'product', 'title', 'description', 'coverFileId', 'cover', 'settings', 'slideCount', 'publishedAt', 'createdAt', 'updatedAt', 'slides'])
+    expect(array_keys($data))->toBe(['id', 'product', 'title', 'description', 'coverFileId', 'cover', 'settings', 'visibility', 'slideCount', 'publishedAt', 'createdAt', 'updatedAt', 'slides'])
         ->and($data['id'])->toBe($deck->id)
         ->and($data['coverFileId'])->toBe($cover->id)
         ->and($data['cover'])->toMatchArray(['fileId' => $cover->id, 'url' => $cover->url, 'mime' => 'image/webp', 'width' => 800, 'height' => 600, 'inLibrary' => false])

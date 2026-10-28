@@ -9,9 +9,12 @@ import type {
 	DeckProduct,
 	DeckSummary,
 	ListDecksParams,
+	ListPublicDecksParams,
 	OptionInput,
 	OptionOrderEntry,
 	OptionWithSlide,
+	PublicDeck,
+	PublicDeckPage,
 	Slide,
 	SlideOption,
 	SlideOrderEntry,
@@ -60,6 +63,16 @@ export interface AuthoringApi {
 	duplicateDeck(deckId: Id): Promise<Deck>;
 	/** PUT /{deck}/cover {file_id|null} */
 	setCover(deckId: Id, fileId: number | null): Promise<DeckSummary>;
+
+	/** GET /public — Discover: everyone's public decks of this product. */
+	listPublicDecks(params?: ListPublicDecksParams, signal?: AbortSignal): Promise<PublicDeckPage>;
+	/** GET /public/{deck} — preview of a public deck (or your own); 404 when it is not shared. */
+	getPublicDeck(deckId: Id, signal?: AbortSignal): Promise<PublicDeck>;
+	/**
+	 * POST /public/{deck}/copy — 201 a private copy in your library (same title; your own deck: "Copy of …").
+	 * Its images become your own My Files items: 422 `quota_exceeded` when they do not fit.
+	 */
+	copyPublicDeck(deckId: Id): Promise<Deck>;
 
 	/** POST /{deck}/slides {type, after_position?} — 201 slide with registry defaults. */
 	addSlide(deckId: Id, input: AddSlideInput | SlideTypeKey): Promise<SlideWithOrder>;
@@ -147,6 +160,36 @@ export function createAuthoringApi(product: DeckProduct): AuthoringApi {
 		duplicateDeck: (deckId) =>
 			deckRequest(async () => {
 				const res = await axiosInstance.post<ApiEnvelope<{ deck: Deck }>>(`${deckUrl(deckId)}/duplicate`, undefined, {
+					timeout: DECK_TIMEOUTS.duplicate,
+				});
+				return res.data.data.deck;
+			}),
+
+		listPublicDecks: (params = {}, signal) =>
+			deckRequest(async () => {
+				const res = await axiosInstance.get<ApiEnvelope<PublicDeckPage>>(`${base}/public`, {
+					params: {
+						search: params.search || undefined,
+						sort: params.sort,
+						direction: params.direction,
+						per_page: params.perPage,
+						page: params.page,
+					},
+					signal,
+					timeout,
+				});
+				return res.data.data;
+			}),
+
+		getPublicDeck: (deckId, signal) =>
+			deckRequest(async () => {
+				const res = await axiosInstance.get<ApiEnvelope<{ deck: PublicDeck }>>(`${base}/public/${deckId}`, { signal, timeout });
+				return res.data.data.deck;
+			}),
+
+		copyPublicDeck: (deckId) =>
+			deckRequest(async () => {
+				const res = await axiosInstance.post<ApiEnvelope<{ deck: Deck }>>(`${base}/public/${deckId}/copy`, undefined, {
 					timeout: DECK_TIMEOUTS.duplicate,
 				});
 				return res.data.data.deck;

@@ -11,6 +11,7 @@ import {
 	type Deck,
 	type DeckSettings,
 	type DeckSettingsPatch,
+	type DeckVisibility,
 	type DeckSummary,
 	type OptionInput,
 	type Slide,
@@ -103,6 +104,8 @@ export interface DeckEditor {
 	setTitle(title: string): void;
 	commitTitle(): void;
 	updateSettings(patch: DeckSettingsPatch): Promise<void>;
+	/** Private / public (Discover). Optimistic; throws DeckApiError after rolling back. */
+	setVisibility(visibility: DeckVisibility): Promise<void>;
 	flushAll(): Promise<void>;
 	reload(): void;
 }
@@ -845,6 +848,25 @@ export function useDeckEditor(
 			}
 		};
 
+		const setVisibility: DeckEditor["setVisibility"] = async (visibility) => {
+			const meta = metaRef.current;
+			if (!meta || meta.visibility === visibility) return;
+			const before = meta.visibility;
+			metaRef.current = { ...meta, visibility };
+			bump();
+			try {
+				const summary = await track(() => api.updateDeck(deckId, { visibility }));
+				applySummary(summary, !!titleTimerRef.current);
+			} catch (reason) {
+				const error = toDeckApiError(reason);
+				isBlocked(error);
+				if (metaRef.current) metaRef.current = { ...metaRef.current, visibility: before };
+				throw error;
+			} finally {
+				bump();
+			}
+		};
+
 		const flushAll: DeckEditor["flushAll"] = async () => {
 			if (titleTimerRef.current) {
 				clearTimeout(titleTimerRef.current);
@@ -884,6 +906,7 @@ export function useDeckEditor(
 			setTitle,
 			commitTitle,
 			updateSettings,
+			setVisibility,
 			flushAll,
 			isBlocked,
 		};
@@ -986,6 +1009,7 @@ export function useDeckEditor(
 		setTitle: editor.setTitle,
 		commitTitle: editor.commitTitle,
 		updateSettings: editor.updateSettings,
+		setVisibility: editor.setVisibility,
 		flushAll: editor.flushAll,
 		reload,
 	};

@@ -25,13 +25,20 @@ const nextConfig: NextConfig = {
 		// Docker/local: the browser calls Laravel through this app (same origin), so
 	// the site works at any address (localhost, 0.0.0.0, a LAN or public IP)
 	// without CORS. Production routes these paths in Nginx instead (READMEv2.md).
+	// AI_PROXY_URL does the same for the AI server (ai-server/): with it set,
+	// NEXT_PUBLIC_AI_API_URL can be the path /ai-api.
 	async rewrites() {
 		const backend = process.env.BACKEND_PROXY_URL?.trim().replace(/\/$/, "");
-		if (!backend) return [];
+		const ai = process.env.AI_PROXY_URL?.trim().replace(/\/$/, "");
 		return [
-			{ source: "/api/v1/:path*", destination: `${backend}/api/v1/:path*` },
-			{ source: "/broadcasting/auth", destination: `${backend}/broadcasting/auth` },
-			{ source: "/storage/:path*", destination: `${backend}/storage/:path*` },
+			...(backend
+				? [
+						{ source: "/api/v1/:path*", destination: `${backend}/api/v1/:path*` },
+						{ source: "/broadcasting/auth", destination: `${backend}/broadcasting/auth` },
+						{ source: "/storage/:path*", destination: `${backend}/storage/:path*` },
+					]
+				: []),
+			...(ai ? [{ source: "/ai-api/:path*", destination: `${ai}/:path*` }] : []),
 		];
 	},
 	eslint: {

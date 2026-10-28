@@ -150,10 +150,14 @@ services:
         NEXT_PUBLIC_REVERB_HOST: localhost
         NEXT_PUBLIC_REVERB_PORT: 8080
         NEXT_PUBLIC_REVERB_SCHEME: http
+        # The browser calls the AI server through this app (/ai-api → AI_PROXY_URL below), so no CORS.
+        NEXT_PUBLIC_AI_API_URL: /ai-api
     env_file: ./frontend/.env
     environment:
       # Server-side (SSR / route handler) calls reach Laravel over the docker network.
       INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+      # /ai-api/* is rewritten to the AI server over the docker network (next.config.ts).
+      AI_PROXY_URL: http://ai-server:8001
     ports:
       # The production server listens on 3000 inside the container.
       - "2000:3000"
@@ -162,6 +166,71 @@ services:
     depends_on:
       - backend
       - reverb
+      - ai-server
+
+
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    env_file: ./frontend/.env
+    environment:
+      # `next dev` listens on $PORT (package.json no longer pins -p).
+      PORT: 3001
+      # `next dev` reads NEXT_PUBLIC_* at runtime (unlike the production build), so they go
+      # here rather than in build args. The browser is outside the docker network, so they
+      # use the host-published ports. The Reverb key is the public one every browser receives.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_APP_URL: http://localhost:3001
+      NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
+      NEXT_PUBLIC_REVERB_HOST: localhost
+      NEXT_PUBLIC_REVERB_PORT: 8080
+      NEXT_PUBLIC_REVERB_SCHEME: http
+      # The browser calls the AI server through this app (/ai-api → AI_PROXY_URL below), so no CORS.
+      NEXT_PUBLIC_AI_API_URL: /ai-api
+      # Server-side (SSR / route handler) calls reach Laravel over the docker network.
+      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+      # /ai-api/* is rewritten to the AI server over the docker network (next.config.ts).
+      AI_PROXY_URL: http://ai-server:8001
+      # Hot reload: file events from the bind mount reach the container natively on Linux.
+      # On Docker Desktop (macOS/Windows) uncomment to fall back to polling.
+      # WATCHPACK_POLLING: "true"
+      # CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3001:3001"
+    volumes:
+      # Hot reload: run the live source from the host instead of the copy baked into the image.
+      - ./frontend:/app
+      # Keep the image's node_modules and a container-only .next build cache
+      # (the host's would shadow them through the bind mount above).
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - mindspear
+    depends_on:
+      - backend
+      - reverb
+      - ai-server
+
+  # AI question generation (ai-server/, FastAPI + LangGraph). Verifies the user's token
+  # against Laravel, then writes quiz / quest / fun-game items with the OpenAI model.
+  # Needs OPENAI_API_KEY in ai-server/.env (copy ai-server/.env.example).
+  ai-server:
+    build: ./ai-server
+    env_file: ./ai-server/.env
+    environment:
+      LARAVEL_API_URL: http://backend:8000/api/v1
+      # The frontend proxies /ai-api, so the browser never calls this origin directly;
+      # add http://localhost:2000 here only if NEXT_PUBLIC_AI_API_URL is set to http://localhost:8001.
+      CORS_ORIGINS: ""
+    ports:
+      - "8001:8001"
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
 
 networks:
   mindspear:

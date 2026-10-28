@@ -28,6 +28,14 @@ class Deck extends Model
 
     public const PRODUCTS = [self::PRODUCT_QUEST, self::PRODUCT_QUIZ];
 
+    /** Only the owner sees it (the default). */
+    public const VISIBILITY_PRIVATE = 'private';
+
+    /** Listed in Discover: any signed-in user can preview it and copy it into their library. */
+    public const VISIBILITY_PUBLIC = 'public';
+
+    public const VISIBILITIES = [self::VISIBILITY_PRIVATE, self::VISIBILITY_PUBLIC];
+
     protected $fillable = [
         'owner_id',
         'product',
@@ -35,15 +43,19 @@ class Deck extends Model
         'description',
         'cover_file_id',
         'settings',
+        'visibility',
+        'source_deck_id',
         'published_at',
     ];
 
     protected $attributes = [
         'settings' => '{}',
+        'visibility' => self::VISIBILITY_PRIVATE,
     ];
 
     protected $casts = [
         'owner_id' => 'integer',
+        'source_deck_id' => 'integer',
         'cover_file_id' => 'integer',
         'settings' => 'array',
         'published_at' => 'datetime',
@@ -69,6 +81,17 @@ class Deck extends Model
     public function coverFile(): BelongsTo
     {
         return $this->belongsTo(File::class, 'cover_file_id')->withTrashed();
+    }
+
+    /** Copies made of this deck from Discover (live ones, through the default soft-delete scope). */
+    public function copies(): HasMany
+    {
+        return $this->hasMany(self::class, 'source_deck_id');
+    }
+
+    public function isPublic(): bool
+    {
+        return $this->visibility === self::VISIBILITY_PUBLIC;
     }
 
     public function isQuest(): bool
@@ -99,5 +122,10 @@ class Deck extends Model
     public function scopeOwnedBy(Builder $query, User|int $user): Builder
     {
         return $query->where($this->qualifyColumn('owner_id'), $user instanceof User ? $user->getKey() : $user);
+    }
+
+    public function scopePublic(Builder $query): Builder
+    {
+        return $query->where($this->qualifyColumn('visibility'), self::VISIBILITY_PUBLIC);
     }
 }

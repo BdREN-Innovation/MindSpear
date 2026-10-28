@@ -172,7 +172,8 @@ class FileStorageService
             throw $e;
         }
 
-        if ($old['disk_path']) {
+        // Another row may use the same bytes (a copy of someone's public deck, see adopt()).
+        if ($old['disk_path'] && ! $this->bytesShared($old['disk_path'], $file->id)) {
             Storage::disk($old['disk'] ?: $this->disk())->delete($old['disk_path']);
         }
         if (TextExtractionService::supports($extension)) {
@@ -199,6 +200,96 @@ class FileStorageService
     public function markUsed(File $file): void
     {
         $file->forceFill(['last_used_at' => now()])->save();
+    }
+
+    /**
+     * Gives $user their own My Files rows for $files (images of someone
+     * else's deck they are copying) and returns source id => $user's file id.
+     *
+     * The new rows point at the same stored bytes; nothing is written. The
+     * source owner can delete theirs (a soft delete keeps the bytes) or
+     * replace it (replace() keeps bytes another row still uses) and the
+     * copy keeps working. $user's own files map to themselves, and a file
+     * whose bytes $user already has maps to that row. New rows count towards
+     * $user's quota: 422 quota_exceeded, and nothing created, when they do
+     * not all fit.
+     *
+     * @param  iterable<File|null>  $files
+     * @return array<int, int>
+     */
+    public function adopt(User $user, iterable $files): array
+    {
+        $map = [];
+        $pending = [];
+
+        foreach ($files as $file) {
+            if ($file === null || isset($map[$file->id])) {
+                continue;
+            }
+
+            if ((int) $file->user_id === (int) $user->id) {
+                $map[$file->id] = (int) $file->id;
+
+                continue;
+            }
+
+            $existing = $file->checksum
+                ? File::where('user_id', $user->id)->where('checksum', $file->checksum)->where('category', $file->category)->first()
+                : null;
+            if ($existing) {
+                $map[$file->id] = (int) $existing->id;
+
+                continue;
+            }
+
+            // Two source rows with the same bytes become one row for $user.
+            $key = $file->checksum ? "{$file->category}:{$file->checksum}" : "id:{$file->id}";
+            $pending[$key][] = $file;
+        }
+
+        if ($pending === []) {
+            return $map;
+        }
+
+        $bytes = array_sum(array_map(fn (array $group) => (int) $group[0]->size, $pending));
+
+        $created = $this->quota->withReservation($user, $bytes, function () use ($user, $pending) {
+            $rows = [];
+            foreach ($pending as $key => $group) {
+                $source = $group[0];
+                $rows[$key] = File::create([
+                    'name' => $source->name,
+                    'path' => $source->getRawOriginal('path'),
+                    'type' => $source->type,
+                    'category' => $source->category,
+                    'size' => (int) $source->size,
+                    'mime_type' => $source->mime_type,
+                    'extension' => $source->extension,
+                    'original_name' => $source->original_name,
+                    'disk' => $source->disk ?: $this->disk(),
+                    'disk_path' => $source->disk_path,
+                    'visibility' => $source->visibility,
+                    'checksum' => $source->checksum,
+                    'page_count' => $source->page_count,
+                    'width' => $source->width,
+                    'height' => $source->height,
+                    'extraction_status' => $source->extraction_status,
+                    'last_used_at' => now(),
+                    'user_id' => $user->id,
+                    'created_by' => $user->id,
+                ]);
+            }
+
+            return $rows;
+        });
+
+        foreach ($pending as $key => $group) {
+            foreach ($group as $source) {
+                $map[$source->id] = (int) $created[$key]->id;
+            }
+        }
+
+        return $map;
     }
 
     /** (Re-)extracts document text. Failures are recorded, never thrown. */
@@ -239,6 +330,12 @@ class FileStorageService
     public function disk(): string
     {
         return (string) config('file_library.disk', 'local');
+    }
+
+    /** Whether a row other than $exceptId (deleted ones included) uses the bytes at $diskPath. */
+    private function bytesShared(string $diskPath, int $exceptId): bool
+    {
+        return File::withTrashed()->where('disk_path', $diskPath)->whereKeyNot($exceptId)->exists();
     }
 
     /**

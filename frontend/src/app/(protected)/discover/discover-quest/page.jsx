@@ -1,11 +1,11 @@
-import QuestTab from "@/features/dashboard/discover/QuestTab";
+import DiscoverProductTab from "@/features/dashboard/discover/DiscoverProductTab";
 import Title from "../../../../components/ui/Title";
 
 const page = () => {
 	return (
 		<div>
 			<Title as="h2">DISCOVER QUESTS</Title>
-			<QuestTab />
+			<DiscoverProductTab product="quest" />
 		</div>
 	);
 };

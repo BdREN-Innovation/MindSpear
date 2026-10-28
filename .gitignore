@@ -80,3 +80,9 @@ db_dumps/
 .claude
 .agents
 .impeccable
+# Python (ai-server)
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+/ai-server/

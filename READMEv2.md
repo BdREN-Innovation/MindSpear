@@ -59,7 +59,7 @@ Have these ready:
 - Git repo URL.
 - SSH key or deploy token that can clone the repo.
 - A real admin email for Let's Encrypt.
-- A fresh OpenAI API key if production uses OpenAI.
+- A fresh OpenAI API key for the AI server (`ai-server/`, the question-generation service).
 - SMTP settings can wait until after live hosting is verified; the first deploy uses log-only mail to remove that external dependency.
 
 Generate secrets on the server when needed:
@@ -102,7 +102,7 @@ Keep backend and frontend env files separate.
 This is better than a single shared `.env` because the two runtimes load env files differently and have different security boundaries:
 
 - Laravel reads `backend/.env` at runtime. This file contains server-only secrets such as database password, `APP_KEY`, `REVERB_APP_SECRET`, SMTP credentials, and admin seeder credentials.
-- Next.js reads frontend env during build/start. Any variable prefixed with `NEXT_PUBLIC_` is intentionally baked into browser JavaScript. Server-only frontend values such as `OPENAI_API_KEY` must never be renamed with `NEXT_PUBLIC_`.
+- Next.js reads frontend env during build/start. Any variable prefixed with `NEXT_PUBLIC_` is intentionally baked into browser JavaScript. The frontend holds no secrets: the OpenAI key lives in the AI server's env (`ai-server/.env`), never in a frontend env file.
 
 The naming difference is framework convention, not a MindSpear invention:
 
@@ -470,7 +470,19 @@ NEXT_PUBLIC_REVERB_HOST=mindspear.app
 NEXT_PUBLIC_REVERB_PORT=443
 NEXT_PUBLIC_REVERB_SCHEME=https
 NEXT_PUBLIC_APP_URL=https://mindspear.app
-OPENAI_API_KEY=REPLACE_WITH_REAL_OPENAI_KEY
+# The AI server, behind the same domain: Nginx proxies /ai-api/ to 127.0.0.1:8001/
+NEXT_PUBLIC_AI_API_URL=/ai-api
+```
+
+The AI server (`ai-server/`, FastAPI on port 8001) runs as its own process or container with
+`OPENAI_API_KEY`, `LARAVEL_API_URL=https://mindspear.app/api/v1` and no `CORS_ORIGINS` (the browser
+reaches it through `/ai-api` on the site's origin). Add to the Nginx server block:
+
+```nginx
+location /ai-api/ {
+    proxy_pass http://127.0.0.1:8001/;
+    proxy_read_timeout 180s;
+}
 ```
 
 Build:

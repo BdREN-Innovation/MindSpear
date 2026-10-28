@@ -1,6 +1,7 @@
 <?php
 
 use App\Deck\Http\Controllers\Authoring\DeckAuthoringController;
+use App\Deck\Http\Controllers\Authoring\PublicDeckController;
 use App\Deck\Http\Controllers\Authoring\SlideAuthoringController;
 use App\Deck\Http\Controllers\Authoring\SlideOptionController;
 use App\Deck\Http\DeckRoutes;
@@ -22,6 +23,11 @@ DeckRoutes::authoring(function (string $product) {
         Route::patch('{deck}', [DeckAuthoringController::class, 'update'])->whereNumber('deck')->name('decks.update');
         Route::delete('{deck}', [DeckAuthoringController::class, 'destroy'])->whereNumber('deck')->name('decks.destroy');
         Route::post('{deck}/duplicate', [DeckAuthoringController::class, 'duplicate'])->whereNumber('deck')->name('decks.duplicate');
+
+        // Discover: everyone's public decks, a preview, and copying one into your library.
+        Route::get('public', [PublicDeckController::class, 'index'])->name('decks.public.index');
+        Route::get('public/{deck}', [PublicDeckController::class, 'show'])->whereNumber('deck')->name('decks.public.show');
+        Route::post('public/{deck}/copy', [PublicDeckController::class, 'copy'])->whereNumber('deck')->name('decks.public.copy');
 
         Route::post('{deck}/slides', [SlideAuthoringController::class, 'store'])->whereNumber('deck')->name('slides.store');
         Route::post('{deck}/slides/reorder', [SlideAuthoringController::class, 'reorder'])->whereNumber('deck')->name('slides.reorder');

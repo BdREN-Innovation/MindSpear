@@ -1152,6 +1152,9 @@ export function resolveDeckSettings(
 /** PATCH body: settings merge onto the stored ones; null resets a key; unknown keys are 422. */
 export type DeckSettingsPatch = { [P in keyof DeckSettings]?: DeckSettings[P] | null };
 
+/** private (default): only the owner. public: listed in Discover, where anyone signed in can preview and copy it. */
+export type DeckVisibility = "private" | "public";
+
 export interface DeckSummary {
 	id: number;
 	product: DeckProduct;
@@ -1160,6 +1163,7 @@ export interface DeckSummary {
 	coverFileId: number | null;
 	cover: MediaFile | null;
 	settings: DeckSettings;
+	visibility: DeckVisibility;
 	slideCount: number;
 	publishedAt: IsoDateTime | null;
 	createdAt: IsoDateTime | null;
@@ -1257,6 +1261,35 @@ export interface DeckPage {
 	meta: DeckListMeta;
 }
 
+/** A Discover card (GET /public): a public deck, its creator and how often it was copied. */
+export interface PublicDeckSummary extends DeckSummary {
+	creator: { id: number; name: string; avatar: string | null } | null;
+	/** Live copies made from it in Discover. */
+	copyCount: number;
+	/** The viewer's own deck. */
+	isMine: boolean;
+}
+
+/** GET /public/{deck}: the preview, with slides and options. */
+export interface PublicDeck extends PublicDeckSummary {
+	slides: Slide[];
+}
+
+export interface PublicDeckPage {
+	items: PublicDeckSummary[];
+	meta: DeckListMeta;
+}
+
+export interface ListPublicDecksParams {
+	search?: string;
+	/** popular = most copied first. */
+	sort?: "updated" | "created" | "title" | "popular";
+	direction?: "asc" | "desc";
+	/** 1..50, default 20 */
+	perPage?: number;
+	page?: number;
+}
+
 export interface ListDecksParams {
 	search?: string;
 	sort?: "updated" | "created" | "title";
@@ -1270,11 +1303,13 @@ export interface CreateDeckInput {
 	title?: string | null;
 	description?: string | null;
 	settings?: DeckSettingsPatch;
+	visibility?: DeckVisibility;
 }
 
 export interface UpdateDeckInput {
 	title?: string;
 	description?: string | null;
+	visibility?: DeckVisibility;
 	settings?: DeckSettingsPatch;
 }
 

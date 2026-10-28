@@ -62,6 +62,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 		setTitle,
 		commitTitle,
 		updateSettings,
+		setVisibility,
 		flushAll,
 	} = editor;
 	const router = useRouter();
@@ -249,6 +250,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 				product={product}
 				canPresent={slides.length > 0}
 				presenting={presenting}
+				visibility={deck.visibility}
 				onTitleChange={setTitle}
 				onTitleCommit={commitTitle}
 				onRetrySave={() => void flushAll()}
@@ -331,8 +333,10 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 				open={settingsOpen}
 				product={product}
 				settings={deck.settings}
+				visibility={deck.visibility}
 				onClose={() => setSettingsOpen(false)}
 				onSave={updateSettings}
+				onSaveVisibility={setVisibility}
 			/>
 
 			<DeleteSlideDialog

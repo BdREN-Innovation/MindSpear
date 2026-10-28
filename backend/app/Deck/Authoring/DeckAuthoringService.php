@@ -7,12 +7,16 @@ use App\Deck\Http\Resources\DeckPresenter;
 use App\Deck\Slides\Types\Content\ContentSlideType;
 use App\Models\Deck\Deck;
 use App\Models\User;
+use App\Modules\FileLibrary\Services\FileStorageService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Deck-level authoring (plan §2.1): create, list, update, soft delete and
- * duplicate. Product-neutral; the controller passes the route's product.
+ * duplicate, plus sharing: public decks are listed in Discover and any
+ * signed-in user can copy one into their library. Product-neutral; the
+ * controller passes the route's product.
  */
 class DeckAuthoringService
 {
@@ -25,11 +29,15 @@ class DeckAuthoringService
 
     public const SORTS = ['updated' => 'updated_at', 'created' => 'created_at', 'title' => 'title'];
 
+    /** Discover sorts: SORTS plus `popular` (most copied first). */
+    public const PUBLIC_SORTS = self::SORTS + ['popular' => 'copies_count'];
+
     public const DEFAULT_PER_PAGE = 20;
 
     public function __construct(
         private readonly SlideAuthoringService $slides,
         private readonly SlideInput $input,
+        private readonly FileStorageService $files,
     ) {}
 
     /** A new deck holding one qr_code slide (position 1), settings filled with defaults. */
@@ -42,6 +50,7 @@ class DeckAuthoringService
                 'title' => self::title($data['title'] ?? null) ?? 'Untitled ' . $product,
                 'description' => $data['description'] ?? null,
                 'settings' => DeckSettings::normalise([], $data['settings'] ?? [], $product),
+                'visibility' => $data['visibility'] ?? Deck::VISIBILITY_PRIVATE,
             ]);
 
             try {
@@ -81,6 +90,36 @@ class DeckAuthoringService
     }
 
     /**
+     * Everyone's public decks of $product (Discover), newest change first by
+     * default; `popular` puts the most copied first.
+     *
+     * @param  array{search?:?string, sort?:?string, direction?:?string, per_page?:?int}  $filters
+     */
+    public function paginatePublic(string $product, array $filters): LengthAwarePaginator
+    {
+        $query = DeckPresenter::forPublic(Deck::query()->public()->forProduct($product));
+
+        $search = trim((string) ($filters['search'] ?? ''));
+        if ($search !== '') {
+            $like = '%' . addcslashes($search, '%_\\') . '%';
+            $query->where(fn ($q) => $q->where('decks.title', 'ILIKE', $like)->orWhere('decks.description', 'ILIKE', $like));
+        }
+
+        $sort = $filters['sort'] ?? 'updated';
+        $column = self::PUBLIC_SORTS[$sort] ?? 'updated_at';
+        $direction = ($filters['direction'] ?? ($column === 'title' ? 'asc' : 'desc')) === 'asc' ? 'asc' : 'desc';
+        $query->orderBy($column === 'copies_count' ? $column : "decks.{$column}", $direction);
+        if ($column === 'copies_count') {
+            $query->orderBy('decks.updated_at', 'desc');
+        }
+
+        return $query
+            ->orderBy('decks.id', $direction)
+            ->paginate((int) ($filters['per_page'] ?? self::DEFAULT_PER_PAGE))
+            ->withQueryString();
+    }
+
+    /**
      * title / description / settings. Settings merge onto the stored ones as
      * they are now: the deck row is re-read FOR UPDATE, so overlapping
      * partial PATCHes both land.
@@ -107,6 +146,10 @@ class DeckAuthoringService
                 $changes['settings'] = DeckSettings::normalise($fresh->settings, (array) $data['settings'], $fresh->product);
             }
 
+            if (array_key_exists('visibility', $data)) {
+                $changes['visibility'] = $data['visibility'];
+            }
+
             if ($changes !== []) {
                 $fresh->fill($changes)->save();
             }
@@ -122,33 +165,78 @@ class DeckAuthoringService
     }
 
     /**
-     * A full copy for the same owner: "Copy of …", unpublished, every live
-     * slide (renumbered 1..n) with its options. *_file_id references are
-     * copied as-is: no new files, no extra quota (plan §1.9).
+     * A full copy for the same owner: "Copy of …", private, unpublished,
+     * every live slide (renumbered 1..n) with its options. *_file_id
+     * references are copied as-is: no new files, no extra quota (plan §1.9).
      */
     public function duplicate(Deck $deck): Deck
     {
         return DB::transaction(function () use ($deck) {
             SlidePositions::lock($deck);
             $slides = $deck->slides()->with('options')->get();
-            SlideAuthoringService::assertSlideCount($slides->count());
 
-            $copy = Deck::create([
-                'owner_id' => $deck->owner_id,
-                'product' => $deck->product,
-                'title' => mb_substr(self::COPY_PREFIX . $deck->title, 0, self::MAX_TITLE),
-                'description' => $deck->description,
-                'cover_file_id' => $deck->cover_file_id,
-                'settings' => DeckSettings::normalise($deck->settings, [], $deck->product),
+            return $this->copyInto($deck, $slides, $deck->owner_id, self::COPY_PREFIX . $deck->title, null, []);
+        });
+    }
+
+    /**
+     * Copies a public deck (Discover) into $user's library: same title,
+     * private, `source_deck_id` set. Its images become $user's own My Files
+     * rows on the same stored bytes (FileStorageService::adopt), so the copy
+     * keeps working whatever the source owner later does with theirs; they
+     * count towards $user's quota (422 quota_exceeded, nothing copied, when
+     * they do not fit). Copying your own deck is a duplicate().
+     */
+    public function copyFromPublic(Deck $deck, User $user): Deck
+    {
+        if ((int) $deck->owner_id === (int) $user->id) {
+            return $this->duplicate($deck);
+        }
+
+        return DB::transaction(function () use ($deck, $user) {
+            SlidePositions::lock($deck);
+            $slides = $deck->slides()->with(['mediaFile', 'options.imageFile'])->get();
+
+            $files = $this->files->adopt($user, [
+                $deck->cover_file_id ? $deck->coverFile : null,
+                ...$slides->map(fn ($slide) => $slide->media_file_id ? $slide->mediaFile : null),
+                ...$slides->flatMap(fn ($slide) => $slide->options->map(fn ($option) => $option->image_file_id ? $option->imageFile : null)),
             ]);
 
-            $position = 0;
-            foreach ($slides as $slide) {
-                $this->slides->copy($slide, $copy->id, ++$position);
-            }
-
-            return $copy;
+            return $this->copyInto($deck, $slides, $user->id, $deck->title, $deck->id, $files);
         });
+    }
+
+    /**
+     * The new deck for duplicate() / copyFromPublic(), $files mapping the
+     * source's My Files ids to the copy's.
+     *
+     * @param  Collection<int, \App\Models\Deck\Slide>  $slides  the source's live slides, options loaded
+     * @param  array<int, int>  $files
+     */
+    private function copyInto(Deck $deck, Collection $slides, int $ownerId, string $title, ?int $sourceDeckId, array $files): Deck
+    {
+        SlideAuthoringService::assertSlideCount($slides->count());
+
+        $cover = $deck->cover_file_id === null ? null : ($files[(int) $deck->cover_file_id] ?? (int) $deck->cover_file_id);
+
+        $copy = Deck::create([
+            'owner_id' => $ownerId,
+            'product' => $deck->product,
+            'title' => mb_substr($title, 0, self::MAX_TITLE),
+            'description' => $deck->description,
+            'cover_file_id' => $cover,
+            'settings' => DeckSettings::normalise($deck->settings, [], $deck->product),
+            'visibility' => Deck::VISIBILITY_PRIVATE,
+            'source_deck_id' => $sourceDeckId,
+        ]);
+
+        $position = 0;
+        foreach ($slides as $slide) {
+            $this->slides->copy($slide, $copy->id, ++$position, $files);
+        }
+
+        return $copy;
     }
 
     /** Single-line title, or null when blank. */

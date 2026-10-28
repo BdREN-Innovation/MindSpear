@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-import { CalendarClock, Copy, Layers, Loader2, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Copy, Globe, Layers, Loader2, Lock, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui";
 import { questAuthoringApi } from "@/features/deck/api/authoringApi";
 import { isDeckApiError, toDeckApiError } from "@/features/deck/api/errors";
@@ -62,9 +62,22 @@ function DeckCard({
 				)}
 			</Link>
 			<div className="flex flex-1 flex-col gap-1 px-4 pb-3">
-				<h3 className="truncate text-base font-semibold text-dark dark:text-white" title={deck.title}>
-					{deck.title}
-				</h3>
+				<div className="flex items-center gap-2">
+					<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-dark dark:text-white" title={deck.title}>
+						{deck.title}
+					</h3>
+					{deck.visibility === "public" ? (
+						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-light-7 px-2 py-0.5 text-xs font-medium text-green-dark" title="Listed in Discover">
+							<Globe className="h-3.5 w-3.5" aria-hidden />
+							Public
+						</span>
+					) : (
+						<span className="inline-flex shrink-0 items-center text-dark-5 dark:text-dark-6" title="Private: only you can see it">
+							<Lock className="h-3.5 w-3.5" aria-hidden />
+							<span className="sr-only">Private</span>
+						</span>
+					)}
+				</div>
 				<p className="flex items-center gap-1.5 text-sm text-dark-5 dark:text-dark-6">
 					<Layers className="h-4 w-4" aria-hidden />
 					{deck.slideCount} {deck.slideCount === 1 ? "slide" : "slides"}
