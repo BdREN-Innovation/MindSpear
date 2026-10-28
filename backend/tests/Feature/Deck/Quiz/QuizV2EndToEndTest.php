@@ -90,7 +90,8 @@ it('authors, hosts and plays a whole quiz through the API', function () {
 
     $slides = [];
     foreach (['pick_answer_single', 'pick_answer_multi', 'short_answer', 'match_pairs', 'correct_order', 'categorise', 'spinner_wheel', 'leaderboard'] as $type) {
-        $slides[$type] = qapiAppend($host, $deckId, $type);
+        // pick_answer_multi is retired: a second Pick answer, given two correct options below, plays its part.
+        $slides[$type] = qapiAppend($host, $deckId, $type === 'pick_answer_multi' ? 'pick_answer_single' : $type);
     }
 
     $label = function (string $type, array $labels, array $extra = []) use ($host, $deckId, &$slides) {
@@ -135,7 +136,7 @@ it('authors, hosts and plays a whole quiz through the API', function () {
 
     $authored = test()->getJson(QAPI_AUTHOR . "/{$deckId}")->assertOk()->json('data.deck');
     expect(array_column($authored['slides'], 'id'))->toBe($order)
-        ->and(array_column($authored['slides'], 'type'))->toBe(['qr_code', 'pick_answer_single', 'pick_answer_multi', 'short_answer', 'leaderboard',
+        ->and(array_column($authored['slides'], 'type'))->toBe(['qr_code', 'pick_answer_single', 'pick_answer_single', 'short_answer', 'leaderboard',
             'match_pairs', 'correct_order', 'categorise', 'spinner_wheel', 'leaderboard'])
         ->and($authored['slides'][1]['options'][0]['isCorrect'])->toBeTrue();
 
@@ -167,8 +168,9 @@ it('authors, hosts and plays a whole quiz through the API', function () {
     qapiMyAnswer($sessionId, $run, $p2['token'])->assertOk()
         ->assertJsonPath('data.is_correct', false)->assertJsonPath('data.points_awarded', 0)->assertJsonPath('data.rank', 3);
 
-    // --- 2. pick_answer_multi: two answer, the host reveals (all or nothing: a subset scores 0) -
-    $run = qe2eOpen($host, $sessionId, 'pick_answer_multi');
+    // --- 2. Pick answer with two correct (made as pick_answer_multi): two answer, the host reveals (all or nothing: a subset scores 0) -
+    $run = qe2eOpen($host, $sessionId, 'pick_answer_single');
+    expect(qe2eRun($sessionId, $p0['token'])['config']['multiple_answers'])->toBeTrue();
     $o = qe2eByLabel(qe2eRun($sessionId, $p1['token']));
     qapiSubmit($sessionId, $run, $p0['token'], ['option_ids' => [$o['Two']['id'], $o['Three']['id']]])->assertNoContent();
     qapiSubmit($sessionId, $run, $p1['token'], ['option_ids' => [$o['Two']['id']]])->assertNoContent();
@@ -264,7 +266,7 @@ it('authors, hosts and plays a whole quiz through the API', function () {
     qapiAsGuest();
     $review = test()->getJson(QAPI_SESSIONS . "/{$sessionId}/review", qapiHeaders($p1['token']))->assertOk()->json('data');
     $answered = collect($review['runs'])->filter(fn ($r) => $r['my_answer'] !== null);
-    expect($answered->pluck('type')->all())->toBe(['pick_answer_single', 'pick_answer_multi', 'match_pairs', 'correct_order', 'categorise'])
+    expect($answered->pluck('type')->all())->toBe(['pick_answer_single', 'pick_answer_single', 'match_pairs', 'correct_order', 'categorise'])
         ->and($answered->sum(fn ($r) => $r['my_answer']['points_awarded']))->toBe(358)
         ->and(collect($review['runs'])->where('accepts_answers', true)->pluck('state')->unique()->values()->all())->toBe(['reveal']);
 

@@ -21,13 +21,17 @@ use Laravel\Sanctum\Sanctum;
 const QAPI_AUTHOR = '/api/v1/quizzes';
 const QAPI_SESSIONS = '/api/v1/quiz-sessions/v2';
 
-/** Every Quiz-only slide type (products ['quiz']). */
+/** Every Quiz-only slide type (products ['quiz']; pick_answer_multi is retired but still registered for old runs). */
 const QAPI_QUIZ_TYPES = [
-    'categorise', 'correct_order', 'leaderboard', 'match_pairs',
-    'pick_answer_multi', 'pick_answer_single', 'short_answer', 'spinner_wheel',
+    'categorise', 'correct_order', 'drag_drop', 'fill_blanks', 'leaderboard', 'match_pairs',
+    'pick_answer_multi', 'pick_answer_single', 'short_answer', 'spinner_wheel', 'true_false',
 ];
 
-/** The scored ones (accept answers, hidden_until_reveal). */
+/**
+ * The scored types QuizV2EndToEndTest authors and plays (pick_answer_multi:
+ * added by its retired key, so it is a Pick answer with two correct options).
+ * QuizNewTypesApiTest plays true_false, fill_blanks and drag_drop.
+ */
 const QAPI_SCORED_TYPES = [
     'categorise', 'correct_order', 'match_pairs', 'pick_answer_multi', 'pick_answer_single', 'short_answer',
 ];

@@ -11,10 +11,10 @@ export const entry = defineSlideType({
 	products: ["quiz"],
 	category: "poll",
 	label: "Pick answer",
-	description: "Players pick the correct answer; faster answers score more.",
+	description: "Players pick the correct answer — or every correct one when there are several.",
 	icon: CircleCheckBig,
 	Editor: PickAnswerSingleEditor,
 	Presenter: PickAnswerSinglePresenter,
 	Participant: PickAnswerSingleParticipant,
-	sampleAggregate: (slide: SlideOf<"pick_answer_single">): PickAnswerSingleAggregate => sampleChoiceAggregate(slide, "single"),
+	sampleAggregate: (slide: SlideOf<"pick_answer_single">): PickAnswerSingleAggregate => sampleChoiceAggregate(slide),
 });

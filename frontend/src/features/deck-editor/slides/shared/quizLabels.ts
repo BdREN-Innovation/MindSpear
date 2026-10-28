@@ -6,7 +6,10 @@ import type { QuizSlideTypeKey, QuizStanding, SlideOption } from "@/features/dec
 const QUIZ_FALLBACK_TITLES: Record<QuizSlideTypeKey, string> = {
 	pick_answer_single: "Pick the correct answer",
 	pick_answer_multi: "Pick all the correct answers",
+	true_false: "True or false?",
 	short_answer: "Type the correct answer",
+	fill_blanks: "Fill in the blanks",
+	drag_drop: "Drag the words into the blanks",
 	match_pairs: "Match the pairs",
 	correct_order: "Put these in the correct order",
 	categorise: "Sort the items into the right categories",

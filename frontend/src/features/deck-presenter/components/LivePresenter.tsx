@@ -353,7 +353,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 				{announcement}
 			</p>
 
-			{qrOpen && <QrSidebar joinCode={joinCode} participantCount={channel.participantCount} />}
+			{qrOpen && <QrSidebar joinCode={joinCode} participantCount={channel.participantCount} onClose={() => setQrOpen(false)} />}
 
 			<div className="flex min-w-0 flex-1 flex-col">
 				{bannerOpen && <JoinBanner joinCode={joinCode} onDismiss={() => setBannerOpen(false)} />}

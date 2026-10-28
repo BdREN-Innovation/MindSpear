@@ -60,8 +60,12 @@ export type ContentSlideTypeKey =
 /** Quiz v2 types (products ['quiz']). The scored ones take answers; spinner_wheel and leaderboard do not. */
 export type QuizSlideTypeKey =
 	| "pick_answer_single"
+	/** Retired: Pick answer takes several correct answers now. Kept so past runs still render. */
 	| "pick_answer_multi"
+	| "true_false"
 	| "short_answer"
+	| "fill_blanks"
+	| "drag_drop"
 	| "match_pairs"
 	| "correct_order"
 	| "categorise"
@@ -96,7 +100,10 @@ export const QUESTION_SLIDE_TYPE_KEYS: readonly QuestionSlideTypeKey[] = [
 export const QUIZ_SLIDE_TYPE_KEYS: readonly QuizSlideTypeKey[] = [
 	"pick_answer_single",
 	"pick_answer_multi",
+	"true_false",
 	"short_answer",
+	"fill_blanks",
+	"drag_drop",
 	"match_pairs",
 	"correct_order",
 	"categorise",
@@ -107,7 +114,10 @@ export const QUIZ_SLIDE_TYPE_KEYS: readonly QuizSlideTypeKey[] = [
 export const SCORED_QUIZ_SLIDE_TYPE_KEYS: readonly ScoredQuizSlideTypeKey[] = [
 	"pick_answer_single",
 	"pick_answer_multi",
+	"true_false",
 	"short_answer",
+	"fill_blanks",
+	"drag_drop",
 	"match_pairs",
 	"correct_order",
 	"categorise",
@@ -174,11 +184,14 @@ export const DECK_LIMITS = {
 		scales: 20,
 		pick_answer_single: 10,
 		pick_answer_multi: 10,
+		true_false: 2,
 		short_answer: 5,
 		match_pairs: 16,
 		correct_order: 8,
 		categorise: 20,
 		spinner_wheel: 12,
+		fill_blanks: 0,
+		drag_drop: 0,
 	} as Record<string, number>,
 	optionMin: {
 		poll_single: 2,
@@ -187,6 +200,7 @@ export const DECK_LIMITS = {
 		scales: 1,
 		pick_answer_single: 2,
 		pick_answer_multi: 2,
+		true_false: 2,
 		short_answer: 1,
 		match_pairs: 4,
 		correct_order: 3,
@@ -211,11 +225,24 @@ export const QUIZ_LIMITS = {
 	defaultTimeLimitSeconds: {
 		pick_answer_single: 20,
 		pick_answer_multi: 30,
+		true_false: 20,
 		short_answer: 30,
+		fill_blanks: 45,
+		drag_drop: 45,
 		correct_order: 30,
 		match_pairs: 45,
 		categorise: 45,
 	} as Record<ScoredQuizSlideTypeKey, number>,
+	/** fill_blanks / drag_drop sentence (BlankText): ≤ 600 characters, ≤ 10 [bracketed] blanks, each answer ≤ 60. */
+	maxSentenceLength: 600,
+	maxBlanks: 10,
+	maxBlankAnswer: 60,
+	/** fill_blanks: other accepted answers of a typed blank, wrong choices of a dropdown blank, typed answer length. */
+	maxBlankAlternatives: 4,
+	maxBlankDistractors: 5,
+	maxTypedBlank: 100,
+	/** drag_drop: extra wrong words in the word bank. */
+	maxDragDistractors: 8,
 	/** short_answer config.max_length 1..200 (default 100). */
 	shortAnswerMaxLength: 200,
 	shortAnswerDefaultMaxLength: 100,
@@ -468,11 +495,57 @@ export interface QuizScoringConfig {
 	time_limit_seconds: number | null;
 }
 
-/** pick_answer_single: no settings; the correct option(s) are option `isCorrect` (several may be marked: any of them is right). */
+/**
+ * pick_answer_single (Pick answer): no settings; the correct option(s) are option `isCorrect`.
+ * One marked: players pick one. Several marked: players select options and must match the
+ * correct set exactly (all or nothing). Runs say which in config.multiple_answers.
+ */
 export type PickAnswerSingleConfig = EmptyConfig;
 
-/** pick_answer_multi: no settings (a legacy `partial_credit` is dropped). ALL OR NOTHING: the selected set must equal the correct set. */
+/** pick_answer_multi (retired; old runs only): no settings. ALL OR NOTHING: the selected set must equal the correct set. */
 export type PickAnswerMultiConfig = EmptyConfig;
+
+/** true_false: two options (seeded True / False, relabelable); one marked correct. */
+export type TrueFalseConfig = EmptyConfig;
+
+/** How a fill_blanks blank is answered: typed, or chosen from a dropdown. */
+export type FillBlankMode = "type" | "dropdown";
+
+/** Author settings of one fill_blanks blank (config.blanks[i] = the i-th [bracketed] answer). */
+export interface FillBlankSettings {
+	mode: FillBlankMode;
+	/** type: other accepted answers (≤ 4). */
+	alternatives: string[];
+	/** dropdown: the wrong choices (≤ 5); the bracketed answer is always a choice. */
+	distractors: string[];
+}
+
+/** fill_blanks: the sentence with each answer in [square brackets]; never public (runs get parts + blanks). */
+export interface FillBlanksConfig {
+	text: string;
+	/** In reading order; missing entries are {mode: "type"}, extra ones unused. */
+	blanks: FillBlankSettings[];
+	/** Typed answers; default false. */
+	case_sensitive: boolean;
+}
+
+/** drag_drop: the sentence with each answer in [square brackets], plus extra wrong words for the bank (≤ 8). */
+export interface DragDropConfig {
+	text: string;
+	distractors: string[];
+}
+
+/** A piece of a fill_blanks / drag_drop sentence: a text run, or a blank (0-based index into `blanks`). */
+export type SentencePart = { text: string } | { blank: number };
+
+/** A blank as participants see it. */
+export type PublicBlank = { mode: "type" } | { mode: "dropdown"; choices: string[] } | { mode: "drop" };
+
+/** The run config of fill_blanks / drag_drop (the answer key stays on the server). */
+export interface SentenceRunConfig {
+	parts: SentencePart[];
+	blanks: PublicBlank[];
+}
 
 /** short_answer: accepted answers are the option labels (1..5), never shown to participants. */
 export interface ShortAnswerConfig {
@@ -535,7 +608,10 @@ export interface SlideConfigMap {
 	qr_code: QrCodeConfig;
 	pick_answer_single: PickAnswerSingleConfig;
 	pick_answer_multi: PickAnswerMultiConfig;
+	true_false: TrueFalseConfig;
 	short_answer: ShortAnswerConfig;
+	fill_blanks: FillBlanksConfig;
+	drag_drop: DragDropConfig;
 	match_pairs: MatchPairsConfig;
 	correct_order: CorrectOrderConfig;
 	categorise: CategoriseConfig;
@@ -545,10 +621,20 @@ export interface SlideConfigMap {
 
 export type SlideConfig<K extends SlideTypeKey = SlideTypeKey> = SlideConfigMap[K];
 
-/** Run snapshot config: the authoring config, plus `scoring` on scored quiz runs (quiz sessions only). */
+/** Run configs that differ from the authoring config (the type rebuilds them for participants). */
+export interface PublicRunConfigMap {
+	pick_answer_single: { multiple_answers?: boolean };
+	true_false: { multiple_answers?: boolean };
+	fill_blanks: SentenceRunConfig & { case_sensitive: boolean };
+	drag_drop: SentenceRunConfig;
+}
+
+type RunConfigBase<K extends SlideTypeKey> = K extends keyof PublicRunConfigMap ? PublicRunConfigMap[K] : SlideConfigMap[K];
+
+/** Run snapshot config: the authoring config (or its public form), plus `scoring` on scored quiz runs (quiz sessions only). */
 export type RunConfigOf<K extends SlideTypeKey> = K extends ScoredQuizSlideTypeKey
-	? SlideConfigMap[K] & { scoring: QuizScoringConfig }
-	: SlideConfigMap[K];
+	? RunConfigBase<K> & { scoring: QuizScoringConfig }
+	: RunConfigBase<K>;
 
 /** Keys the server owns; PATCH drops them (media goes through PUT .../media). */
 export type ServerManagedConfigKey = "media" | "video_url" | "video_provider" | "video_id" | "embed_url";
@@ -630,10 +716,15 @@ export interface AnswerPayloadMap {
 	video: never;
 	big_text: never;
 	qr_code: never;
-	/** An option of the run. */
-	pick_answer_single: { option_id: number };
+	/** One correct marked: an option of the run. Several: 1..n distinct option ids (config.multiple_answers). */
+	pick_answer_single: { option_id: number } | { option_ids: number[] };
 	/** 1..n distinct option ids. */
 	pick_answer_multi: { option_ids: number[] };
+	true_false: { option_id: number };
+	/** One per blank in reading order; null = left empty (at least one filled). Dropdown: one of its choices. */
+	fill_blanks: { answers: (string | null)[] };
+	/** One per blank; each a word of the bank (run options' labels), no word more often than the bank has it. */
+	drag_drop: { answers: (string | null)[] };
 	/** 1..config.max_length characters after cleaning (trim, whitespace collapsed). */
 	short_answer: { text: string };
 	/** 1..pair count connections, each left / right id used at most once; unmatched cells allowed. */
@@ -680,9 +771,14 @@ export interface StoredAnswerMap {
 	video: never;
 	big_text: never;
 	qr_code: never;
-	pick_answer_single: { option_id: number };
+	/** {option_id}, or {option_ids} in option order when several are correct. */
+	pick_answer_single: { option_id: number } | { option_ids: number[] };
 	/** In option order. */
 	pick_answer_multi: { option_ids: number[] };
+	true_false: { option_id: number };
+	/** Cleaned like short answers; null = left empty. */
+	fill_blanks: { answers: (string | null)[] };
+	drag_drop: { answers: (string | null)[] };
 	/** Cleaned: control / invisible characters removed, whitespace collapsed, trimmed. */
 	short_answer: { text: string };
 	/** In the participant's order. */
@@ -931,6 +1027,10 @@ export interface QuizCorrectAnswerMap {
 	/** Correct option ids in option order (several may be marked). */
 	pick_answer_single: { option_ids: number[] };
 	pick_answer_multi: { option_ids: number[] };
+	true_false: { option_ids: number[] };
+	/** Per blank, its accepted answers (first = the bracketed one). */
+	fill_blanks: { blanks: { answers: string[] }[] };
+	drag_drop: { blanks: { answers: string[] }[] };
 	/** Accepted answers (cleaned option labels) in option order. */
 	short_answer: { accepted_answers: string[]; case_sensitive: boolean };
 	/** One entry per valid pair, left (author) order. */
@@ -976,6 +1076,23 @@ export interface PickAnswerSingleAggregate extends QuizAggregateBase {
 export interface PickAnswerMultiAggregate extends QuizAggregateBase {
 	options: QuizOptionCount[];
 	correct: QuizCorrectAnswerMap["pick_answer_multi"];
+}
+
+export interface TrueFalseAggregate extends QuizAggregateBase {
+	options: QuizOptionCount[];
+	correct: QuizCorrectAnswerMap["true_false"];
+}
+
+export interface BlankResult {
+	/** Responses with this blank right. */
+	correct_count: number;
+	correct_percentage: number;
+}
+
+/** fill_blanks / drag_drop: per blank in reading order. */
+export interface BlanksAggregate extends QuizAggregateBase {
+	blanks: BlankResult[];
+	correct: QuizCorrectAnswerMap["fill_blanks"];
 }
 
 export interface ShortAnswerRow {
@@ -1080,6 +1197,9 @@ export interface SlideAggregateMap {
 	qr_code: EmptyAggregate;
 	pick_answer_single: PickAnswerSingleAggregate;
 	pick_answer_multi: PickAnswerMultiAggregate;
+	true_false: TrueFalseAggregate;
+	fill_blanks: BlanksAggregate;
+	drag_drop: BlanksAggregate;
 	short_answer: ShortAnswerAggregate;
 	match_pairs: MatchPairsAggregate;
 	correct_order: CorrectOrderAggregate;
@@ -1415,6 +1535,11 @@ export interface RunOption<Id extends number | string = number, P = OptionPayloa
 export interface QuizRunOptionMap {
 	pick_answer_single: RunOption;
 	pick_answer_multi: RunOption;
+	true_false: RunOption;
+	/** No options: the sentence and its blanks are in config. */
+	fill_blanks: never;
+	/** The word bank under opaque ids, shuffled per participant; payload {}. Answers send the words (labels). */
+	drag_drop: RunOption<OpaqueOptionId, EmptyConfig>;
 	/** Accepted answers are never shown: options is always []. */
 	short_answer: never;
 	/** Left cells first (author order), then the right cells shuffled per run; payload {side} only. */
@@ -1445,6 +1570,10 @@ export type RunViewExtrasOf<K extends SlideTypeKey> = K extends "spinner_wheel" 
 export interface QuizPresenterOptionExtraMap {
 	pick_answer_single: { option_id: number; payload: OptionPayload; is_correct: boolean };
 	pick_answer_multi: { option_id: number; payload: OptionPayload; is_correct: boolean };
+	true_false: { option_id: number; payload: OptionPayload; is_correct: boolean };
+	fill_blanks: never;
+	/** option_id = the word's place in the bank (host only). */
+	drag_drop: { option_id: number; payload: OptionPayload };
 	short_answer: never;
 	match_pairs: { option_id: number; payload: MatchPairsOptionPayload };
 	correct_order: { option_id: number; payload: OptionPayload };

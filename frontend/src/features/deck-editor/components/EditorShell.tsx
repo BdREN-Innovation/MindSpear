@@ -19,6 +19,8 @@ import { SlidePicker } from "./SlidePicker";
 import { SlideRail } from "./SlideRail";
 import { useDeckEditor } from "./useDeckEditor";
 
+const INSPECTOR_COLLAPSED_KEY = "deck-editor:inspector-collapsed";
+
 // The v2 deck editor (Quest plan §5.1 / §5.3): header, slide rail, canvas,
 // inspector. Product-parameterised: /quests/[id]/edit and /quizzes/[id]/edit
 // share it; the product picks the API (/quests/v2 or /quizzes), the slide
@@ -72,6 +74,25 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 	const [aiOpen, setAiOpen] = useState(false);
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [previewOpen, setPreviewOpen] = useState(false);
+	// The inspector's collapsed state is a per-browser preference (storage may be unavailable).
+	const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
+	useEffect(() => {
+		try {
+			setInspectorCollapsed(window.localStorage.getItem(INSPECTOR_COLLAPSED_KEY) === "1");
+		} catch {
+			// Private mode or blocked storage: start expanded.
+		}
+	}, []);
+	const toggleInspector = useCallback(() => {
+		setInspectorCollapsed((collapsed) => {
+			try {
+				window.localStorage.setItem(INSPECTOR_COLLAPSED_KEY, collapsed ? "0" : "1");
+			} catch {
+				// Not remembered; the toggle still works.
+			}
+			return !collapsed;
+		});
+	}, []);
 	const [deleteId, setDeleteId] = useState<number | null>(null);
 	const [adding, setAdding] = useState(false);
 	const [presenting, setPresenting] = useState(false);
@@ -298,6 +319,8 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 					media={selected ? mediaApiFor(selected.id) : null}
 					onUpdateSettings={updateSettings}
 					onOpenDeckSettings={() => setSettingsOpen(true)}
+					collapsed={inspectorCollapsed}
+					onToggleCollapsed={toggleInspector}
 				/>
 			</div>
 

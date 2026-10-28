@@ -28,20 +28,36 @@ import {
 } from "./quizParticipant";
 import { quizDisplayTitle, quizFallbackTitle, resolveStanding } from "./quizLabels";
 
-// pick_answer_single / pick_answer_multi (plan §3.2), one implementation with
-// a `mode`: single = one correct radio in the editor and an instant submit on
-// the phone; multi = checkboxes and a Submit button, scored ALL OR NOTHING
-// (the selected set must equal the correct set exactly).
+// Pick answer (pick_answer_single), true_false and the retired
+// pick_answer_multi, one implementation with a `mode`: single = an instant
+// submit on the phone; multi = checkboxes and a Submit button, scored ALL OR
+// NOTHING (the selected set must equal the correct set exactly). Pick answer
+// runs say which in config.multiple_answers (several options marked correct).
 
 export type ChoiceMode = "single" | "multi";
-type ChoiceType = "pick_answer_single" | "pick_answer_multi";
+export type ChoiceType = "pick_answer_single" | "pick_answer_multi" | "true_false";
 
-const typeOf = (mode: ChoiceMode): ChoiceType => (mode === "single" ? "pick_answer_single" : "pick_answer_multi");
+/** How players answer a choice run: several correct → select them all; else pick one. */
+export function choiceModeOf(run: { type: string; config: unknown }): ChoiceMode {
+	if (run.type === "pick_answer_multi") return "multi";
+	return (run.config as { multiple_answers?: unknown } | null)?.multiple_answers === true ? "multi" : "single";
+}
+
+/** An option's label; an unlabelled true_false option reads True / False. */
+export function choiceLabel(type: ChoiceType, option: Pick<RunOption, "label"> | undefined, index: number): string {
+	if (type === "true_false" && !option?.label?.trim()) return index === 0 ? "True" : "False";
+	return optionLabel(option, index);
+}
 
 /* ------------------------------------------------------------------ */
 /* Editor                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Answer options with correct marks. `any` (Pick answer): tick one or more;
+ * with several ticked players must select all of them. `single`: one radio.
+ * `multi` (retired pick_answer_multi): ticks, always all or nothing.
+ */
 export function ChoiceOptionsEditor({
 	slide,
 	api,
@@ -51,11 +67,12 @@ export function ChoiceOptionsEditor({
 }: {
 	slide: Slide;
 	api: OptionsApi;
-	mode: ChoiceMode;
+	mode: ChoiceMode | "any";
 	errors?: Record<string, string[]>;
 	disabled?: boolean;
 }) {
-	const marking = useCorrectMarking(slide, api, mode);
+	const marker: ChoiceMode = mode === "single" ? "single" : "multi";
+	const marking = useCorrectMarking(slide, api, marker);
 	const total = slide.options.length;
 	return (
 		<div className="flex flex-col gap-2">
@@ -71,11 +88,13 @@ export function ChoiceOptionsEditor({
 				hint={
 					mode === "single"
 						? "Select the circle next to the correct answer."
-						: "Tick every correct answer. Scoring is all or nothing: players score only when they select exactly the correct answers — no points for some of them."
+						: mode === "any"
+							? "Tick the correct answer. Tick more than one if several are right: players then select every correct answer, all or nothing."
+							: "Tick every correct answer. Scoring is all or nothing: players score only when they select exactly the correct answers — no points for some of them."
 				}
 				renderRowStart={(option, index) => (
 					<CorrectMarker
-						mode={mode}
+						mode={marker}
 						checked={marking.isCorrect(option)}
 						onToggle={() => void marking.toggle(option)}
 						label={`Option ${index + 1}`}
@@ -87,10 +106,15 @@ export function ChoiceOptionsEditor({
 			{errors?.is_correct?.[0] ? <EditorError>{errors.is_correct[0]}</EditorError> : null}
 			{marking.correctCount === 0 ? (
 				<EditorWarning>
-					{mode === "single" ? "Mark the correct answer" : "Mark at least one correct answer"} — without one, nobody can score on this slide.
+					{mode === "multi" ? "Mark at least one correct answer" : "Mark the correct answer"} — without one, nobody can score on this slide.
 				</EditorWarning>
-			) : mode === "multi" && marking.correctCount === total && total > 0 ? (
+			) : mode !== "single" && marking.correctCount === total && total > 1 ? (
 				<EditorWarning>Every option is marked correct, so players must select all of them to score.</EditorWarning>
+			) : mode === "any" && marking.correctCount > 1 ? (
+				<p className="m-0 text-sm text-dark-5 dark:text-dark-6">
+					{marking.correctCount} correct answers: players select several options and score only when they pick{" "}
+					{marking.correctCount === 2 ? "both" : `all ${marking.correctCount}`}.
+				</p>
 			) : null}
 		</div>
 	);
@@ -101,6 +125,7 @@ export function ChoiceOptionsEditor({
 /* ------------------------------------------------------------------ */
 
 export function ChoicePresenter({
+	type,
 	mode,
 	title,
 	options,
@@ -108,6 +133,7 @@ export function ChoicePresenter({
 	state,
 	theme,
 }: {
+	type: ChoiceType;
 	mode: ChoiceMode;
 	title: string | null;
 	options: RunOption[];
@@ -116,8 +142,8 @@ export function ChoicePresenter({
 	state: RunState;
 	theme: DeckTheme;
 }) {
-	const fallback = quizFallbackTitle(typeOf(mode));
-	const tiles = options.map((option, index) => ({ id: option.id, label: optionLabel(option, index), imageUrl: option.image_url }));
+	const fallback = quizFallbackTitle(type);
+	const tiles = options.map((option, index) => ({ id: option.id, label: choiceLabel(type, option, index), imageUrl: option.image_url }));
 	const revealed = state === "reveal" || state === "closed";
 
 	let body: ReactNode;
@@ -155,7 +181,7 @@ export function ChoicePresenter({
 					const row = counts.get(option.id);
 					return {
 						id: option.id,
-						label: optionLabel(option, index),
+						label: choiceLabel(type, option, index),
 						imageUrl: option.image_url,
 						value: row?.count ?? 0,
 						display: formatPercent(row?.percentage ?? 0),
@@ -179,7 +205,7 @@ export function ChoicePresenter({
 /* Participant                                                         */
 /* ------------------------------------------------------------------ */
 
-type ChoiceParticipantProps = ParticipantProps<"pick_answer_single"> | ParticipantProps<"pick_answer_multi">;
+type ChoiceParticipantProps = ParticipantProps<"pick_answer_single"> | ParticipantProps<"pick_answer_multi"> | ParticipantProps<"true_false">;
 
 /** The ids a stored / local answer picked (single or multi shape). */
 function pickedIds(answer: { option_id?: unknown; option_ids?: unknown } | null | undefined): number[] {
@@ -188,7 +214,18 @@ function pickedIds(answer: { option_id?: unknown; option_ids?: unknown } | null 
 	return Array.isArray(answer.option_ids) ? answer.option_ids.filter((id): id is number => typeof id === "number") : [];
 }
 
-export function ChoiceParticipant({ mode, props }: { mode: ChoiceMode; props: ChoiceParticipantProps }) {
+export function ChoiceParticipant({
+	type,
+	mode,
+	props,
+	layout = "list",
+}: {
+	type: ChoiceType;
+	mode: ChoiceMode;
+	props: ChoiceParticipantProps;
+	/** "binary": two big side-by-side answers (true_false). */
+	layout?: "list" | "binary";
+}) {
 	const { run, mySubmission, disabled, theme, aggregate, reveal, standing, quiz } = props;
 	const onSubmit = props.onSubmit as (payload: { option_id: number } | { option_ids: number[] }) => Promise<void>;
 	const answer = useQuizAnswer<{ option_id?: number; option_ids?: number[] }, { option_id: number } | { option_ids: number[] }>(
@@ -205,7 +242,7 @@ export function ChoiceParticipant({ mode, props }: { mode: ChoiceMode; props: Ch
 	const chosen = picked.filter((id) => options.some((option) => option.id === id));
 	const answered = chosen.length > 0 || answer.alreadyAnswered;
 	const phase = quizPhase(run.state, props.mode, answered);
-	const title = quizDisplayTitle(run.title, typeOf(mode));
+	const title = quizDisplayTitle(run.title, type);
 	const scoring = props.scoring ?? runScoring(run);
 
 	if (phase !== "result" && optionsHidden(run)) {
@@ -237,7 +274,7 @@ export function ChoiceParticipant({ mode, props }: { mode: ChoiceMode; props: Ch
 									tone={tone}
 									index={index}
 									imageUrl={option.image_url}
-									label={optionLabel(option, index)}
+									label={choiceLabel(type, option, index)}
 									note={mine ? "Your answer" : tone === "missed" ? "You didn't select this" : undefined}
 								/>
 							);
@@ -261,7 +298,7 @@ export function ChoiceParticipant({ mode, props }: { mode: ChoiceMode; props: Ch
 								return (
 									<li key={id} className="flex items-center gap-3">
 										{option?.image_url ? <img src={option.image_url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" draggable={false} /> : null}
-										<span className="break-words font-semibold">{optionLabel(option, index)}</span>
+										<span className="break-words font-semibold">{choiceLabel(type, option, index)}</span>
 									</li>
 								);
 							})}
@@ -302,15 +339,16 @@ export function ChoiceParticipant({ mode, props }: { mode: ChoiceMode; props: Ch
 			<PointsBar scoring={scoring} votingStartedAt={run.voting_started_at} active={answering} />
 			{!answering ? <ParticipantNotice>The question opens when the host starts it.</ParticipantNotice> : null}
 			{mode === "single" && answer.fieldError ? <ParticipantNotice tone="danger">{answer.fieldError}</ParticipantNotice> : null}
-			<OptionCardGroup label={title} mode={mode}>
+			<OptionCardGroup label={title} mode={mode} className={layout === "binary" ? "grid grid-cols-2" : undefined}>
 				{options.map((option, index) => {
 					const isSelected = mode === "single" ? tapped === option.id : selected.includes(option.id);
 					return (
 						<OptionCard
 							key={option.id}
 							mode={mode}
-							index={index}
-							label={optionLabel(option, index)}
+							index={layout === "binary" ? undefined : index}
+							className={layout === "binary" ? "min-h-28 text-lg" : undefined}
+							label={choiceLabel(type, option, index)}
 							imageUrl={option.image_url}
 							selected={isSelected}
 							disabled={locked || answer.busy}

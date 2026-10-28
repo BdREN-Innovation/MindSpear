@@ -2,14 +2,15 @@ import type { PickAnswerMultiAggregate, SlideOf } from "@/features/deck/types";
 import { optionIsCorrect } from "../shared/quizLabels";
 import { sampleCount } from "../shared/samples";
 
-// Editor canvas preview of a pick_answer reveal: stable made-up counts per
+// Editor canvas preview of a pick answer reveal: stable made-up counts per
 // option (the backend aggregate shape), correctness from the options' marks
 // (is_correct, or the payload.is_correct fallback like the server).
-// Shared by pick_answer_single and pick_answer_multi.
+// Shared by pick_answer_single (multi when several are marked), true_false
+// and the retired pick_answer_multi.
 
 export function sampleChoiceAggregate(
-	slide: SlideOf<"pick_answer_single"> | SlideOf<"pick_answer_multi">,
-	mode: "single" | "multi"
+	slide: SlideOf<"pick_answer_single"> | SlideOf<"pick_answer_multi"> | SlideOf<"true_false">,
+	mode: "single" | "multi" = slide.options.filter((option) => optionIsCorrect(option)).length > 1 ? "multi" : "single"
 ): PickAnswerMultiAggregate {
 	const options = [...slide.options].sort((a, b) => a.position - b.position || a.id - b.id);
 	const correctIds = options.filter((option) => optionIsCorrect(option)).map((option) => option.id);

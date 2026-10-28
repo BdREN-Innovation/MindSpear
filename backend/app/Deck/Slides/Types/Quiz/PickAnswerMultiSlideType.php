@@ -8,7 +8,11 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Pick answer, several choices (scored).
+ * Pick answer, several choices (scored). RETIRED: Pick answer
+ * (pick_answer_single) now takes one or several correct answers, so new and
+ * edited slides use it (replacedBy(); SlideInput resolves this key to it and
+ * a migration converted the stored slides). Kept registered so session runs
+ * snapshotted as pick_answer_multi still take answers, score and aggregate.
  *
  * Config:  {} (the session snapshot adds `scoring`). A `partial_credit` key
  *          left by older slides is accepted and dropped.
@@ -38,6 +42,12 @@ class PickAnswerMultiSlideType extends AbstractQuizType
     public function key(): string
     {
         return self::KEY;
+    }
+
+    /** The type authoring uses instead of this one (optional SlideInput hook). */
+    public function replacedBy(): string
+    {
+        return PickAnswerSingleSlideType::KEY;
     }
 
     public function defaultOptions(): array

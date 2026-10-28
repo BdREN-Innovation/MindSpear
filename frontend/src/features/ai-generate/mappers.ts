@@ -155,17 +155,18 @@ function toQuizSlide(slide: QuizV2AiSlide): BulkSlideInput | null {
 				return [{ label, is_correct: option.correct === true }];
 			});
 			const multi = slide.type === "pick_answer_multi";
-			const options = clampChoices(unique, optionMax(slide.type), multi);
+			const options = clampChoices(unique, optionMax("pick_answer_single"), multi);
 			const correct = options.filter((option) => option.is_correct).length;
-			if (options.length < optionMin(slide.type) || correct === 0) return null;
+			if (options.length < optionMin("pick_answer_single") || correct === 0) return null;
 			if (!multi && correct !== 1) return null;
 			if (multi && correct === options.length) return null;
-			return { type: slide.type, title, options };
+			// One Pick answer type: several marked correct makes players select them all.
+			return { type: "pick_answer_single", title, options };
 		}
 		case "true_false":
-			// Saved as a one-answer pick slide; the labels stay English like the legacy quiz's True / False.
+			// The labels stay English like the legacy quiz's True / False.
 			return {
-				type: "pick_answer_single",
+				type: "true_false",
 				title,
 				options: [
 					{ label: "True", is_correct: slide.answer === true },

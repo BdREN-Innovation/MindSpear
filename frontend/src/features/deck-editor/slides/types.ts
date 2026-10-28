@@ -201,6 +201,8 @@ export type SlideTypeEntry<K extends SlideTypeKey = SlideTypeKey> = {
 	Participant: ComponentType<ParticipantProps<K>>;
 	/** Fake aggregate for the editor canvas preview. */
 	sampleAggregate?: (slide: SlideOf<K>) => SlideAggregateMap[K];
+	/** Not offered for new slides (the SlidePicker hides it); kept to render past runs. */
+	retired?: boolean;
 };
 
 /**

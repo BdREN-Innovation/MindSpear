@@ -155,6 +155,28 @@ final class QuizOptions
         return array_column($ranked, 2);
     }
 
+    /**
+     * Plain values (fill_blanks dropdown choices) in an order keyed by
+     * $seed: sorted by HMAC-SHA256(app.key, "{seed}:{index}:{value}"), so the
+     * same seed always gives the same order and nobody can recompute it
+     * without app.key. Seed with the run's KEY_SALT for an order per run.
+     *
+     * @param  list<string>  $values
+     * @return list<string>
+     */
+    public static function shuffleValues(array $values, string $seed): array
+    {
+        $secret = self::secret();
+        $ranked = [];
+        foreach (array_values($values) as $index => $value) {
+            $ranked[] = [hash_hmac('sha256', "{$seed}:{$index}:{$value}", $secret), $index, $value];
+        }
+
+        usort($ranked, fn (array $a, array $b) => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+
+        return array_column($ranked, 2);
+    }
+
     /** An author key (pair_key, category key) or null when it is not one. */
     public static function authorKey(mixed $value): ?string
     {

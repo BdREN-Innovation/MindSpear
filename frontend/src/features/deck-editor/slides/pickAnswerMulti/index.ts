@@ -12,6 +12,8 @@ export const entry = defineSlideType({
 	category: "poll",
 	label: "Pick answers",
 	description: "Players select every correct answer (all or nothing).",
+	// Pick answer takes several correct answers now; this type only renders past runs.
+	retired: true,
 	icon: SquareCheckBig,
 	Editor: PickAnswerMultiEditor,
 	Presenter: PickAnswerMultiPresenter,

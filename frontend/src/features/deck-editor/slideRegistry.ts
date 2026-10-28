@@ -15,7 +15,10 @@ import { entry as matrix2x2 } from "./slides/matrix2x2";
 import { entry as pinOnImage } from "./slides/pinOnImage";
 import { entry as pickAnswerSingle } from "./slides/pickAnswerSingle";
 import { entry as pickAnswerMulti } from "./slides/pickAnswerMulti";
+import { entry as trueFalse } from "./slides/trueFalse";
 import { entry as shortAnswer } from "./slides/shortAnswer";
+import { entry as fillBlanks } from "./slides/fillBlanks";
+import { entry as dragDrop } from "./slides/dragDrop";
 import { entry as matchPairs } from "./slides/matchPairs";
 import { entry as correctOrder } from "./slides/correctOrder";
 import { entry as categorise } from "./slides/categorise";
@@ -34,8 +37,10 @@ import { entry as qrCode } from "./slides/qrCode";
 // Frontend twin of the backend SlideTypeRegistry: the single source of truth
 // for which components render a slide type. Shells look types up by the
 // backend key (`slide.type` / `run.type`) and never switch on it.
-// Products: Quest offers the 11 Quest types + the 9 content types; Quiz the 8
-// quiz types + the same 9 content types (slideTypesForProduct).
+// Products: Quest offers the 11 Quest types + the 9 content types; Quiz the
+// 10 quiz types + the same 9 content types (slideTypesForProduct; retired
+// types such as pick_answer_multi stay registered for past runs but are not
+// offered).
 
 /** Catalog order (SlidePicker order). */
 const ENTRIES: SlideTypeEntry[] = [
@@ -52,7 +57,10 @@ const ENTRIES: SlideTypeEntry[] = [
 	pinOnImage,
 	pickAnswerSingle,
 	pickAnswerMulti,
+	trueFalse,
 	shortAnswer,
+	fillBlanks,
+	dragDrop,
 	matchPairs,
 	correctOrder,
 	categorise,
@@ -108,9 +116,9 @@ export function requireSlideType(key: string): SlideTypeEntry {
 	return entry;
 }
 
-/** Types a product offers (the SlidePicker list), in catalog order. */
+/** Types a product offers for new slides (the SlidePicker list), in catalog order. */
 export function slideTypesForProduct(product: DeckProduct): SlideTypeEntry[] {
-	return ENTRIES.filter((entry) => entry.products.includes(product));
+	return ENTRIES.filter((entry) => entry.products.includes(product) && !entry.retired);
 }
 
 /** slideTypesForProduct grouped by category (poll, interactive, content). */

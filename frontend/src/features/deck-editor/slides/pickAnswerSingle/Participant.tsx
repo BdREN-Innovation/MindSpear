@@ -1,9 +1,10 @@
 "use client";
 
 import type { ParticipantProps } from "../types";
-import { ChoiceParticipant } from "../shared/quizChoice";
+import { ChoiceParticipant, choiceModeOf } from "../shared/quizChoice";
 
-// One tap sends {option_id} (instant submit); the answer is final.
+// One correct answer: one tap sends {option_id} (instant submit). Several:
+// select options, then Submit sends {option_ids} (all or nothing). Final once sent.
 export function PickAnswerSingleParticipant(props: ParticipantProps<"pick_answer_single">) {
-	return <ChoiceParticipant mode="single" props={props} />;
+	return <ChoiceParticipant type="pick_answer_single" mode={choiceModeOf(props.run)} props={props} />;
 }

@@ -56,7 +56,9 @@ class SlideInput
     public function __construct(private readonly SlideTypeRegistry $registry) {}
 
     /**
-     * The registered type $key when $product offers it.
+     * The registered type $key when $product offers it. A retired type (one
+     * with an optional `replacedBy(): string` hook, e.g. pick_answer_multi)
+     * resolves to its replacement, so new slides get the current type.
      *
      * @throws DeckException 422 unsupported_type, shown on $field
      */
@@ -64,6 +66,9 @@ class SlideInput
     {
         if (is_string($key) && $this->registry->has($key)) {
             $type = $this->registry->for($key);
+            if (method_exists($type, 'replacedBy') && $type->replacedBy() !== $key) {
+                return $this->supportedType($product, $type->replacedBy(), $field);
+            }
             if (in_array($product, $type->products(), true)) {
                 return $type;
             }

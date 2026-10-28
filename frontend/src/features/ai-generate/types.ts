@@ -48,8 +48,9 @@ export interface QuestV2AiSlide {
 }
 
 /**
- * Quiz v2 question kinds the AI may write: the scored backend slide types plus
- * `true_false`, which is saved as a pick_answer_single slide with True / False.
+ * Quiz v2 question kinds the AI may write. Both pick kinds are saved as a
+ * pick_answer_single slide (several correct = select them all); true_false as
+ * a true_false slide with True / False.
  */
 export type QuizV2AiSlideType =
 	| "pick_answer_single"
@@ -113,7 +114,7 @@ export const QUESTION_TYPES: Record<GenerationTarget, QuestionTypeOption[]> = {
 	quiz_v2: [
 		{ value: "pick_answer_single", label: "Pick answer · one correct" },
 		{ value: "pick_answer_multi", label: "Pick answer · several correct" },
-		{ value: "true_false", label: "True / False", hint: "Saved as a pick-answer slide" },
+		{ value: "true_false", label: "True / False" },
 		{ value: "short_answer", label: "Short answer", hint: "Typed answer, up to 5 accepted spellings" },
 		{ value: "correct_order", label: "Correct order" },
 		{ value: "match_pairs", label: "Match pairs" },

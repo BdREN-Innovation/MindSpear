@@ -1,5 +1,6 @@
-import type { MediaFile, RunMedia, RunViewOf, SlideOf, SlideOption, SlideTypeKey } from "../types";
+import type { DragDropConfig, FillBlanksConfig, MediaFile, RunMedia, RunViewOf, SlideOf, SlideOption, SlideTypeKey } from "../types";
 import { isScoredQuizSlideTypeKey } from "../types";
+import { dragDropPublicConfig, fillBlanksPublicConfig } from "./blanks";
 import { previewOptionKey, slideScoring, spinnerSegments } from "./quiz";
 
 // The editor canvas renders each type's Presenter, which takes a live run
@@ -12,7 +13,9 @@ import { previewOptionKey, slideScoring, spinnerSegments } from "./quiz";
 // previewOptionKey(id) as their (opaque) id and lose answer-key payload keys
 // (author order kept, match_pairs left cells first; no shuffle); short_answer
 // shows no options (accepted answers are never public); spinner_wheel gets
-// its wheel `segments`.
+// its wheel `segments`. Pick answer / true_false get config.multiple_answers;
+// fill_blanks / drag_drop get the public sentence (parts + blanks, answers
+// left out) and drag_drop its word bank as options.
 
 /** Types whose snapshot config carries server-owned `media` (TakesMedia with media). */
 const MEDIA_TYPES: readonly SlideTypeKey[] = ["image", "video", "pin_on_image"];
@@ -36,7 +39,16 @@ function previewOptions(slide: SlideOf): PreviewOption[] {
 	switch (slide.type) {
 		case "short_answer":
 		case "leaderboard":
+		case "fill_blanks":
 			return [];
+		case "drag_drop":
+			return dragDropPublicConfig(slide.config as DragDropConfig).bank.map((word, index) => ({
+				id: previewOptionKey(index + 1),
+				position: index + 1,
+				label: word,
+				image_url: null,
+				payload: {},
+			}));
 		case "match_pairs": {
 			const side = (option: SlideOption) => (option.payload as { side?: unknown }).side;
 			const ordered = [...sorted.filter((o) => side(o) === "left"), ...sorted.filter((o) => side(o) !== "left")];
@@ -50,6 +62,12 @@ function previewOptions(slide: SlideOf): PreviewOption[] {
 	}
 }
 
+/** QuizOptions::isCorrect: the is_correct column, or a payload is_correct when the column is null. */
+function isMarkedCorrect(option: SlideOption): boolean {
+	if (option.isCorrect !== null && option.isCorrect !== undefined) return option.isCorrect === true;
+	return (option.payload as { is_correct?: unknown } | null)?.is_correct === true;
+}
+
 /** A `waiting` run view of an authoring slide (id = slide id). */
 export function slideToRunView<K extends SlideTypeKey>(
 	slide: SlideOf<K>,
@@ -59,6 +77,13 @@ export function slideToRunView<K extends SlideTypeKey>(
 	let config: Record<string, unknown> = MEDIA_TYPES.includes(source.type)
 		? { ...source.config, media: mediaFileToRunMedia(source.media) }
 		: { ...source.config };
+	if (source.type === "pick_answer_single") config = { ...config, multiple_answers: source.options.filter(isMarkedCorrect).length > 1 };
+	if (source.type === "true_false") config = { ...config, multiple_answers: false };
+	if (source.type === "fill_blanks") config = { ...fillBlanksPublicConfig(source.config as FillBlanksConfig) };
+	if (source.type === "drag_drop") {
+		const { parts, blanks } = dragDropPublicConfig(source.config as DragDropConfig);
+		config = { parts, blanks };
+	}
 	if (isScoredQuizSlideTypeKey(source.type)) config = { ...config, scoring: slideScoring(source) };
 
 	const extras = source.type === "spinner_wheel" ? { segments: spinnerSegments(source.options) } : {};

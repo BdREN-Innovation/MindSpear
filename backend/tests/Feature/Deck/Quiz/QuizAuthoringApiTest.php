@@ -51,13 +51,15 @@ it('seeds each quiz type with its timer, points and options, and scopes types pe
     $expected = [
         // type => [time limit, points?, options]
         'pick_answer_single' => [20, true, 2],
-        'pick_answer_multi' => [30, true, 3],
+        'true_false' => [20, true, 2],
         'short_answer' => [30, true, 1],
         'match_pairs' => [45, true, 6],
         'correct_order' => [30, true, 4],
         'categorise' => [45, true, 4],
         'spinner_wheel' => [null, false, 4],
         'leaderboard' => [null, false, 0],
+        'fill_blanks' => [45, true, 0],
+        'drag_drop' => [45, true, 0],
     ];
 
     foreach ($expected as $type => [$limit, $scored, $options]) {
@@ -223,14 +225,15 @@ it('adds scored quiz slides in bulk with points, correct options and payloads, a
 
     $created = $this->postJson($url, ['slides' => $slides])->assertCreated()->json('data');
 
-    expect(array_column($created['slides'], 'type'))->toBe(array_column($slides, 'type'))
+    // pick_answer_multi is retired: it is saved as a Pick answer (its two correct options make it a multi-answer one).
+    expect(array_column($created['slides'], 'type'))->toBe(array_replace(array_column($slides, 'type'), [1 => 'pick_answer_single']))
         ->and(array_column($created['order'], 'position'))->toBe([1, 2, 3, 4, 5, 6, 7, 8])
         ->and($created['slides'][0]['pointsMin'])->toBe(100)
         ->and($created['slides'][0]['pointsMax'])->toBe(200)
         ->and($created['slides'][0]['speedBonusEnabled'])->toBeFalse()
         ->and(array_column($created['slides'][0]['options'], 'isCorrect'))->toBe([true, false])
         ->and($created['slides'][1]['pointsMin'])->toBe(50)
-        ->and($created['slides'][1]['timeLimitSeconds'])->toBe(30)
+        ->and($created['slides'][1]['timeLimitSeconds'])->toBe(20)
         ->and(array_column($created['slides'][1]['options'], 'isCorrect'))->toBe([true, true, null])
         ->and($created['slides'][4]['options'][1]['payload'])->toBe(['side' => 'right', 'pair_key' => 'a'])
         ->and($created['slides'][5]['config']['categories'][0])->toBe(['key' => 'fruit', 'label' => 'Fruit'])

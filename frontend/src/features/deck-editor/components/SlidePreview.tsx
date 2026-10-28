@@ -138,6 +138,8 @@ interface SlidePresenterPreviewProps {
 	slide: Slide;
 	theme: DeckTheme;
 	totalSlides: number;
+	/** Run state to show; default previewStateFor(slide). The host + phone preview steps quiz slides from voting to reveal. */
+	state?: RunState;
 }
 
 const PREVIEW_FRAME_STYLE: CSSProperties = {
@@ -147,9 +149,9 @@ const PREVIEW_FRAME_STYLE: CSSProperties = {
 };
 
 /** The slide's Presenter in preview mode (no session, no network) with the type's sample results. */
-export function SlidePresenterPreview({ slide, theme, totalSlides }: SlidePresenterPreviewProps) {
+export function SlidePresenterPreview({ slide, theme, totalSlides, state: stateOverride }: SlidePresenterPreviewProps) {
 	const entry = getSlideType(slide.type);
-	const state = previewStateFor(slide);
+	const state = stateOverride ?? previewStateFor(slide);
 	const run = useMemo(() => slideToRunView(slide, { state }), [slide, state]);
 	const aggregate = useMemo(() => {
 		try {

@@ -43,7 +43,7 @@ const P1I_CONTENT_TYPES = [
 // Quiz v2 types (tests/Feature/Deck/Quiz cover them); listed so the registry check below stays exact.
 const P1I_QUIZ_TYPES = [
     'pick_answer_single', 'pick_answer_multi', 'short_answer', 'match_pairs', 'correct_order', 'categorise',
-    'spinner_wheel', 'leaderboard',
+    'spinner_wheel', 'leaderboard', 'true_false', 'fill_blanks', 'drag_drop',
 ];
 
 function p1iType(string $key): SlideTypeContract

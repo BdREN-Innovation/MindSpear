@@ -1,7 +1,7 @@
 // store.ts
 import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import storage from "redux-persist/lib/storage";
-import { persistReducer, persistStore } from "redux-persist";
+import { createTransform, persistReducer, persistStore, type PersistConfig } from "redux-persist";
 
 import authReducer from "@/features/auth/store/authSlice";
 import dropdownReducer from "@/features/dashboard/store/dropdownSlice";
@@ -19,27 +19,6 @@ import activeSurveyPageReducer from "@/features/survey/store/activeSurveyPageSli
 import surveyInformationReducer from "@/features/survey/store/surveyInformationSlice";
 import surveyQuestionsReducer from "@/features/survey/store/surveyQuestionsSlice";
 import surveyReducer from "@/features/survey/store/surveySlice";
-
-const persistConfig = {
-	key: "root",
-	storage,
-	whitelist: [
-		"quiz",
-		"survey",
-		"questTime",
-		"questSession",
-		"quickForm",
-		"questInformation",
-		"surveyInformation",
-		"quizInformation",
-		"dropdown",
-		"auth",
-		"contentEditor",
-		"leaderboard",
-		"surveyQuestions",
-		"activeSurveyPage",
-	],
-};
 
 const rootReducer = combineReducers({
 	auth: authReducer,
@@ -59,6 +38,40 @@ const rootReducer = combineReducers({
 	surveyQuestions: surveyQuestionsReducer,
 	activeSurveyPage: activeSurveyPageReducer,
 });
+
+type RootReducerState = ReturnType<typeof rootReducer>;
+type AuthPersisted = RootReducerState["auth"];
+
+// A request in flight is never saved or restored: auth.loading left true by a
+// page that unloaded mid-login (or mid-logout) used to come back on every
+// visit as a spinning, disabled Sign In button.
+const authRequestState = createTransform<AuthPersisted, AuthPersisted, RootReducerState, RootReducerState>(
+	(inbound) => ({ ...inbound, loading: false, error: null }),
+	(outbound) => ({ ...outbound, loading: false, error: null }),
+	{ whitelist: ["auth"] }
+);
+
+const persistConfig: PersistConfig<RootReducerState> = {
+	key: "root",
+	storage,
+	transforms: [authRequestState],
+	whitelist: [
+		"quiz",
+		"survey",
+		"questTime",
+		"questSession",
+		"quickForm",
+		"questInformation",
+		"surveyInformation",
+		"quizInformation",
+		"dropdown",
+		"auth",
+		"contentEditor",
+		"leaderboard",
+		"surveyQuestions",
+		"activeSurveyPage",
+	],
+};
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 

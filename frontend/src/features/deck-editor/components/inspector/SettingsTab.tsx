@@ -206,11 +206,15 @@ const POINTS_DEBOUNCE_MS = 600;
 /** How partly right answers score (QUIZ_REDESIGN_PLAN.md "Scoring model"). */
 function creditNote(type: Slide["type"]): string | null {
 	switch (type) {
+		case "pick_answer_single":
+			return "With several correct answers, players must pick every one of them and no others to earn points.";
 		case "pick_answer_multi":
 			return "Players must pick every correct option and no others to earn points.";
 		case "match_pairs":
 		case "correct_order":
 		case "categorise":
+		case "fill_blanks":
+		case "drag_drop":
 			return "Partly right answers earn their share of the points.";
 		case "short_answer":
 			return "Answers must match one of the accepted answers.";

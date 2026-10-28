@@ -97,11 +97,15 @@ return [
             // Quiz v2 (QUIZ_REDESIGN_PLAN.md catalog). match_pairs counts cells (2 per pair).
             'pick_answer_single' => 10,
             'pick_answer_multi' => 10,
+            'true_false' => 2,
             'short_answer' => 5,
             'match_pairs' => 16,
             'correct_order' => 8,
             'categorise' => 20,
             'spinner_wheel' => 12,
+            // Sentence types keep their blanks in the config: no options.
+            'fill_blanks' => 0,
+            'drag_drop' => 0,
         ],
         'min' => [
             'poll_single' => 2,
@@ -110,6 +114,7 @@ return [
             'scales' => 1,
             'pick_answer_single' => 2,
             'pick_answer_multi' => 2,
+            'true_false' => 2,
             'short_answer' => 1,
             'match_pairs' => 4,
             'correct_order' => 3,

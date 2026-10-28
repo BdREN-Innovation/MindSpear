@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type KeyboardEvent } from "react";
+import { PanelRightClose, PanelRightOpen, Palette, PencilLine, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Deck, DeckProduct, DeckSettingsPatch, Slide, SlidePatch } from "@/features/deck/types";
 import type { OptionsApi, SlideMediaApi } from "../slides/types";
@@ -10,11 +11,14 @@ import { SettingsTab } from "./inspector/SettingsTab";
 
 type Tab = "content" | "design" | "settings";
 
-const TABS: { key: Tab; label: string }[] = [
-	{ key: "content", label: "Content" },
-	{ key: "design", label: "Design" },
-	{ key: "settings", label: "Settings" },
+const TABS: { key: Tab; label: string; icon: LucideIcon }[] = [
+	{ key: "content", label: "Content", icon: PencilLine },
+	{ key: "design", label: "Design", icon: Palette },
+	{ key: "settings", label: "Settings", icon: SlidersHorizontal },
 ];
+
+const railButton =
+	"flex h-11 w-11 items-center justify-center rounded-lg text-dark-5 transition hover:bg-gray-2 hover:text-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 dark:text-dark-6 dark:hover:bg-dark-2 dark:hover:text-white";
 
 export interface InspectorPanelProps {
 	/** Quiz decks get the scoring fields on the Settings tab. Default: the deck's product. */
@@ -27,9 +31,16 @@ export interface InspectorPanelProps {
 	media: SlideMediaApi | null;
 	onUpdateSettings(patch: DeckSettingsPatch): Promise<void>;
 	onOpenDeckSettings(): void;
+	/** Folded to a narrow rail, giving the canvas the room. */
+	collapsed?: boolean;
+	onToggleCollapsed?(): void;
 }
 
-/** Right column: Content (type Editor) / Design (theme) / Settings (timer, results, submissions; quiz: points). */
+/**
+ * Right column: Content (type Editor) / Design (theme) / Settings (timer,
+ * results, submissions; quiz: points). Collapsible to a rail of tab icons;
+ * a tab icon opens the panel on that tab.
+ */
 export function InspectorPanel({
 	product,
 	deck,
@@ -40,6 +51,8 @@ export function InspectorPanel({
 	media,
 	onUpdateSettings,
 	onOpenDeckSettings,
+	collapsed = false,
+	onToggleCollapsed,
 }: InspectorPanelProps) {
 	const [tab, setTab] = useState<Tab>("content");
 	const baseId = useId();
@@ -59,6 +72,36 @@ export function InspectorPanel({
 		setTab(key);
 		tabRefs.current[key]?.focus();
 	};
+
+	if (collapsed) {
+		return (
+			<aside
+				data-deck-inspector
+				aria-label="Slide inspector (collapsed)"
+				className="flex h-full w-14 shrink-0 flex-col items-center gap-1 border-l border-stroke bg-white py-2 dark:border-stroke-dark dark:bg-gray-dark"
+			>
+				<button type="button" onClick={onToggleCollapsed} className={railButton} aria-label="Expand the inspector" title="Expand the inspector">
+					<PanelRightOpen className="h-5 w-5" aria-hidden />
+				</button>
+				<span aria-hidden className="my-1 h-px w-8 bg-stroke dark:bg-stroke-dark" />
+				{TABS.map(({ key, label, icon: Icon }) => (
+					<button
+						key={key}
+						type="button"
+						onClick={() => {
+							setTab(key);
+							onToggleCollapsed?.();
+						}}
+						className={cn(railButton, tab === key && "text-primary dark:text-primary")}
+						aria-label={`Open ${label}`}
+						title={label}
+					>
+						<Icon className="h-5 w-5" aria-hidden />
+					</button>
+				))}
+			</aside>
+		);
+	}
 
 	return (
 		<aside
@@ -92,6 +135,17 @@ export function InspectorPanel({
 						{label}
 					</button>
 				))}
+				{onToggleCollapsed ? (
+					<button
+						type="button"
+						onClick={onToggleCollapsed}
+						className={cn(railButton, "my-0.5 shrink-0")}
+						aria-label="Collapse the inspector"
+						title="Collapse the inspector"
+					>
+						<PanelRightClose className="h-5 w-5" aria-hidden />
+					</button>
+				) : null}
 			</div>
 
 			<div
