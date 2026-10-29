@@ -86,3 +86,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 # /ai-server/
+# Playwright MCP browser session output
+.playwright-mcp/
