@@ -5,13 +5,15 @@ document. It is the only thing the service does: the frontend sends the selected
 generation options, gets back validated items, and saves them through the Laravel API as before.
 
 Stack: FastAPI, Pydantic (request / item schemas, structured output), LangGraph (the
-prompt → model → validate → retry / top-up workflow), LangChain OpenAI (the model call).
+prompt → model → validate → retry / top-up workflow), LangChain OpenRouter (the model call; default
+`anthropic/claude-sonnet-4.5`, any OpenRouter model by `OPENROUTER_MODEL`). LangChain OpenAI is kept as
+the other provider (`LLM_PROVIDER=openai`).
 
 ## Run it
 
 ```bash
 cd ai-server
-cp .env.example .env            # set OPENAI_API_KEY and LARAVEL_API_URL
+cp .env.example .env            # set OPENROUTER_API_KEY and LARAVEL_API_URL
 uv sync                         # or: pip install -e . (and -e .[dev] is "uv sync --group dev")
 uv run uvicorn app.main:app --reload --port 8001
 ```
@@ -74,7 +76,7 @@ app/
   errors.py                 AppError family (status codes)
   api/                      routes + dependencies (current user, service)
   security/                 Laravel token verifier, rate limiter
-  llm/                      StructuredLLM protocol, OpenAI implementation, factory
+  llm/                      StructuredLLM protocol, LangChain base, OpenRouter / OpenAI providers, factory
   generation/
     types.py                QuestionType / TargetSpec: how a target is described
     registry.py             the targets, by key
@@ -100,7 +102,10 @@ Everything about a target lives in its module under `app/generation/targets/`:
 * **Add a target**: a new module that builds a `TargetSpec` and calls `registry.register(...)`,
   imported in `targets/__init__.py`. The frontend's `types.ts` has the UI labels; `/v1/targets`
   serves the same list so the two can be compared.
-* **Another model provider**: implement `StructuredLLM` (`app/llm/base.py`) and add it to
-  `app/llm/factory.py`. Send the model the envelope's JSON schema but return the answer
-  unvalidated (`LLMOutput`): validating the whole answer against the Pydantic models would
-  throw away every good item whenever one is wrong. `tests/test_openai.py` pins this for OpenAI.
+* **Another model**: any model OpenRouter lists is only `OPENROUTER_MODEL`.
+* **Another model provider**: for a LangChain chat model, subclass `LangChainStructuredLLM`
+  (`app/llm/structured.py`; `openrouter.py` is the example), which only builds the chat model; otherwise
+  implement `StructuredLLM` (`app/llm/base.py`). Add it to `app/llm/factory.py` and `LLM_PROVIDER`.
+  Send the model the envelope's JSON schema but return the answer unvalidated (`LLMOutput`):
+  validating the whole answer against the Pydantic models would throw away every good item
+  whenever one is wrong. `tests/test_llm.py` pins this for each provider.

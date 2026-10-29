@@ -102,7 +102,7 @@ The maatwebsite/excel package is still required in `backend/composer.json` (and 
 | Documents | pdfjs-dist (PDF text and thumbnails in the browser) | — |
 
 ### AI server (`ai-server/`)
-FastAPI, Pydantic, LangGraph and LangChain OpenAI, managed with `uv`; tests with pytest (§6).
+FastAPI, Pydantic, LangGraph and LangChain OpenRouter, managed with `uv`; tests with pytest (§6).
 
 ### Ports (`docker-compose.yml`)
 | Service | Port |
@@ -575,7 +575,7 @@ JSON casing differs by API: deck and core request bodies are snake_case; deck au
 
 ## 6. AI Server (FastAPI)
 
-`ai-server/` is a separate Python service (FastAPI, Pydantic, LangGraph, LangChain OpenAI; managed with `uv`) that turns document text into quiz slides, quest slides or Fun Games questions. It never touches the database: the frontend sends the selected text and options, receives validated items and saves them through the Laravel API.
+`ai-server/` is a separate Python service (FastAPI, Pydantic, LangGraph, LangChain OpenRouter — default model `anthropic/claude-sonnet-4.5`, LangChain OpenAI as the alternative provider; managed with `uv`) that turns document text into quiz slides, quest slides or Fun Games questions. It never touches the database: the frontend sends the selected text and options, receives validated items and saves them through the Laravel API.
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
@@ -811,7 +811,7 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 `NEXT_PUBLIC_*` values are compiled into the browser bundle at build time (the Docker `frontend` service passes them as build args); `NEXT_OUTPUT=standalone` (set in `frontend/Dockerfile`) makes a standalone server build.
 
 ### AI server (`ai-server/.env.example`)
-`LARAVEL_API_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL` (default `gpt-4o`), optional `OPENAI_BASE_URL`, `CORS_ORIGINS`, `AUTH_DISABLED`, `AUTH_CACHE_SECONDS`, `RATE_LIMIT_PER_MINUTE`, `LLM_*`, `GENERATION_MAX_ATTEMPTS`, `GENERATION_MAX_TOPUPS`, `MAX_QUESTIONS`, `MAX_TEXT_CHARS`, `MIN_TEXT_CHARS`.
+`LARAVEL_API_URL`, `LLM_PROVIDER` (`openrouter` default, or `openai`), `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default `anthropic/claude-sonnet-4.5`), optional `OPENROUTER_APP_URL`; with `LLM_PROVIDER=openai`: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_BASE_URL`; `CORS_ORIGINS`, `AUTH_DISABLED`, `AUTH_CACHE_SECONDS`, `RATE_LIMIT_PER_MINUTE`, `LLM_*`, `GENERATION_MAX_ATTEMPTS`, `GENERATION_MAX_TOPUPS`, `MAX_QUESTIONS`, `MAX_TEXT_CHARS`, `MIN_TEXT_CHARS`.
 
 ### Docker compose services (`docker-compose.yml`)
 | Service | Runs |

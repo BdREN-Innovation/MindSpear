@@ -59,7 +59,7 @@ Have these ready:
 - Git repo URL.
 - SSH key or deploy token that can clone the repo.
 - A real admin email for Let's Encrypt.
-- A fresh OpenAI API key for the AI server (`ai-server/`, the question-generation service).
+- A fresh OpenRouter API key for the AI server (`ai-server/`, the question-generation service).
 - SMTP settings can wait until after live hosting is verified; the first deploy uses log-only mail to remove that external dependency.
 
 Generate secrets on the server when needed:
@@ -102,7 +102,7 @@ Keep backend and frontend env files separate.
 This is better than a single shared `.env` because the two runtimes load env files differently and have different security boundaries:
 
 - Laravel reads `backend/.env` at runtime. This file contains server-only secrets such as database password, `APP_KEY`, `REVERB_APP_SECRET`, SMTP credentials, and admin seeder credentials.
-- Next.js reads frontend env during build/start. Any variable prefixed with `NEXT_PUBLIC_` is intentionally baked into browser JavaScript. The frontend holds no secrets: the OpenAI key lives in the AI server's env (`ai-server/.env`), never in a frontend env file.
+- Next.js reads frontend env during build/start. Any variable prefixed with `NEXT_PUBLIC_` is intentionally baked into browser JavaScript. The frontend holds no secrets: the OpenRouter key lives in the AI server's env (`ai-server/.env`), never in a frontend env file.
 
 The naming difference is framework convention, not a MindSpear invention:
 
@@ -506,8 +506,10 @@ APP_ENV=production
 CORS_ORIGINS=
 LARAVEL_API_URL=https://mindspear.app/api/v1
 AUTH_DISABLED=false
-OPENAI_API_KEY=REPLACE_WITH_OPENAI_KEY
-OPENAI_MODEL=gpt-4o
+LLM_PROVIDER=openrouter
+OPENROUTER_API_KEY=REPLACE_WITH_OPENROUTER_KEY
+OPENROUTER_MODEL=anthropic/claude-sonnet-4.5
+OPENROUTER_APP_URL=https://mindspear.app
 ```
 
 ### 9. systemd Services

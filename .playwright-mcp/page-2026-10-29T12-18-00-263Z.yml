@@ -1,0 +1,60 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - navigation [ref=e3]:
+    - link [ref=e5] [cursor=pointer]:
+      - /url: /
+      - img "Logo" [ref=e6]
+    - generic [ref=e7]:
+      - link "Home" [ref=e8] [cursor=pointer]:
+        - /url: /
+      - link "Login" [ref=e9] [cursor=pointer]:
+        - /url: /auth/sign-in
+      - link "Registration" [ref=e10] [cursor=pointer]:
+        - /url: /auth/sign-up
+  - generic [ref=e11]:
+    - generic [ref=e12]:
+      - img "Quiz visual"
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - heading "Master Knowledge Through Interactive Quests, Quizzes, and Surveys" [level=2] [ref=e16]
+          - blockquote [ref=e17]:
+            - paragraph [ref=e18]: MindSpear delivers a comprehensive learning platform combining interactive quests, engaging quizzes, and insightful surveys. Transform your educational journey with personalized learning experiences and real-time feedback designed for students and educators.
+          - generic [ref=e19]:
+            - button "Login" [ref=e21] [cursor=pointer]
+            - link "Join a Live" [ref=e23] [cursor=pointer]:
+              - /url: /play
+        - img "Hero" [ref=e25]
+    - generic [ref=e28]:
+      - generic [ref=e29]: How it works
+      - heading "Get started in 3 simple steps" [level=2] [ref=e30]
+      - paragraph [ref=e31]: EduQuest makes it easy to create engaging content, interact with learners, and measure success
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - generic [ref=e36]: "1"
+            - img "Create" [ref=e37]
+          - generic [ref=e38]:
+            - heading "Create" [level=3] [ref=e39]
+            - paragraph [ref=e40]: Build engaging educational content in minutes. Create interactive quests, design comprehensive quizzes, and set up surveys using our intuitive drag-and-drop editor. Choose from templates or start from scratch with ease.
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e43]: "2"
+            - img "Interact" [ref=e44]
+          - generic [ref=e45]:
+            - heading "Interact" [level=3] [ref=e46]
+            - paragraph [ref=e47]: Engage students with real-time interactive experiences. Share your quests, quizzes, and surveys with learners, track live responses, and foster meaningful participation. Watch students progress through engaging educational journeys.
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - generic [ref=e50]: "3"
+            - img "Analyze" [ref=e51]
+          - generic [ref=e52]:
+            - heading "Analyze" [level=3] [ref=e53]
+            - paragraph [ref=e54]: Gain actionable insights from detailed analytics and reports. Measure learning outcomes, analyze student performance on quizzes, and understand survey feedback. Make data-driven decisions to improve your educational content.
+    - generic [ref=e56]:
+      - generic [ref=e57]:
+        - generic [ref=e58] [cursor=pointer]
+        - generic [ref=e61] [cursor=pointer]
+        - generic [ref=e64] [cursor=pointer]
+        - generic [ref=e67] [cursor=pointer]
+      - heading "Copyright © 2025 MindSpear. All Rights Reserved." [level=2] [ref=e70]
+  - region "Notifications Alt+T"

@@ -26,14 +26,24 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 10
 
     # LLM.
-    llm_provider: Literal["openai"] = "openai"
+    llm_provider: Literal["openrouter", "openai"] = "openrouter"
+    # OpenRouter: any model it lists ("anthropic/claude-sonnet-4.5", "openai/gpt-4o" ...).
+    openrouter_api_key: str = ""
+    openrouter_model: str = "anthropic/claude-sonnet-4.5"
+    openrouter_base_url: str = ""
+    #: The site shown for this app in the OpenRouter dashboard (its title is app_name).
+    openrouter_app_url: str = ""
+    # OpenAI directly.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o"
     openai_base_url: str = ""
     llm_temperature: float = 0.7
     llm_timeout_seconds: float = 90.0
     llm_max_retries: int = 1
-    llm_structured_method: StructuredMethod = "json_schema"
+    #: Room for the longest answer (30 items); a cut-off answer is broken JSON and yields nothing.
+    llm_max_tokens: int = Field(default=16_000, ge=1_000)
+    #: function_calling works with every model that has tool use; json_schema needs structured-output support.
+    llm_structured_method: StructuredMethod = "function_calling"
     llm_strict_schema: bool = False
 
     # Generation.
@@ -47,7 +57,7 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
-    @field_validator("laravel_api_url", "openai_base_url", mode="before")
+    @field_validator("laravel_api_url", "openrouter_base_url", "openai_base_url", mode="before")
     @classmethod
     def _strip_trailing_slash(cls, value: object) -> object:
         return value.rstrip("/") if isinstance(value, str) else value

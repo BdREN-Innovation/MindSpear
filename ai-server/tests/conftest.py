@@ -60,7 +60,7 @@ def make_graph(llm: FakeLLM, *, max_attempts: int = 2, max_topups: int = 1) -> G
 
 
 def settings_for_tests(**overrides: Any) -> Settings:
-    base = {"app_env": "test", "auth_disabled": True, "openai_api_key": "test", "cors_origins": ""}
+    base = {"app_env": "test", "auth_disabled": True, "openrouter_api_key": "test", "cors_origins": ""}
     base.update(overrides)
     return Settings(_env_file=None, **base)
 
