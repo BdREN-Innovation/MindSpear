@@ -27,14 +27,32 @@ import { cn } from "@/lib/utils";
 import type { PendingAction } from "../hooks/useHostControls";
 import type { PrimaryAction } from "../lib/runKind";
 import { ControlButton } from "./ControlButton";
+import { OverflowMenu, type OverflowMenuItem } from "./OverflowMenu";
 import { SlideListPopover } from "./SlideListPopover";
 
 // Bottom control bar (plan §6.2):
 //   [exit] [≡ slides] ‹ 3 / 12 ›   [ primary action ]   📊 12 · 👥 42 ● · Q&A · 🏆 · QR · ⛶ · End
 // (🏆 = quiz only: insert a leaderboard slide after the current one and show it.)
-// Sized to fit a 1280 px projector with the QR sidebar open (~1000 px).
 // Every action button is disabled while one request is in flight, so a
 // double click can never advance twice.
+//
+// It stays one row at any width. It follows its own width (a container
+// query, so opening the QR sidebar counts too) and, as it narrows:
+//   below 68rem  labels shorten ("12 / 30", "End"); screen readers keep the full words
+//   below 60rem  🏆, QR, full screen and End move into the ⋯ menu
+//   below 48rem  exit and ‹ › move there too, and the participant count gives way to
+//                the answer tally (the menu header shows both)
+//   below 26rem  the counters move into the menu header as well
+// The primary action takes the space that is left; its label truncates last.
+// Tailwind only generates class names it finds written out, so they stay literal.
+const SHORT_LABEL = "[@container(max-width:68rem)]:sr-only";
+const HIDE_BELOW_60 = "[@container(max-width:60rem)]:hidden";
+const SHOW_BELOW_60 = "hidden [@container(max-width:60rem)]:block";
+const HIDE_BELOW_48 = "[@container(max-width:48rem)]:hidden";
+const SHOW_BELOW_48 = "hidden [@container(max-width:48rem)]:block";
+const HIDE_BELOW_26 = "[@container(max-width:26rem)]:hidden";
+
+const COUNTER = "flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums";
 
 const CONNECTION: Record<DeckConnectionStatus, { label: string; dot: string }> = {
 	connected: { label: "Live", dot: "bg-[var(--deck-success)]" },
@@ -58,6 +76,15 @@ export interface AnsweredTally {
 
 function plural(count: number, one: string, many: string): string {
 	return `${count} ${count === 1 ? one : many}`;
+}
+
+function answeredText(answered: AnsweredTally): string {
+	return `${answered.count}${answered.of !== null ? ` of ${answered.of}` : ""} answered`;
+}
+
+function responsesText(responses: ResponseTally): string {
+	const people = responses.people !== null ? ` from ${plural(responses.people, "person", "people")}` : "";
+	return `${plural(responses.count, "response", "responses")}${people}`;
 }
 
 export interface ControlBarProps {
@@ -93,20 +120,21 @@ export interface ControlBarProps {
 }
 
 function PrimaryIcon({ primary, busy }: { primary: PrimaryAction; busy: boolean }) {
+	const className = "h-5 w-5 shrink-0";
 	if (busy || primary.kind === "wait")
-		return <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />;
-	if (primary.kind === "end") return <Square className="h-5 w-5" aria-hidden />;
+		return <Loader2 className={cn(className, "animate-spin motion-reduce:animate-none")} aria-hidden />;
+	if (primary.kind === "end") return <Square className={className} aria-hidden />;
 	switch (primary.icon) {
 		case "start":
-			return <Play className="h-5 w-5" aria-hidden />;
+			return <Play className={className} aria-hidden />;
 		case "stop":
-			return <Square className="h-5 w-5" aria-hidden />;
+			return <Square className={className} aria-hidden />;
 		case "reveal":
-			return <Eye className="h-5 w-5" aria-hidden />;
+			return <Eye className={className} aria-hidden />;
 		case "spin":
-			return <RotateCw className="h-5 w-5" aria-hidden />;
+			return <RotateCw className={className} aria-hidden />;
 		default:
-			return <SkipForward className="h-5 w-5" aria-hidden />;
+			return <SkipForward className={className} aria-hidden />;
 	}
 }
 
@@ -143,15 +171,95 @@ export function ControlBar(props: ControlBarProps) {
 	const conn = CONNECTION[connection];
 	const primaryBusy =
 		busy && (pending === "end" ? primary.kind === "end" : primary.kind === "advance" && pending === primary.action);
+	const participants = participantCount ?? 0;
+	const tally = answered !== null ? answeredText(answered) : responses !== null ? responsesText(responses) : null;
 
+	// The ⋯ menu: the tools first, then (narrow bars only) the navigation, End last.
+	const menuItems: OverflowMenuItem[] = [
+		...(insertLeaderboard
+			? [
+					{
+						key: "leaderboard",
+						label: "Show leaderboard",
+						icon: <Trophy className="h-5 w-5" />,
+						onSelect: insertLeaderboard.onInsert,
+						disabled: busy || insertLeaderboard.disabled,
+					},
+				]
+			: []),
+		{
+			key: "qr",
+			label: "QR code sidebar",
+			icon: <QrCode className="h-5 w-5" />,
+			onSelect: onToggleQr,
+			checked: qrOpen,
+			shortcut: "Q",
+		},
+		...(fullscreen.supported
+			? [
+					{
+						key: "fullscreen",
+						label: "Full screen",
+						icon: fullscreen.isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />,
+						onSelect: fullscreen.toggle,
+						checked: fullscreen.isFullscreen,
+						shortcut: "F",
+					},
+				]
+			: []),
+		{
+			key: "previous",
+			label: "Previous slide",
+			icon: <ChevronLeft className="h-5 w-5" />,
+			onSelect: onPrevious,
+			disabled: busy || !canPrevious,
+			shortcut: "←",
+			separated: true,
+			className: SHOW_BELOW_48,
+		},
+		{
+			key: "next",
+			label: "Skip to next slide",
+			icon: <ChevronRight className="h-5 w-5" />,
+			onSelect: onNext,
+			disabled: busy || !canNext,
+			className: SHOW_BELOW_48,
+		},
+		{
+			key: "exit",
+			label: "Exit present mode",
+			icon: <LogOut className="h-5 w-5 -scale-x-100" />,
+			onSelect: onExit,
+			shortcut: "Esc",
+			className: SHOW_BELOW_48,
+		},
+		{
+			key: "end",
+			label: "End session",
+			icon: <Square className="h-5 w-5" />,
+			onSelect: onEnd,
+			disabled: busy,
+			tone: "danger",
+			separated: true,
+		},
+	];
+
+	// relative z-40: the container query makes the bar a stacking context, and
+	// the popovers it opens must stay above the stage's overlays.
 	return (
 		<nav
 			aria-label="Presenter controls"
-			className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--deck-border)] bg-[var(--deck-surface)] px-3 py-2 text-[var(--deck-text)]"
+			className="relative z-40 flex shrink-0 items-center gap-3 border-t border-[var(--deck-border)] bg-[var(--deck-surface)] px-3 py-2 text-[var(--deck-text)] [container-type:inline-size]"
 		>
 			{/* Left: exit, slide list, prev / position / next */}
-			<div className="flex min-w-0 items-center gap-1">
-				<ControlButton icon onClick={onExit} aria-label="Exit present mode (Esc)" title="Exit present mode (Esc)">
+			<div className="flex shrink-0 items-center gap-1">
+				<ControlButton
+					icon
+					onClick={onExit}
+					aria-label="Exit present mode (Esc)"
+					title="Exit present mode (Esc)"
+					className={HIDE_BELOW_48}
+				>
 					<LogOut className="h-5 w-5 -scale-x-100" aria-hidden />
 				</ControlButton>
 				<div className="relative">
@@ -185,6 +293,7 @@ export function ControlBar(props: ControlBarProps) {
 					aria-label="Previous slide (←)"
 					title="Previous slide (←)"
 					aria-keyshortcuts="ArrowLeft"
+					className={HIDE_BELOW_48}
 				>
 					<ChevronLeft className="h-6 w-6" aria-hidden />
 				</ControlButton>
@@ -193,52 +302,63 @@ export function ControlBar(props: ControlBarProps) {
 					<span className="text-[var(--deck-text-muted)]"> / {totalSlides ?? "–"}</span>
 					<span className="sr-only"> slides</span>
 				</span>
-				<ControlButton icon onClick={onNext} disabled={busy || !canNext} aria-label="Next slide" title="Next slide">
+				<ControlButton
+					icon
+					onClick={onNext}
+					disabled={busy || !canNext}
+					aria-label="Next slide"
+					title="Next slide"
+					className={HIDE_BELOW_48}
+				>
 					<ChevronRight className="h-6 w-6" aria-hidden />
 				</ControlButton>
 			</div>
 
-			{/* Centre: the one state-dependent action */}
-			<ControlButton
-				tone="primary"
-				size="lg"
-				onClick={onPrimary}
-				disabled={busy || primary.kind === "wait"}
-				aria-keyshortcuts="ArrowRight Space"
-				title={`${primary.label} (→ / Space)`}
-				className="min-w-[11rem]"
-			>
-				<PrimaryIcon primary={primary} busy={primaryBusy} />
-				{primary.label}
-			</ControlButton>
+			{/* Centre: the one state-dependent action, in whatever space is left */}
+			<div className="flex min-w-0 flex-1 justify-center">
+				<ControlButton
+					tone="primary"
+					size="lg"
+					onClick={onPrimary}
+					disabled={busy || primary.kind === "wait"}
+					aria-keyshortcuts="ArrowRight Space"
+					title={`${primary.label} (→ / Space)`}
+					className="min-w-[min(11rem,100%)] max-w-full shrink [@container(max-width:48rem)]:px-4 [@container(max-width:48rem)]:text-base"
+				>
+					<PrimaryIcon primary={primary} busy={primaryBusy} />
+					<span className="truncate">{primary.label}</span>
+				</ControlButton>
+			</div>
 
-			{/* Right: counters, panels, end */}
-			<div className="flex min-w-0 items-center justify-end gap-1">
+			{/* Right: counters, panels, end; whatever does not fit is in ⋯ */}
+			<div className="flex shrink-0 items-center gap-1">
 				{answered !== null ? (
-					<span
-						className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
-						title={`${answered.count}${answered.of !== null ? ` of ${answered.of}` : ""} answered on this slide`}
-						aria-live="polite"
-					>
+					<span className={cn(COUNTER, HIDE_BELOW_26)} title={`${answeredText(answered)} on this slide`} aria-live="polite">
 						<CheckCheck className="h-5 w-5" aria-hidden />
 						{answered.count}
 						{answered.of !== null && <span className="text-[var(--deck-text-muted)]"> / {answered.of}</span>}
-						<span className="font-medium text-[var(--deck-text-muted)]"> answered</span>
+						<span className={cn("font-medium text-[var(--deck-text-muted)]", SHORT_LABEL)}>
+							{" "}
+							answered
+						</span>
 					</span>
 				) : null}
 				{answered === null && responses !== null && (
-					<span
-						className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
-						title={`${plural(responses.count, "response", "responses")}${
-							responses.people !== null ? ` from ${plural(responses.people, "person", "people")}` : ""
-						} on this slide`}
-					>
+					<span className={cn(COUNTER, HIDE_BELOW_26)} title={`${responsesText(responses)} on this slide`}>
 						<BarChart3 className="h-5 w-5" aria-hidden />
 						{responses.people !== null && responses.people !== responses.count ? (
 							<>
-								{plural(responses.count, "response", "responses")}
+								{responses.count}
+								<span className={SHORT_LABEL}>
+									{" "}
+									{responses.count === 1 ? "response" : "responses"}
+								</span>
 								<span className="font-medium text-[var(--deck-text-muted)]">
-									· {plural(responses.people, "person", "people")}
+									· {responses.people}
+									<span className={SHORT_LABEL}>
+										{" "}
+										{responses.people === 1 ? "person" : "people"}
+									</span>
 								</span>
 							</>
 						) : (
@@ -250,11 +370,11 @@ export function ControlBar(props: ControlBarProps) {
 					</span>
 				)}
 				<span
-					className="flex items-center gap-1.5 whitespace-nowrap px-2 text-base font-semibold tabular-nums"
-					title={`${participantCount ?? 0} participants · ${conn.label}`}
+					className={cn(COUNTER, tally !== null && HIDE_BELOW_48, HIDE_BELOW_26)}
+					title={`${participants} participants · ${conn.label}`}
 				>
 					<Users className="h-5 w-5" aria-hidden />
-					{participantCount ?? 0}
+					{participants}
 					<span className="sr-only"> participants</span>
 					<span className={cn("ml-1 h-2.5 w-2.5 rounded-full", conn.dot)} aria-hidden />
 					<span className="sr-only">, connection {conn.label}</span>
@@ -283,6 +403,7 @@ export function ControlBar(props: ControlBarProps) {
 						disabled={busy || insertLeaderboard.disabled}
 						aria-label={insertLeaderboard.title}
 						title={insertLeaderboard.title}
+						className={HIDE_BELOW_60}
 					>
 						{pending === "insert_leaderboard" ? (
 							<Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />
@@ -297,6 +418,7 @@ export function ControlBar(props: ControlBarProps) {
 					aria-pressed={qrOpen}
 					aria-label="QR code sidebar (Q)"
 					title="QR code sidebar (Q)"
+					className={HIDE_BELOW_60}
 				>
 					<QrCode className="h-5 w-5" aria-hidden />
 				</ControlButton>
@@ -307,6 +429,7 @@ export function ControlBar(props: ControlBarProps) {
 						aria-pressed={fullscreen.isFullscreen}
 						aria-label="Full screen (F)"
 						title={fullscreen.isFullscreen ? "Exit full screen (F)" : "Full screen (F)"}
+						className={HIDE_BELOW_60}
 					>
 						{fullscreen.isFullscreen ? (
 							<Minimize className="h-5 w-5" aria-hidden />
@@ -315,12 +438,39 @@ export function ControlBar(props: ControlBarProps) {
 						)}
 					</ControlButton>
 				)}
-				<ControlButton tone="danger" onClick={onEnd} disabled={busy} className="ml-1 whitespace-nowrap">
+				<ControlButton
+					tone="danger"
+					onClick={onEnd}
+					disabled={busy}
+					className={cn("ml-1 whitespace-nowrap", HIDE_BELOW_60)}
+				>
 					{pending === "end" ? (
 						<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
 					) : null}
-					End session
+					<span>
+						End<span className={SHORT_LABEL}> session</span>
+					</span>
 				</ControlButton>
+				<OverflowMenu
+					className={SHOW_BELOW_60}
+					items={menuItems}
+					header={
+						<div
+							className={cn(
+								"mb-1.5 space-y-1 border-b border-[var(--deck-border)] px-3 pb-2.5 pt-1.5 text-sm text-[var(--deck-text-muted)]",
+								SHOW_BELOW_48
+							)}
+						>
+							<p className="flex items-center gap-2 font-semibold text-[var(--deck-text)]">
+								<Users className="h-4 w-4" aria-hidden />
+								{plural(participants, "participant", "participants")}
+								<span className={cn("h-2 w-2 rounded-full", conn.dot)} aria-hidden />
+								<span className="font-medium text-[var(--deck-text-muted)]">{conn.label}</span>
+							</p>
+							{tally !== null && <p>{tally} on this slide</p>}
+						</div>
+					}
+				/>
 			</div>
 		</nav>
 	);
