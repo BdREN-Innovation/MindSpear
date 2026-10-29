@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 
 /**
  * Bearer tokens for anonymous participants, same scheme as
- * App\Services\Live\ParticipantTokenService (sha256 hash stored, raw token
+ * App\Deck\Participants\ParticipantTokenService (sha256 hash stored, raw token
  * returned once, sent back in X-Participant-Token).
  * Tokens stay valid after the game ends so participants can read their results.
  */

@@ -5,11 +5,9 @@ namespace App\Providers;
 use App\Deck\Broadcasts\DeckBroadcaster;
 use App\Deck\Broadcasts\DeckChannels;
 use App\Deck\Http\DeckValidation;
-use App\Deck\Http\Middleware\EnsureDeckFeatureEnabled;
 use App\Deck\Http\Middleware\ResolveDeckParticipant;
 use App\Deck\Policies\DeckPolicy;
 use App\Deck\Slides\SlideTypeRegistry;
-use App\Deck\Support\DeckFeature;
 use App\Deck\Support\ProfanityFilter;
 use App\Models\Deck\Deck;
 use App\Models\Deck\DeckSession;
@@ -27,8 +25,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Shared slide engine (Quest v2, later Quiz v2): migrations, the slide type
- * registry, broadcasting helpers, the v2 host channel and the HTTP layer
+ * The slide engine behind quizzes and quests (decks): migrations, the slide
+ * type registry, broadcasting, the host channel and the HTTP layer
  * (routes/deck/*.php, policy, participant middleware, rate limits).
  */
 class DeckServiceProvider extends ServiceProvider
@@ -65,10 +63,9 @@ class DeckServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(database_path('migrations/Deck'));
 
-        // Private host channel; `.v2` keeps it apart from legacy host.{module}.{id}.
-        // Like the host HTTP routes (deck.feature), it needs the product's v2 rollout flag.
-        Broadcast::channel('host.{product}.v2.{sessionId}', function ($user, string $product, int $sessionId): bool {
-            if (! $user instanceof User || ! in_array($product, Deck::PRODUCTS, true) || ! DeckFeature::enabled($user, $product)) {
+        // Private host channel (DeckChannels::hostChannel): the session's host only.
+        Broadcast::channel('host.{product}.{sessionId}', function ($user, string $product, int $sessionId): bool {
+            if (! $user instanceof User || ! in_array($product, Deck::PRODUCTS, true)) {
                 return false;
             }
 
@@ -84,7 +81,6 @@ class DeckServiceProvider extends ServiceProvider
 
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware(ResolveDeckParticipant::ALIAS, ResolveDeckParticipant::class);
-        $router->aliasMiddleware(EnsureDeckFeatureEnabled::ALIAS, EnsureDeckFeatureEnabled::class);
 
         $this->registerRateLimiters();
         $this->renderValidationErrorsLikeFormRequests();

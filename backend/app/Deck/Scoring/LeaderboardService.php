@@ -11,7 +11,7 @@ use App\Models\Deck\DeckSessionSlideRun;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Quiz v2 session ranking (QUIZ_REDESIGN_PLAN.md §1.4).
+ * Quiz session ranking (QUIZ_REDESIGN_PLAN.md §1.4).
  *
  * Ranking: every participant still in the session (left_at null) by
  * deck_participants.total_points desc (null = 0), then earliest joined_at

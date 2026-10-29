@@ -72,7 +72,7 @@ it('authors the new quiz types and refuses options on sentence slides', function
 
     // The retired multi-answer type is created as a Pick answer.
     $this->postJson(QAPI_AUTHOR . "/{$deck['id']}/slides", ['type' => 'pick_answer_multi'])->assertCreated()->assertJsonPath('data.slide.type', 'pick_answer_single');
-    $this->postJson('/api/v1/quests/v2', ['title' => 'Q'])->assertCreated();
+    $this->postJson('/api/v1/quests', ['title' => 'Q'])->assertCreated();
 });
 
 it('hosts true or false, fill in the blanks and drag and drop end to end', function () {

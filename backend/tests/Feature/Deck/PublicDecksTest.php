@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 
 /*
- * Sharing v2 quizzes and quests: visibility, Discover (/public), the
+ * Sharing quizzes and quests: visibility, Discover (/public), the
  * preview, and copying someone's public deck with its images.
  */
 
@@ -34,7 +34,7 @@ beforeEach(function () {
 
 function publicDeckUrl(string $path = ''): string
 {
-    return '/api/v1/quests/v2' . $path;
+    return '/api/v1/quests' . $path;
 }
 
 /** A PNG with random pixels, so two are never de-duplicated. */

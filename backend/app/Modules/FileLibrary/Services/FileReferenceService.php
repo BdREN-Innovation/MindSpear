@@ -5,23 +5,22 @@ namespace App\Modules\FileLibrary\Services;
 use App\Models\File;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
- * Counts where a library file is still shown. Decks (Quest/Quiz v2) store the
- * file id, so they are matched exactly. Older questions store the image URL
- * instead, so those are matched on the stored file name, which is a random
- * 40-character string and therefore unique.
+ * Counts where a library file is still shown. Quizzes and quests (decks)
+ * store the file id, so they are matched exactly. The question banks and fun
+ * games store the image URL instead, so those are matched on the stored file
+ * name, which is a random 40-character string and therefore unique.
  */
 class FileReferenceService
 {
-    /** Legacy places that store image URLs: label => [table, column] (json columns are searched as text). */
+    /**
+     * Places that store image URLs: label => [table, column] (json columns are
+     * searched as text). Every one of these tables soft-deletes.
+     */
     private const URL_PLACES = [
-        'quiz questions' => ['questions', 'source_content_url'],
         'question bank' => ['quiz_bank_questions', 'source_content_url'],
-        'quest tasks' => ['quest_tasks', 'task_data'],
         'quest task bank' => ['quest_bank_tasks', 'task_data'],
-        'survey questions' => ['survey_questions', 'options'],
         'fun game questions' => ['fun_game_questions', 'image_url'],
     ];
 
@@ -49,30 +48,22 @@ class FileReferenceService
      */
     private function idQueries(int $fileId): array
     {
-        $queries = [];
-
-        if (Schema::hasTable('decks')) {
-            $queries['deck covers'] = DB::table('decks')
+        return [
+            'deck covers' => DB::table('decks')
                 ->where('cover_file_id', $fileId)
-                ->whereNull('deleted_at');
-        }
-        if (Schema::hasTable('slides')) {
-            $queries['deck slides'] = DB::table('slides')
+                ->whereNull('deleted_at'),
+            'deck slides' => DB::table('slides')
                 ->join('decks', 'decks.id', '=', 'slides.deck_id')
                 ->where('slides.media_file_id', $fileId)
                 ->whereNull('slides.deleted_at')
-                ->whereNull('decks.deleted_at');
-        }
-        if (Schema::hasTable('slide_options')) {
-            $queries['deck slide options'] = DB::table('slide_options')
+                ->whereNull('decks.deleted_at'),
+            'deck slide options' => DB::table('slide_options')
                 ->join('slides', 'slides.id', '=', 'slide_options.slide_id')
                 ->join('decks', 'decks.id', '=', 'slides.deck_id')
                 ->where('slide_options.image_file_id', $fileId)
                 ->whereNull('slides.deleted_at')
-                ->whereNull('decks.deleted_at');
-        }
-
-        return $queries;
+                ->whereNull('decks.deleted_at'),
+        ];
     }
 
     /** @return array<string, int> */
@@ -86,14 +77,10 @@ class FileReferenceService
         $like = '%' . addcslashes(basename($path), '%_\\') . '%';
         $found = [];
         foreach (self::URL_PLACES as $label => [$table, $column]) {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column)) {
-                continue;
-            }
-            $query = DB::table($table)->whereRaw("CAST({$column} AS text) LIKE ?", [$like]);
-            if (Schema::hasColumn($table, 'deleted_at')) {
-                $query->whereNull('deleted_at');
-            }
-            $count = $query->count();
+            $count = DB::table($table)
+                ->whereRaw("CAST({$column} AS text) LIKE ?", [$like])
+                ->whereNull('deleted_at')
+                ->count();
             if ($count > 0) {
                 $found[$label] = $count;
             }

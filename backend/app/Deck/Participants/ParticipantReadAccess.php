@@ -4,7 +4,6 @@ namespace App\Deck\Participants;
 
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckSession;
-use App\Services\Live\ParticipantTokenService;
 use Illuminate\Http\Request;
 
 /**

@@ -16,8 +16,7 @@ use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckParticipantAnswer;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveAggregateService;
-use App\Services\Live\LiveSessionService;
+use App\Deck\Broadcasts\LiveAggregateService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -72,7 +71,6 @@ class AnswerSubmissionService
     public function __construct(
         private readonly SlideTypeRegistry $registry,
         private readonly LiveAggregateService $aggregates,
-        private readonly LiveSessionService $live,
         private readonly DeckBroadcaster $broadcaster,
     ) {}
 
@@ -112,14 +110,14 @@ class AnswerSubmissionService
 
         app(ParticipantPresence::class)->returned($session, $participant);
         $this->aggregates->schedule($lockedRun);
-        $this->live->afterCommit(function () use ($session, $event, $result) {
+        DB::afterCommit(function () use ($session, $event, $result) {
             $total = DeckParticipantAnswer::query()->where('slide_run_id', $event->slide_run_id)->count();
 
             $this->broadcaster->broadcast($session, AnswerSubmittedPayload::fromAnswer($event, $total, $result->isUpdate));
         });
 
         if ($type->revealModel() === SlideTypeContract::REVEAL_HIDDEN) {
-            $this->live->afterCommit(function () use ($session, $lockedRun) {
+            DB::afterCommit(function () use ($session, $lockedRun) {
                 try {
                     app(SessionStateMachine::class)->revealIfAllAnswered($session, (int) $lockedRun->id);
                 } catch (Throwable $exception) {

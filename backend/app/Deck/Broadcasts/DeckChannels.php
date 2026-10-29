@@ -5,9 +5,8 @@ namespace App\Deck\Broadcasts;
 use App\Models\Deck\DeckSession;
 
 /**
- * Channel names for deck sessions. The public format matches the legacy
- * LiveSessionService one; the host channel is namespaced `.v2` so numeric ids
- * of legacy sessions can never collide during coexistence.
+ * Channel names for deck sessions: a public one per session (participants
+ * and host) and a private one for the host.
  */
 class DeckChannels
 {
@@ -17,10 +16,10 @@ class DeckChannels
         return "session.{$session->product()}.{$session->public_channel_key}";
     }
 
-    /** "host.{product}.v2.{id}" — private, host only. */
+    /** "host.{product}.{id}" — private, host only. */
     public function hostChannel(DeckSession $session): string
     {
-        return "host.{$session->product()}.v2.{$session->id}";
+        return "host.{$session->product()}.{$session->id}";
     }
 
     public function for(DeckSession $session, BroadcastPayload $payload): string

@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 
 /*
- * Phase 2 authoring API (/api/v1/quests/v2): plan §2.1, §2.2, §2.5 and the
+ * Phase 2 authoring API (/api/v1/quests): plan §2.1, §2.2, §2.5 and the
  * §5.7 bulk endpoint. Exit criteria: create, append every Quest type, edit
  * each, reorder, duplicate, delete; Quiz-only types rejected.
  */
@@ -31,7 +31,7 @@ beforeEach(function () {
 
 function authApiUrl(string $path = ''): string
 {
-    return '/api/v1/quests/v2' . $path;
+    return '/api/v1/quests' . $path;
 }
 
 function authApiSignIn(?User $user = null): User
@@ -42,7 +42,7 @@ function authApiSignIn(?User $user = null): User
     return $user;
 }
 
-/** POST /quests/v2 as the signed-in user; returns data.deck. */
+/** POST /quests as the signed-in user; returns data.deck. */
 function authApiCreateDeck(array $body = []): array
 {
     return test()->postJson(authApiUrl(), $body)->assertCreated()->json('data.deck');
@@ -443,8 +443,8 @@ it('reorders a slide\'s options in one request (0-based positions, every option 
         ->assertNotFound()->assertJsonPath('data.code', 'not_found');
 
     $route = app('router')->getRoutes()->getByName('deck.quest.options.reorder');
-    expect($route->uri())->toBe('api/v1/quests/v2/{deck}/slides/{slide}/options/reorder')
-        ->and($route->gatherMiddleware())->toContain('auth:sanctum', 'throttle:deck-author', 'deck.feature');
+    expect($route->uri())->toBe('api/v1/quests/{deck}/slides/{slide}/options/reorder')
+        ->and($route->gatherMiddleware())->toContain('auth:sanctum', 'throttle:deck-author');
 });
 
 it('strips server-managed config keys (media, media_file_id, video_url) from author input', function () {

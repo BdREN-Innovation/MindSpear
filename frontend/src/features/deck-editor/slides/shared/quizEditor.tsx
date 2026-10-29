@@ -10,7 +10,7 @@ import { CharCount } from "./fields";
 import { useDebouncedValue } from "./hooks";
 import { optionIsCorrect } from "./quizLabels";
 
-// Inspector pieces the Quiz v2 editors share: the "correct answer" marker of
+// Inspector pieces the quiz editors share: the "correct answer" marker of
 // the pick types (optimistic, one PATCH per changed option), a debounced
 // option label input for editors that lay options out themselves (match
 // pairs), and the inline notices. Scoring fields (points, speed bonus) live

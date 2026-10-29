@@ -24,9 +24,6 @@ class DeckException extends RuntimeException
 
     public const CODE_UNAUTHORIZED = 'unauthorized';
 
-    /** The account does not have this product's v2 (users.quest_v2_enabled, App\Deck\Support\DeckFeature). */
-    public const CODE_FEATURE_DISABLED = 'feature_disabled';
-
     /** The deck would hold more than config('deck.max_slides_per_deck') live slides. */
     public const CODE_SLIDE_LIMIT = 'slide_limit_reached';
 
@@ -68,12 +65,6 @@ class DeckException extends RuntimeException
     public static function forbidden(string $message = 'You are not allowed to do this.'): self
     {
         return new self($message, 403, self::CODE_FORBIDDEN);
-    }
-
-    /** Authoring / hosting refused: the rollout flag is off for this account (403). */
-    public static function featureDisabled(string $message = 'Quest v2 is not enabled for your account.'): self
-    {
-        return new self($message, 403, self::CODE_FEATURE_DISABLED);
     }
 
     /**

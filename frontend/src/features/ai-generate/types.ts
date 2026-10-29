@@ -1,12 +1,11 @@
 // Generating questions from a document in My Files, for quizzes, quests and fun games.
 // The prompts, schemas and the model call live in the AI server (ai-server/); this
 // feature sends the request (aiClient.ts) and maps the answer into editor payloads.
-// `quest` feeds the legacy (v1) quest editor; `quest_v2` writes slides for the
-// slide-based Quest v2 editor (backend type keys, saved through slides/bulk).
-// `quiz` feeds the legacy quiz creator; `quiz_v2` writes scored slides (with
-// their correct answers) for the slide-based Quiz v2 editor.
+// `quiz` writes scored slides (with their correct answers) and `quest` poll and
+// prompt slides, both as backend slide type keys saved through slides/bulk;
+// `fungame` writes single-answer questions for the Fun Games importer.
 
-export type GenerationTarget = "quiz" | "quiz_v2" | "quest" | "quest_v2" | "fungame";
+export type GenerationTarget = "quiz" | "quest" | "fungame";
 
 export interface GenerationOptions {
 	topic: string;
@@ -23,36 +22,22 @@ export interface GenerateRequest extends GenerationOptions {
 	textData: string;
 }
 
-/** Same shape the quiz creator already stores via /quiz/questions/store-multiple. */
-export interface QuizAiQuestion {
-	question_text: string;
-	question_type: "single_choice" | "multiple_choice" | "true_false" | "fill_in_the_blanks" | "short_answer";
-	options: { choices: string[]; correct_answer: number | number[] };
-}
+/** Quest slide types the AI may write (backend type keys; a yes/no poll is poll_single with Yes / No). */
+export type QuestAiSlideType = "poll_single" | "poll_multi" | "word_cloud" | "open_ended" | "scales" | "ranking" | "rating";
 
-/** Quest tasks are polls and prompts: no correct answers. */
-export interface QuestAiTask {
+/** One quest slide: polls and prompts, no correct answers. `options` are choices, statements or items. */
+export interface QuestAiSlide {
 	title: string;
-	task_type: "single_choice" | "multiple_choice" | "truefalse" | "ranking" | "scales" | "wordcloud" | "shortanswer" | "longanswer";
-	options: string[];
-}
-
-/** Quest v2 slide types the AI may write (backend type keys; a yes/no poll is poll_single with Yes / No). */
-export type QuestV2AiSlideType = "poll_single" | "poll_multi" | "word_cloud" | "open_ended" | "scales" | "ranking" | "rating";
-
-/** One Quest v2 slide: polls and prompts, no correct answers. `options` are choices, statements or items. */
-export interface QuestV2AiSlide {
-	title: string;
-	type: QuestV2AiSlideType;
+	type: QuestAiSlideType;
 	options: string[];
 }
 
 /**
- * Quiz v2 question kinds the AI may write. Both pick kinds are saved as a
+ * Quiz question kinds the AI may write. Both pick kinds are saved as a
  * pick_answer_single slide (several correct = select them all); true_false as
  * a true_false slide with True / False.
  */
-export type QuizV2AiSlideType =
+export type QuizAiSlideType =
 	| "pick_answer_single"
 	| "pick_answer_multi"
 	| "true_false"
@@ -62,17 +47,17 @@ export type QuizV2AiSlideType =
 	| "categorise";
 
 /** One choice of a pick-answer question. */
-export interface QuizV2AiChoice {
+export interface QuizAiChoice {
 	text: string;
 	correct: boolean;
 }
 
 /**
- * One Quiz v2 question with its correct answer, in the strict shape the
+ * One quiz question with its correct answer, in the strict shape the
  * prompt asks for (validated by the AI server before it reaches the editor).
  */
-export type QuizV2AiSlide =
-	| { type: "pick_answer_single" | "pick_answer_multi"; title: string; options: QuizV2AiChoice[] }
+export type QuizAiSlide =
+	| { type: "pick_answer_single" | "pick_answer_multi"; title: string; options: QuizAiChoice[] }
 	| { type: "true_false"; title: string; answer: boolean }
 	| { type: "short_answer"; title: string; accepted_answers: string[] }
 	/** `items` in the correct order, first = top. */
@@ -89,10 +74,8 @@ export interface FunGameAiQuestion {
 }
 
 export type GenerateResponse =
-	| { target: "quiz"; questions: QuizAiQuestion[] }
-	| { target: "quiz_v2"; questions: QuizV2AiSlide[] }
-	| { target: "quest"; questions: QuestAiTask[] }
-	| { target: "quest_v2"; questions: QuestV2AiSlide[] }
+	| { target: "quiz"; questions: QuizAiSlide[] }
+	| { target: "quest"; questions: QuestAiSlide[] }
 	| { target: "fungame"; questions: FunGameAiQuestion[] };
 
 export type GeneratedFor<T extends GenerationTarget> = Extract<GenerateResponse, { target: T }>;
@@ -105,13 +88,6 @@ export interface QuestionTypeOption {
 
 export const QUESTION_TYPES: Record<GenerationTarget, QuestionTypeOption[]> = {
 	quiz: [
-		{ value: "single_choice", label: "Single choice" },
-		{ value: "multiple_choice", label: "Multiple choice" },
-		{ value: "true_false", label: "True / False" },
-		{ value: "fill_in_the_blanks", label: "Fill in the blanks" },
-		{ value: "short_answer", label: "Short answer" },
-	],
-	quiz_v2: [
 		{ value: "pick_answer_single", label: "Pick answer · one correct" },
 		{ value: "pick_answer_multi", label: "Pick answer · several correct" },
 		{ value: "true_false", label: "True / False" },
@@ -121,16 +97,6 @@ export const QUESTION_TYPES: Record<GenerationTarget, QuestionTypeOption[]> = {
 		{ value: "categorise", label: "Categorise" },
 	],
 	quest: [
-		{ value: "single_choice", label: "Poll · one answer" },
-		{ value: "multiple_choice", label: "Poll · several answers" },
-		{ value: "truefalse", label: "Yes / No" },
-		{ value: "ranking", label: "Ranking" },
-		{ value: "scales", label: "Scales", hint: "Rate statements" },
-		{ value: "wordcloud", label: "Word cloud" },
-		{ value: "shortanswer", label: "Short answer" },
-		{ value: "longanswer", label: "Long answer" },
-	],
-	quest_v2: [
 		{ value: "poll_single", label: "Multiple choice · one answer", hint: "Includes yes / no questions" },
 		{ value: "poll_multi", label: "Multiple choice · several answers" },
 		{ value: "word_cloud", label: "Word cloud" },
@@ -146,10 +112,8 @@ export const QUESTION_TYPES: Record<GenerationTarget, QuestionTypeOption[]> = {
 };
 
 export const DEFAULT_TYPES: Record<GenerationTarget, string[]> = {
-	quiz: ["single_choice", "multiple_choice", "true_false", "fill_in_the_blanks", "short_answer"],
-	quiz_v2: ["pick_answer_single", "pick_answer_multi", "true_false", "short_answer", "correct_order", "match_pairs", "categorise"],
-	quest: ["single_choice", "multiple_choice", "truefalse", "wordcloud"],
-	quest_v2: ["poll_single", "poll_multi", "word_cloud", "open_ended"],
+	quiz: ["pick_answer_single", "pick_answer_multi", "true_false", "short_answer", "correct_order", "match_pairs", "categorise"],
+	quest: ["poll_single", "poll_multi", "word_cloud", "open_ended"],
 	fungame: ["single_choice", "true_false"],
 };
 
@@ -165,8 +129,6 @@ export const MAX_TEXT_CHARS = 60_000;
 
 export const TARGET_NOUN: Record<GenerationTarget, { singular: string; plural: string }> = {
 	quiz: { singular: "question", plural: "questions" },
-	quiz_v2: { singular: "question", plural: "questions" },
-	quest: { singular: "task", plural: "tasks" },
-	quest_v2: { singular: "slide", plural: "slides" },
+	quest: { singular: "slide", plural: "slides" },
 	fungame: { singular: "question", plural: "questions" },
 };

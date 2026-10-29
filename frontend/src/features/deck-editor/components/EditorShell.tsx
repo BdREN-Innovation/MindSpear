@@ -10,20 +10,20 @@ import { getSlideType } from "../slideRegistry";
 import { CenterCanvas } from "./CenterCanvas";
 import { DeckSettingsModal } from "./DeckSettingsModal";
 import { EditorHeader } from "./EditorHeader";
-import { DeleteSlideDialog, EditorLoading, FeatureDisabledPage, LoadErrorPage } from "./EditorStates";
+import { DeleteSlideDialog, EditorLoading, LoadErrorPage } from "./EditorStates";
 import { GenerateSlidesModal } from "./GenerateSlidesModal";
 import { InspectorPanel } from "./InspectorPanel";
 import { PreviewOverlay } from "./PreviewOverlay";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { SlidePicker } from "./SlidePicker";
 import { SlideRail } from "./SlideRail";
 import { useDeckEditor } from "./useDeckEditor";
 
 const INSPECTOR_COLLAPSED_KEY = "deck-editor:inspector-collapsed";
 
-// The v2 deck editor (Quest plan §5.1 / §5.3): header, slide rail, canvas,
+// The quiz / quest editor (Quest plan §5.1 / §5.3): header, slide rail, canvas,
 // inspector. Product-parameterised: /quests/[id]/edit and /quizzes/[id]/edit
-// share it; the product picks the API (/quests/v2 or /quizzes), the slide
+// share it; the product picks the API (/quests or /quizzes), the slide
 // types the picker offers, the Settings tab fields (quiz scoring) and copy.
 
 export interface EditorShellProps {
@@ -254,7 +254,6 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, []);
 
-	if (editor.blocked) return <FeatureDisabledPage error={editor.blocked} product={product} />;
 	if (editor.loadState === "loading" && !deck) return <EditorLoading product={product} />;
 	if (editor.loadState === "error" && editor.loadError)
 		return <LoadErrorPage error={editor.loadError} onRetry={editor.reload} product={product} />;

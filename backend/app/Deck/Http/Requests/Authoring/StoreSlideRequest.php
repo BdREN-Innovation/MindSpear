@@ -5,7 +5,7 @@ namespace App\Deck\Http\Requests\Authoring;
 use App\Http\Requests\BaseFormRequest;
 
 /**
- * POST /quests/v2/{deck}/slides: {type, after_position?}. The type is checked
+ * POST /quests/{deck}/slides: {type, after_position?}. The type is checked
  * against the registry and the route's product by the service (422
  * unsupported_type). after_position null/absent = at the end, 0 = first.
  */

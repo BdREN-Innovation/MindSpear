@@ -15,7 +15,6 @@ const KNOWN_CODES: readonly DeckErrorCode[] = [
 	"results_hidden",
 	"too_many_requests",
 	"payload_too_large",
-	"feature_disabled",
 	"slide_limit_reached",
 ];
 

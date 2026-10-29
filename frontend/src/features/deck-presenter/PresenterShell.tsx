@@ -2,15 +2,15 @@
 
 import { DeckApiError } from "@/features/deck/api/errors";
 import type { DeckProduct } from "@/features/deck/types";
-import { productCopy } from "@/features/deck-editor/components/productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { usePresenterSession } from "./hooks/usePresenterSession";
 import { LivePresenter } from "./components/LivePresenter";
 import { StartErrorScreen, StartingScreen } from "./components/StartErrorScreen";
 
-// v2 presenter (host) mode, Quest plan Phase 6. Routes:
+// Presenter (host) mode, Quest plan Phase 6. Routes:
 // app/(protected)/quests/[id]/present and app/(protected)/quizzes/[id]/present
 // — rendered full-screen by the protected layout (no app header / sidebar).
-// The product picks the API (/quest-sessions/v2 or /quiz-sessions/v2), the
+// The product picks the API (/quest-sessions or /quiz-sessions), the
 // channels and the quiz controls (Start → Reveal → Next, spin, leaderboard).
 //   starting → start or resume the deck's live session
 //   error    → why it can't start (flag off, slide needs an image, …)

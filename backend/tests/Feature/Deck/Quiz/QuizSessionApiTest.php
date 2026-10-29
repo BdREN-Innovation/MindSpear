@@ -16,7 +16,7 @@ use Illuminate\Support\Arr;
 require_once __DIR__ . '/QuizApiHelpers.php';
 
 /*
- * Quiz v2 live engine (QUIZ_REDESIGN_PLAN.md "Live session state machine",
+ * Quiz live engine (QUIZ_REDESIGN_PLAN.md "Live session state machine",
  * §1.5, §1.6, §2.2, §2.3): waiting → get_ready → voting → reveal, the
  * hidden_until_reveal broadcast gating, scoring on submit, my-answer
  * correctness after the reveal, the spinner and the leaderboard.
@@ -169,8 +169,8 @@ it('runs waiting → get_ready → voting → reveal and refuses illegal transit
     $questDeck = Deck::factory()->ownedBy($host)->create();
     Slide::factory()->ofType('poll_single')->create(['deck_id' => $questDeck->id]);
     qapiAsHost($host);
-    $questSession = $this->postJson("/api/v1/quests/v2/{$questDeck->id}/sessions")->assertCreated()->json('data.session_id');
-    $this->postJson("/api/v1/quest-sessions/v2/{$questSession}/advance", ['action' => 'reveal'])
+    $questSession = $this->postJson("/api/v1/quests/{$questDeck->id}/sessions")->assertCreated()->json('data.session_id');
+    $this->postJson("/api/v1/quest-sessions/{$questSession}/advance", ['action' => 'reveal'])
         ->assertStatus(422)->assertJsonValidationErrors(['action'], 'data.validation_errors');
 });
 
@@ -400,14 +400,14 @@ it('leaves Quest answers unscored', function () {
     SlideOption::factory()->create(['slide_id' => $slide->id, 'label' => 'No']);
 
     qapiAsHost($host);
-    $state = $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated()->json('data');
-    $this->postJson("/api/v1/quest-sessions/v2/{$state['session_id']}/advance", ['action' => 'start_voting'])->assertOk();
+    $state = $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated()->json('data');
+    $this->postJson("/api/v1/quest-sessions/{$state['session_id']}/advance", ['action' => 'start_voting'])->assertOk();
     qapiAsGuest();
-    $joined = $this->postJson("/api/v1/quest-sessions/v2/{$state['session_id']}/participants/join", [
+    $joined = $this->postJson("/api/v1/quest-sessions/{$state['session_id']}/participants/join", [
         'join_code' => $state['join_code'], 'display_name' => 'Ada', 'emoji_avatar' => config('deck.emoji_avatars')[0],
     ])->assertCreated()->json('data');
     $run = qsessRun($state['session_id'], 1);
-    $this->postJson("/api/v1/quest-sessions/v2/{$state['session_id']}/slide-runs/{$run->id}/answers", ['answer_payload' => ['option_id' => $yes->id]], qapiHeaders($joined['participant_token']))
+    $this->postJson("/api/v1/quest-sessions/{$state['session_id']}/slide-runs/{$run->id}/answers", ['answer_payload' => ['option_id' => $yes->id]], qapiHeaders($joined['participant_token']))
         ->assertNoContent();
 
     $answer = DeckParticipantAnswer::query()->where('slide_run_id', $run->id)->firstOrFail();

@@ -10,7 +10,7 @@ function slideParam(value: string | null): number | null {
 	return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-// Quest v2 editor. Rendered full-screen by app/(protected)/layout.tsx (no header / sidebar).
+// Quest editor. Rendered full-screen by app/(protected)/layout.tsx (no header / sidebar).
 export default function QuestEditPage() {
 	const { id } = useParams<{ id: string }>();
 	const initialSlideId = slideParam(useSearchParams().get("slide"));

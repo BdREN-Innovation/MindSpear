@@ -10,14 +10,14 @@ use App\Models\Deck\DeckSessionSlideRun;
 use App\Models\Deck\Slide;
 use App\Models\Deck\SlideOption;
 use App\Models\User;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Arr;
 
 require_once __DIR__ . '/QuizApiHelpers.php';
 
 /*
- * Regression tests for the Quiz v2 review fixes (QUIZ_REDESIGN_PLAN.md
+ * Regression tests for the quiz review fixes (QUIZ_REDESIGN_PLAN.md
  * "Review fixes"), through the HTTP API: the score oracle (answers final,
  * totals only at the reveal), options hidden until voting, per-participant
  * orders, leave / same-device rejoin / active-only counts, participant_count
@@ -248,14 +248,14 @@ it('still replaces a Quest re-submission (Quest is unchanged)', function () {
     $yes = SlideOption::factory()->create(['slide_id' => $slide->id, 'label' => 'Yes']);
     $no = SlideOption::factory()->create(['slide_id' => $slide->id, 'label' => 'No']);
     qapiAsHost($host);
-    $state = $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated()->json('data');
+    $state = $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated()->json('data');
     $sessionId = $state['session_id'];
-    $this->postJson("/api/v1/quest-sessions/v2/{$sessionId}/advance", ['action' => 'start_voting'])->assertOk();
-    $token = qfixJoin($state, 'Ada', null, '/api/v1/quest-sessions/v2')->assertCreated()->json('data.participant_token');
+    $this->postJson("/api/v1/quest-sessions/{$sessionId}/advance", ['action' => 'start_voting'])->assertOk();
+    $token = qfixJoin($state, 'Ada', null, '/api/v1/quest-sessions')->assertCreated()->json('data.participant_token');
     $run = qfixRun($sessionId, 1);
 
     foreach ([$yes, $no] as $option) {
-        $this->postJson("/api/v1/quest-sessions/v2/{$sessionId}/slide-runs/{$run->id}/answers", ['answer_payload' => ['option_id' => $option->id]], qapiHeaders($token))
+        $this->postJson("/api/v1/quest-sessions/{$sessionId}/slide-runs/{$run->id}/answers", ['answer_payload' => ['option_id' => $option->id]], qapiHeaders($token))
             ->assertNoContent();
     }
     expect(DeckParticipantAnswer::query()->where('slide_run_id', $run->id)->sole()->answer_payload)->toBe(['option_id' => $no->id]);
@@ -448,8 +448,8 @@ it('leaves and rejoins on Quest routes too', function () {
     $deck = Deck::factory()->ownedBy($host)->create();
     Slide::factory()->ofType('poll_single', app(SlideTypeRegistry::class)->for('poll_single')->defaultConfig())->create(['deck_id' => $deck->id]);
     qapiAsHost($host);
-    $state = $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated()->json('data');
-    $quest = '/api/v1/quest-sessions/v2';
+    $state = $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated()->json('data');
+    $quest = '/api/v1/quest-sessions';
     $joined = qfixJoin($state, 'Ada', null, $quest)->assertCreated()->assertJsonPath('data.rejoined', false)->json('data');
 
     qfixLeave($state['session_id'], $joined['participant_token'], $quest)->assertNoContent();
@@ -529,7 +529,7 @@ it('inserts a leaderboard right after the current slide and moves to it', functi
     $questDeck = Deck::factory()->ownedBy($host)->create();
     Slide::factory()->ofType('poll_single')->create(['deck_id' => $questDeck->id]);
     qapiAsHost($host);
-    $questSession = $this->postJson("/api/v1/quests/v2/{$questDeck->id}/sessions")->assertCreated()->json('data.session_id');
-    $this->postJson("/api/v1/quest-sessions/v2/{$questSession}/advance", ['action' => 'insert_leaderboard'])
+    $questSession = $this->postJson("/api/v1/quests/{$questDeck->id}/sessions")->assertCreated()->json('data.session_id');
+    $this->postJson("/api/v1/quest-sessions/{$questSession}/advance", ['action' => 'insert_leaderboard'])
         ->assertStatus(422)->assertJsonValidationErrors(['action'], 'data.validation_errors');
 });

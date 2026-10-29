@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Clock3, ListChecks, Loader2, Mail, Play, UserRound, Users } from "lucide-react";
-import { ParticipantStage } from "@/features/live/components/Liveui/participant-ui";
+import { ParticipantStage } from "./ParticipantStage";
 import { getParticipantApi, toFunGamesError, type FunGamesApiError } from "../../api";
 import { describeTimer } from "../../lib/format";
 import { loadLastIdentity, saveCredentials, saveLastIdentity } from "../../lib/participantStorage";

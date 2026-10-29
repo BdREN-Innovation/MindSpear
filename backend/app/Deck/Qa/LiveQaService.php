@@ -14,7 +14,6 @@ use App\Deck\Support\ProfanityFilter;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckQaQuestion;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveSessionService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -67,7 +66,6 @@ class LiveQaService
     public function __construct(
         private readonly DeckBroadcaster $broadcaster,
         private readonly ProfanityFilter $profanity,
-        private readonly LiveSessionService $live,
         private readonly SlideTypeRegistry $slideTypes,
     ) {}
 
@@ -361,7 +359,7 @@ class LiveQaService
 
         if ($changed) {
             $questionId = $question->id;
-            $this->live->afterCommit(fn () => $this->debounceUpvoteBroadcast($questionId));
+            DB::afterCommit(fn () => $this->debounceUpvoteBroadcast($questionId));
         }
 
         return $count;

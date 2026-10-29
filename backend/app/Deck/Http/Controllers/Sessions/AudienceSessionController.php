@@ -14,7 +14,7 @@ use Illuminate\Http\Request;
 class AudienceSessionController extends DeckController
 {
     /**
-     * GET /quest-sessions/v2/by-code/{code} (public). Case-insensitive; only
+     * GET /quest-sessions/by-code/{code} (public). Case-insensitive; only
      * live sessions of the route's product; 404 otherwise.
      */
     public function byCode(Request $request, string $code): JsonResponse

@@ -11,7 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Deck authoring, /api/v1/{product authoring prefix} (quests/v2). Other
+ * Deck authoring, /api/v1/{product authoring prefix} (quests, quizzes). Other
  * users' and other products' decks are 404.
  */
 class DeckAuthoringController extends DeckController

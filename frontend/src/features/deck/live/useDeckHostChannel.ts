@@ -13,7 +13,7 @@ import type {
 import { acquireChannel, type AcquiredChannel } from "./echoChannels";
 import { noteServerTime } from "./useServerClock";
 
-// Host-only events on the private channel `host.{product}.v2.{sessionId}`
+// Host-only events on the private channel `host.{product}.{sessionId}`
 // (Echo auth with the host's Sanctum token via /broadcasting/auth):
 //   answer.submitted         one participant's submission (ticker, "who answered")
 //   participant.joined       lobby / recent-joins ticker

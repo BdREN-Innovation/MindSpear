@@ -49,7 +49,7 @@ class GamePresenter
             'startsAt' => TimerService::iso($latest?->starts_at),
             'latestSessionId' => $latest ? (string) $latest->id : null,
             'latestSessionStatus' => $latest?->status,
-            'sourceQuizId' => $game->source_quiz_id ? (string) $game->source_quiz_id : null,
+            'sourceDeckId' => $game->source_deck_id ? (string) $game->source_deck_id : null,
             'updatedAt' => TimerService::iso($game->updated_at),
             'sessionCount' => (int) ($game->sessions_count ?? $game->sessions()->count()),
         ];

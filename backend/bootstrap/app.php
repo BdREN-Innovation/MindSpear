@@ -21,44 +21,26 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
+        // Quizzes and quests (the Deck module) load their own routes: DeckServiceProvider.
         then: function () {
-            // Register additional routes from the api subfolder
             Route::middleware('api')
                 ->prefix('api/v1')
                 ->group(function () {
                     require base_path('routes/api/v1/auth.php');
                     require base_path('routes/api/v1/preferences.php');
                     require base_path('routes/api/v1/institutions.php');
-                    require base_path('routes/api/v1/Quiz/quizes.php');
-                    require base_path('routes/api/v1/Quiz/questions.php');
-                    require base_path('routes/api/v1/Quiz/quizparticipants.php');
-                    require base_path('routes/api/v1/Quiz/quizattempts.php');
-                    require base_path('routes/api/v1/Quiz/questionbankcategory.php');
-                    require base_path('routes/api/v1/Quiz/questionbank.php');
                     require base_path('routes/api/v1/files.php');
                     require base_path('routes/api/v1/profiles.php');
                     require base_path('routes/api/v1/socialauth.php');
                     require base_path('routes/api/v1/socialsettings.php');
                     require base_path('routes/api/v1/logs.php');
-                    require base_path('routes/api/v1/Survey/surveys.php');
-                    require base_path('routes/api/v1/Survey/surveypages.php');
-                    // Sections removed from Survey module
-                    require base_path('routes/api/v1/Survey/surveyquestions.php');
-                    require base_path('routes/api/v1/Survey/surveyresponses.php');
-                    require base_path('routes/api/v1/Survey/surveyquestionbankcategories.php');
-                    require base_path('routes/api/v1/Survey/surveyquestionbank.php');
-                    // Survey question banks routes removed; managed via categories and questions
-                    require base_path('routes/api/v1/Survey/surveyattampts.php');
-                    require base_path('routes/api/v1/Quest/quests.php');
-                    require base_path('routes/api/v1/Quest/questtasks.php');
-                    require base_path('routes/api/v1/Quest/questattempts.php');
-                    require base_path('routes/api/v1/Quest/questparticipants.php');
+                    require base_path('routes/api/v1/Dashboard/dashboard.php');
+
+                    // Question and task banks (not yet connected to quizzes and quests).
+                    require base_path('routes/api/v1/Quiz/questionbankcategory.php');
+                    require base_path('routes/api/v1/Quiz/questionbank.php');
                     require base_path('routes/api/v1/Quest/questtaskbankcategories.php');
                     require base_path('routes/api/v1/Quest/questtaskbank.php');
-                    // Quest task banks routes removed; managed via categories and tasks
-
-                    // Dashboard routes
-                    require base_path('routes/api/v1/Dashboard/dashboard.php');
                 }
             );
         }

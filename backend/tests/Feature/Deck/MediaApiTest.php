@@ -119,7 +119,7 @@ function mediaApiSlide(Deck $deck, string $type, array $config = []): Slide
 
 function mediaApiPut(string $path, array $body)
 {
-    return test()->putJson('/api/v1/quests/v2/' . ltrim($path, '/'), $body);
+    return test()->putJson('/api/v1/quests/' . ltrim($path, '/'), $body);
 }
 
 function mediaApiStale(File $file): File
@@ -130,10 +130,10 @@ function mediaApiStale(File $file): File
 }
 
 it('registers the media routes under the quest authoring prefix', function () {
-    expect(route('deck.quest.decks.cover', ['deck' => 5], false))->toBe('/api/v1/quests/v2/5/cover')
-        ->and(route('deck.quest.slides.media', ['deck' => 5, 'slide' => 6], false))->toBe('/api/v1/quests/v2/5/slides/6/media')
+    expect(route('deck.quest.decks.cover', ['deck' => 5], false))->toBe('/api/v1/quests/5/cover')
+        ->and(route('deck.quest.slides.media', ['deck' => 5, 'slide' => 6], false))->toBe('/api/v1/quests/5/slides/6/media')
         ->and(route('deck.quest.slides.options.image', ['deck' => 5, 'slide' => 6, 'option' => 7], false))
-        ->toBe('/api/v1/quests/v2/5/slides/6/options/7/image');
+        ->toBe('/api/v1/quests/5/slides/6/options/7/image');
 });
 
 it('attaches and removes a deck cover', function () {
@@ -402,7 +402,7 @@ it('answers 404 for decks, slides and options that are not the caller\'s, and 40
     $deletedDeck = mediaApiDeck($user);
     $deletedDeck->delete();
 
-    $this->putJson("/api/v1/quests/v2/{$deck->id}/cover", ['file_id' => $image->id])->assertUnauthorized();
+    $this->putJson("/api/v1/quests/{$deck->id}/cover", ['file_id' => $image->id])->assertUnauthorized();
 
     Sanctum::actingAs($user);
     mediaApiPut("{$otherDeck->id}/cover", ['file_id' => $image->id])->assertNotFound()->assertJsonPath('message', 'Deck not found.');
@@ -571,13 +571,13 @@ it('keeps showing media its owner later removed from My Files, and lets the edit
     }
 
     // The deck still shows all three, flagged as no longer in My Files.
-    $slideResponse = $this->getJson("/api/v1/quests/v2/{$deck->id}/slides/{$slide->id}")->assertOk()
+    $slideResponse = $this->getJson("/api/v1/quests/{$deck->id}/slides/{$slide->id}")->assertOk()
         ->assertJsonPath('data.slide.mediaFileId', $image->id)
         ->assertJsonPath('data.slide.media.fileId', $image->id)
         ->assertJsonPath('data.slide.media.inLibrary', false);
     expect($slideResponse->json('data.slide.media.url'))->toBeString()->not->toBe('');
 
-    $deckResponse = $this->getJson("/api/v1/quests/v2/{$deck->id}")->assertOk()
+    $deckResponse = $this->getJson("/api/v1/quests/{$deck->id}")->assertOk()
         ->assertJsonPath('data.deck.coverFileId', $cover->id)
         ->assertJsonPath('data.deck.cover.fileId', $cover->id)
         ->assertJsonPath('data.deck.cover.inLibrary', false);

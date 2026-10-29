@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertCircle, ArrowLeft, Check, CircleDot, Globe, Loader2, Lock, MonitorPlay, Play, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DECK_LIMITS, type DeckProduct, type DeckVisibility } from "@/features/deck/types";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import type { SaveStatus } from "./useDeckEditor";
 
 export interface EditorHeaderProps {

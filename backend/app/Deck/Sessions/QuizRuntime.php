@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Quiz v2 on the shared engine (QUIZ_REDESIGN_PLAN.md Phases 1–2): what the
+ * Quizzes on the shared engine (QUIZ_REDESIGN_PLAN.md Phases 1–2): what the
  * session launcher, state machine, answer submission and the live views need
  * from scoring and the leaderboard, in one place. Scoring and ranking
  * themselves live in App\Deck\Scoring (ScoringService, LeaderboardService).

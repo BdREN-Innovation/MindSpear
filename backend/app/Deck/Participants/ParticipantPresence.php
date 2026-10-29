@@ -2,10 +2,11 @@
 
 namespace App\Deck\Participants;
 
+use App\Deck\Broadcasts\DeckBroadcaster;
 use App\Deck\Sessions\SessionStateMachine;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckSession;
-use App\Services\Live\LiveSessionService;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -27,7 +28,7 @@ use Throwable;
  */
 class ParticipantPresence
 {
-    public function __construct(private readonly LiveSessionService $live) {}
+    public function __construct(private readonly DeckBroadcaster $broadcaster) {}
 
     /** True when this call marked $participant as gone. */
     public function leave(DeckSession $session, DeckParticipant $participant): bool
@@ -44,11 +45,11 @@ class ParticipantPresence
         }
 
         $participant->forceFill(['left_at' => $now]);
-        $this->live->broadcastParticipantCount($session->product(), $session);
+        $this->broadcaster->broadcastParticipantCount($session);
 
         if ($session->current_slide_run_id !== null) {
             $runId = (int) $session->current_slide_run_id;
-            $this->live->afterCommit(function () use ($session, $runId) {
+            DB::afterCommit(function () use ($session, $runId) {
                 try {
                     app(SessionStateMachine::class)->revealIfAllAnswered($session, $runId);
                 } catch (Throwable $exception) {
@@ -77,7 +78,7 @@ class ParticipantPresence
         $participant->forceFill(['left_at' => null]);
 
         if ($changed) {
-            $this->live->broadcastParticipantCount($session->product(), $session);
+            $this->broadcaster->broadcastParticipantCount($session);
         }
 
         return $changed;

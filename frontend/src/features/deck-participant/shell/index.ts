@@ -1,4 +1,4 @@
-// Participant PWA shell primitives (plan §4.2). Shared with Quiz v2 later.
+// Participant PWA shell primitives (plan §4.2), for quizzes and quests.
 export { AppShell, useAnnounce, useAnnouncer, useParticipantShell } from "./AppShell";
 export { markNavigation } from "./navDirection";
 export type { NavDirection } from "./navDirection";

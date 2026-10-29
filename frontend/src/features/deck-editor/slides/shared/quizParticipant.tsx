@@ -15,7 +15,7 @@ import { haptic, usePrefersReducedMotion } from "./hooks";
 import { ParticipantLayout, ParticipantNotice } from "./participantKit";
 import { formatPoints, optionLetter, rankLabel } from "./quizLabels";
 
-// Phone pieces of the Quiz v2 Participants (plan §3.2): the "earnable points"
+// Phone pieces of the quiz Participants (plan §3.2): the "earnable points"
 // bar that counts down while answering with the speed bonus on, the
 // locked-in screen, the big ✅ "+N points" / ❌ "0 points" result after the
 // reveal with my standing, and result rows that highlight the correct answer.

@@ -17,9 +17,8 @@ use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckParticipantAnswer;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveAggregateService;
-use App\Services\Live\LiveSessionService;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Broadcasts\LiveAggregateService;
+use App\Deck\Participants\ParticipantTokenService;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Cache\RateLimiter;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -33,7 +32,7 @@ use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 
 /*
- * Participant side of a Quest v2 live session (plan §3.1, §3.3, §3.6):
+ * Participant side of a quest live session (plan §3.1, §3.3, §3.6):
  * join, answers (locked insert-or-merge), my-answer and aggregate visibility.
  */
 
@@ -75,7 +74,7 @@ const DPA_ANSWER_TYPES = [
     'points_allocation', 'rating', 'matrix_2x2', 'pin_on_image',
 ];
 
-const DPA_BASE = '/api/v1/quest-sessions/v2';
+const DPA_BASE = '/api/v1/quest-sessions';
 
 function dpaType(string $key): SlideTypeContract
 {
@@ -142,7 +141,7 @@ function dpaParticipant(DeckSession $session): array
 {
     $participant = DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
 
-    return ['participant' => $participant, 'token' => app(ParticipantTokenService::class)->issue($participant, $session)];
+    return ['participant' => $participant, 'token' => app(ParticipantTokenService::class)->issue($participant)];
 }
 
 function dpaSampleAnswer(string $type, array $optionIds): array
@@ -194,7 +193,7 @@ function dpaEvents(string $name): Collection
 /** The service with a hook that runs right before its INSERT ... ON CONFLICT DO NOTHING. */
 function dpaRacingService(Closure $beforeInsert, ?Closure $insert = null): AnswerSubmissionService
 {
-    return new class ($beforeInsert, $insert, app(SlideTypeRegistry::class), app(LiveAggregateService::class), app(LiveSessionService::class), app(DeckBroadcaster::class)) extends AnswerSubmissionService {
+    return new class ($beforeInsert, $insert, app(SlideTypeRegistry::class), app(LiveAggregateService::class), app(DeckBroadcaster::class)) extends AnswerSubmissionService {
         public int $inserts = 0;
 
         public function __construct(
@@ -202,10 +201,9 @@ function dpaRacingService(Closure $beforeInsert, ?Closure $insert = null): Answe
             private readonly ?Closure $insert,
             SlideTypeRegistry $registry,
             LiveAggregateService $aggregates,
-            LiveSessionService $live,
             DeckBroadcaster $broadcaster,
         ) {
-            parent::__construct($registry, $aggregates, $live, $broadcaster);
+            parent::__construct($registry, $aggregates, $broadcaster);
         }
 
         protected function insertAnswer(array $row): int
@@ -249,7 +247,7 @@ it('joins a live session with a cleaned name and a listed emoji, and broadcasts 
     $joined = dpaEvents('participant.joined');
     expect($joined)->toHaveCount(1)
         ->and($joined[0]->isPrivate())->toBeTrue()
-        ->and($joined[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}")
+        ->and($joined[0]->broadcastOn()->name)->toBe("private-host.quest.{$session->id}")
         ->and($joined[0]->broadcastWith())->toMatchArray([
             'participant_id' => $participant->id,
             'display_name' => 'Ada Lovelace',
@@ -442,7 +440,7 @@ it('stores a valid answer and tells the host, for every answer type', function (
     $submitted = dpaEvents('answer.submitted');
     expect($submitted)->toHaveCount(1)
         ->and($submitted[0]->isPrivate())->toBeTrue()
-        ->and($submitted[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}")
+        ->and($submitted[0]->broadcastOn()->name)->toBe("private-host.quest.{$session->id}")
         ->and($submitted[0]->broadcastWith())->toMatchArray([
             'slide_run_id' => $run->id,
             'answer_id' => $row->id,
@@ -1274,10 +1272,10 @@ it('registers the participant routes under the quest sessions prefix', function 
     $routes = app('router')->getRoutes();
 
     foreach ([
-        'deck.quest.sessions.participants.join' => ['POST', 'api/v1/quest-sessions/v2/{session}/participants/join'],
-        'deck.quest.sessions.runs.answers.store' => ['POST', 'api/v1/quest-sessions/v2/{session}/slide-runs/{run}/answers'],
-        'deck.quest.sessions.runs.my-answer' => ['GET', 'api/v1/quest-sessions/v2/{session}/slide-runs/{run}/my-answer'],
-        'deck.quest.sessions.runs.aggregate' => ['GET', 'api/v1/quest-sessions/v2/{session}/slide-runs/{run}/aggregate'],
+        'deck.quest.sessions.participants.join' => ['POST', 'api/v1/quest-sessions/{session}/participants/join'],
+        'deck.quest.sessions.runs.answers.store' => ['POST', 'api/v1/quest-sessions/{session}/slide-runs/{run}/answers'],
+        'deck.quest.sessions.runs.my-answer' => ['GET', 'api/v1/quest-sessions/{session}/slide-runs/{run}/my-answer'],
+        'deck.quest.sessions.runs.aggregate' => ['GET', 'api/v1/quest-sessions/{session}/slide-runs/{run}/aggregate'],
     ] as $name => [$method, $uri]) {
         $route = $routes->getByName($name);
 

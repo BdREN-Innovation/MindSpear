@@ -7,23 +7,22 @@ use App\Deck\Exceptions\DeckException;
 use App\Deck\Participants\ParticipantReadAccess;
 use App\Deck\Participants\SessionLookup;
 use App\Deck\Sessions\QuizRuntime;
-use App\Deck\Support\DeckFeature;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * GET /quiz-sessions/v2/{session}/leaderboard[?limit=N] (Quiz plan §2.1):
+ * GET /quiz-sessions/{session}/leaderboard[?limit=N] (Quiz plan §2.1):
  * the top N players by total_points (LeaderboardService::currentTopN), with
  * each one's points_delta from the last revealed slide.
  *
  * - With X-Participant-Token: a participant of the session (also after the
  *   end, like my-answer: ParticipantReadAccess); `me` is their own
  *   {participant_id, total_points, rank}. 401 for a bad token.
- * - Without it: Sanctum, the host only. 401 signed out, 403
- *   feature_disabled without Quiz v2, 404 for anyone but the host; `me` null.
+ * - Without it: Sanctum, the host only. 401 signed out, 404 for anyone but
+ *   the host; `me` null.
  *
  * limit: 1..config deck.quiz.leaderboard_max (default deck.quiz.leaderboard_size).
  */
@@ -48,7 +47,6 @@ class LeaderboardController extends DeckController
             $participant = $this->access->participant($request, $deckSession) ?? throw DeckException::unauthorized();
         } else {
             $user = Auth::guard('sanctum')->user() ?? throw DeckException::unauthorized('Unauthenticated.');
-            DeckFeature::assertEnabled($user, $product);
 
             $deckSession = SessionLookup::forProduct($session, $product);
             if (Gate::forUser($user)->denies('manage', $deckSession)) {

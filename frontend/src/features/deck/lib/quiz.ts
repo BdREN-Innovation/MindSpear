@@ -9,7 +9,7 @@ import type {
 } from "../types";
 import { isScoredQuizSlideTypeKey, QUIZ_LIMITS } from "../types";
 
-// Pure Quiz v2 helpers mirroring the backend (QuizScoring, QuizRuntime,
+// Pure quiz helpers mirroring the backend (QuizScoring, QuizRuntime,
 // SpinnerWheelSlideType, LeaderboardSlideType), so phones, the presenter and
 // the editor preview compute the same numbers the server does.
 

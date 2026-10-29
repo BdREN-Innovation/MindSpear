@@ -7,7 +7,7 @@ use App\Deck\Authoring\SlideInput;
 use App\Http\Requests\BaseFormRequest;
 
 /**
- * POST /quests/v2/{deck}/slides/bulk (plan §5.7):
+ * POST /quests/{deck}/slides/bulk (plan §5.7):
  *   {slides: [{type, title?, body?, config?, options?: [{label?, payload?}]}, ...], after_position?}
  * or the bare list. 1..50 slides; options null/absent = the type's defaults.
  * Quiz routes also take slides.*.points_min / points_max / speed_bonus_enabled

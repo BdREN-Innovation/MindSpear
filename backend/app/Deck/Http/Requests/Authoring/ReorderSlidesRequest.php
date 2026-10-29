@@ -6,7 +6,7 @@ use App\Deck\Authoring\SlideAuthoringService;
 use App\Http\Requests\BaseFormRequest;
 
 /**
- * POST /quests/v2/{deck}/slides/reorder: {slides: [{id, position}, ...]} or
+ * POST /quests/{deck}/slides/reorder: {slides: [{id, position}, ...]} or
  * the bare list. Must name every live slide of the deck exactly once.
  */
 class ReorderSlidesRequest extends BaseFormRequest

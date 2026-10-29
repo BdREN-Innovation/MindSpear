@@ -13,7 +13,7 @@ import { optionLetter } from "./quizLabels";
 import { TIMER_CHIP_CLEARANCE } from "./stageLayout";
 import { SlideTitle } from "./presenter";
 
-// Big-screen pieces of the Quiz v2 Presenters (plan §3.2 / §3.3). Everything
+// Big-screen pieces of the quiz Presenters (plan §3.2 / §3.3). Everything
 // sizes in cqw (PresenterStage is the container) so the editor canvas and the
 // projector match. Reveal choreography: bars / rows slide up first, then the
 // ✅ / ❌ badges fade in REVEAL_BADGE_GAP_S later; reduced motion shows the

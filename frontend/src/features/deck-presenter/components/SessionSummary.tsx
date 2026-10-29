@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Clock, Layers, PencilLine, Play, Trophy, Users } from "lucide-react";
 import type { DeckProduct, HostSessionState, LeaderboardEntry, LeaderboardResponse } from "@/features/deck/types";
-import { productCopy } from "@/features/deck-editor/components/productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { formatDuration } from "../lib/format";
 import { runKindOf } from "../lib/runKind";
 

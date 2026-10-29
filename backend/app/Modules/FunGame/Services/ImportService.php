@@ -2,8 +2,14 @@
 
 namespace App\Modules\FunGame\Services;
 
-use App\Models\Quiz\Question;
-use App\Models\Quiz\Quiz;
+use App\Deck\Slides\SlideTypeContract;
+use App\Deck\Slides\SlideTypeRegistry;
+use App\Deck\Slides\Types\Quiz\PickAnswerMultiSlideType;
+use App\Deck\Slides\Types\Quiz\PickAnswerSingleSlideType;
+use App\Deck\Slides\Types\Quiz\QuizOptions;
+use App\Deck\Slides\Types\Quiz\TrueFalseSlideType;
+use App\Models\Deck\Deck;
+use App\Models\Deck\Slide;
 use App\Models\User;
 use App\Modules\FunGame\Models\FunGame;
 use App\Modules\FunGame\Models\FunGameImport;
@@ -16,8 +22,8 @@ use Illuminate\Support\Str;
 /**
  * Turns outside questions into Fun Games questions, which the game then owns.
  *
- * Sources: a My Library quiz (copied; editing either afterwards doesn't touch
- * the other) and the JSON v1 file format. Every source is previewed as rows
+ * Sources: a My Library quiz deck (copied; editing either afterwards doesn't
+ * touch the other) and the JSON v1 file format. Every source is previewed as rows
  * with status ready / check / error / skipped before anything is saved, and
  * every applied import can be undone until the game is played again.
  */
@@ -27,88 +33,75 @@ class ImportService
 
     public const MAX_OPTIONS = 10;
 
-    /** Library types that are single-answer already. */
-    private const SINGLE_TYPES = ['quiz_single_choice', 'single_choice', 'true_false_choice', 'true_false'];
+    /** Quiz slide types playable as a Fun Games question (one correct answer among options). */
+    private const CHOICE_TYPES = [PickAnswerSingleSlideType::KEY, PickAnswerMultiSlideType::KEY, TrueFalseSlideType::KEY];
 
-    /** Library types that import when exactly one answer is marked correct. */
-    private const CONVERTIBLE_TYPES = [
-        'quiz_multiple_choice', 'multiple_choice',
-        'fill_in_the_blanks_choice', 'fill_in_the_blanks_multiple_choice', 'fill_in_the_blanks',
-    ];
-
+    /** Names of the quiz slide types, for the preview rows. */
     private const TYPE_LABELS = [
-        'quiz_single_choice' => 'Single choice',
-        'single_choice' => 'Single choice',
-        'true_false_choice' => 'True / false',
-        'true_false' => 'True / false',
-        'quiz_multiple_choice' => 'Multiple choice',
-        'multiple_choice' => 'Multiple choice',
-        'fill_in_the_blanks_choice' => 'Fill in the blanks',
-        'fill_in_the_blanks_multiple_choice' => 'Fill in the blanks',
-        'fill_in_the_blanks' => 'Fill in the blanks',
-        'sort_answer_choice' => 'Sort answer',
-        'sort_answer' => 'Sort answer',
+        PickAnswerSingleSlideType::KEY => 'Pick answer',
+        PickAnswerMultiSlideType::KEY => 'Pick answers',
+        TrueFalseSlideType::KEY => 'True or false',
         'short_answer' => 'Short answer',
-        'short_answer_choice' => 'Short answer',
+        'fill_blanks' => 'Fill in the blanks',
+        'drag_drop' => 'Drag and drop',
+        'match_pairs' => 'Match pairs',
+        'correct_order' => 'Correct order',
+        'categorise' => 'Categorise',
     ];
 
-    public function __construct(private readonly FunGameLogger $logger) {}
+    public function __construct(
+        private readonly FunGameLogger $logger,
+        private readonly SlideTypeRegistry $slideTypes,
+    ) {}
 
     // ------------------------------------------------------------------ My Library
 
-    /** The host's own library quizzes, newest first. */
+    /** The host's own quizzes (quiz decks), newest first, with how many question slides each has. */
     public function libraryQuizzes(User $user): Collection
     {
-        return Quiz::query()
-            ->where('user_id', $user->id)
-            ->whereNull('deleted_at')
-            ->withCount('questions')
+        return Deck::query()
+            ->quiz()
+            ->ownedBy($user)
+            ->withCount(['slides as questions_count' => fn ($slides) => $slides->whereIn('type', $this->questionTypes())])
             ->latest('updated_at')
             ->limit(200)
             ->get(['id', 'title', 'description', 'updated_at'])
-            ->map(fn (Quiz $quiz) => [
-                'id' => (string) $quiz->id,
-                'title' => $quiz->title ?: 'Untitled quiz',
-                'description' => $this->clean($quiz->description ?? ''),
-                'questionCount' => (int) $quiz->questions_count,
-                'updatedAt' => TimerService::iso($quiz->updated_at),
+            ->map(fn (Deck $deck) => [
+                'id' => (string) $deck->id,
+                'title' => $deck->title ?: 'Untitled quiz',
+                'description' => $this->clean($deck->description ?? ''),
+                'questionCount' => (int) $deck->questions_count,
+                'updatedAt' => TimerService::iso($deck->updated_at),
             ]);
     }
 
-    public function ownedLibraryQuiz(User $user, int|string $quizId): Quiz
+    public function ownedLibraryQuiz(User $user, int|string $quizId): Deck
     {
-        $quiz = Quiz::query()
-            ->whereKey($quizId)
-            ->where('user_id', $user->id)
-            ->whereNull('deleted_at')
-            ->first();
-        if (! $quiz) {
-            throw FunGameException::notFound('Quiz not found in your library.');
-        }
-
-        return $quiz;
+        return Deck::query()->quiz()->ownedBy($user)->whereKey($quizId)->first()
+            ?? throw FunGameException::notFound('Quiz not found in your library.');
     }
 
     /**
-     * Converts a library quiz. Questions that can't be played as single choice are
-     * reported as "skipped" with the reason; they never block the import.
+     * Converts a quiz deck's question slides (content slides are left out).
+     * Slides that can't be played as single choice are reported as "skipped"
+     * with the reason; they never block the import.
      *
      * @return array{rows: list<array>, questions: list<array>, suggestedTimer: array}
      */
-    public function fromLibrary(Quiz $quiz, float $defaultMarks, float $defaultNegative): array
+    public function fromLibrary(Deck $quiz, float $defaultMarks, float $defaultNegative): array
     {
-        $source = $quiz->questions()->orderBy('serial_number')->orderBy('id')->get();
+        $slides = $quiz->slides()->whereIn('type', $this->questionTypes())->with('options')->get();
         $rows = [];
         $questions = [];
         $limits = [];
 
-        foreach ($source->values() as $i => $q) {
-            [$question, $row] = $this->convertLibraryQuestion($q, $i, $defaultMarks, $defaultNegative);
+        foreach ($slides->values() as $i => $slide) {
+            [$question, $row] = $this->convertSlide($slide, $i, $defaultMarks, $defaultNegative);
             $rows[] = $row;
             if ($question) {
                 $questions[] = $question;
-                if ($q->time_limit_seconds) {
-                    $limits[] = (int) $q->time_limit_seconds;
+                if ($slide->time_limit_seconds) {
+                    $limits[] = (int) $slide->time_limit_seconds;
                 }
             }
         }
@@ -136,16 +129,25 @@ class ImportService
         ];
     }
 
-    /** @return array{0: ?array, 1: array} the converted question (or null) and its preview row */
-    private function convertLibraryQuestion(Question $q, int $index, float $defaultMarks, float $defaultNegative): array
+    /** Slide types of quiz decks that take answers (the questions; no content or leaderboard slides). */
+    private function questionTypes(): array
     {
-        $type = (string) $q->question_type;
-        $text = $this->clean((string) $q->question_text);
+        return array_keys(array_filter(
+            $this->slideTypes->forProduct(Deck::PRODUCT_QUIZ),
+            fn (SlideTypeContract $type) => $type->acceptsAnswers(),
+        ));
+    }
+
+    /** @return array{0: ?array, 1: array} the converted question (or null) and its preview row */
+    private function convertSlide(Slide $slide, int $index, float $defaultMarks, float $defaultNegative): array
+    {
+        $type = (string) $slide->type;
+        $text = $this->clean((string) $slide->title);
         $row = [
             'index' => $index,
             'position' => $index + 1,
             'text' => Str::limit($text, 160),
-            'type' => self::TYPE_LABELS[$type] ?? ($type !== '' ? Str::headline($type) : 'Unknown'),
+            'type' => self::TYPE_LABELS[$type] ?? Str::headline($type),
             'status' => 'ready',
             'messages' => [],
             'optionCount' => 0,
@@ -157,33 +159,30 @@ class ImportService
             return [null, $row];
         };
 
-        if (! in_array($type, self::SINGLE_TYPES, true) && ! in_array($type, self::CONVERTIBLE_TYPES, true)) {
-            return $skip(($row['type']) . ' questions can\'t be played in Fun Games.');
+        if (! in_array($type, self::CHOICE_TYPES, true)) {
+            return $skip($row['type'] . ' questions can\'t be played in Fun Games.');
         }
         if ($text === '') {
             return $skip('The question text is empty.');
         }
 
-        $choices = is_array($q->options['choices'] ?? null) ? $q->options['choices'] : [];
         $options = [];
-        $idByIndex = [];
-        foreach (array_values($choices) as $choiceIndex => $choice) {
-            $choiceText = $this->clean((string) ($choice ?? ''));
-            if ($choiceText === '') {
+        $correct = [];
+        foreach ($slide->options as $option) {
+            $optionText = $this->clean((string) ($option->label ?? ''));
+            if ($optionText === '') {
                 continue;
             }
             $id = 'o' . (count($options) + 1);
-            $options[] = ['id' => $id, 'text' => Str::limit($choiceText, 500, '')];
-            $idByIndex[$choiceIndex] = $id;
+            $options[] = ['id' => $id, 'text' => Str::limit($optionText, 500, '')];
+            if (QuizOptions::isCorrect($option->toArray())) {
+                $correct[] = $id;
+            }
         }
         $row['optionCount'] = count($options);
 
-        $correct = $q->options['correct_answer'] ?? null;
-        $correct = is_array($correct) ? array_values(array_filter($correct, 'is_numeric')) : (is_numeric($correct) ? [$correct] : []);
-        $correct = array_map('intval', $correct);
-
         if (count($options) < 2) {
-            return $skip('Needs at least two answer options.');
+            return $skip('Needs at least two answer options with text.');
         }
         if (count($options) > self::MAX_OPTIONS) {
             return $skip('Has more than ' . self::MAX_OPTIONS . ' answer options.');
@@ -194,23 +193,15 @@ class ImportService
         if (count($correct) > 1) {
             return $skip('Has ' . count($correct) . ' correct answers — Fun Games questions have exactly one.');
         }
-        if (! isset($idByIndex[$correct[0]])) {
-            return $skip('The correct answer is blank.');
-        }
 
-        if (in_array($type, self::CONVERTIBLE_TYPES, true)) {
-            $row['status'] = 'check';
-            $row['messages'][] = 'Imported as single choice.';
-        }
-
-        $limit = $q->time_limit_seconds ? (int) $q->time_limit_seconds : null;
+        $limit = $slide->time_limit_seconds ? (int) $slide->time_limit_seconds : null;
         $question = [
             'type' => FunGameQuestion::TYPE_SINGLE_CHOICE,
             'text' => Str::limit($text, 2000, ''),
-            'image_url' => $this->imageUrl($q->source_content_url),
+            'image_url' => null,
             'options' => $options,
-            'correct_option_id' => $idByIndex[$correct[0]],
-            'marks' => $q->points && $q->points > 0 ? (float) $q->points : $defaultMarks,
+            'correct_option_id' => $correct[0],
+            'marks' => $defaultMarks,
             'negative_marks' => $defaultNegative,
             'seconds_override' => $limit && $limit >= TimerService::PER_QUESTION_MIN && $limit <= TimerService::PER_QUESTION_MAX ? $limit : null,
         ];
@@ -341,7 +332,7 @@ class ImportService
         string $mode,
         ?array $timer,
         string $source,
-        ?int $sourceQuizId = null,
+        ?int $sourceDeckId = null,
         array $skipped = [],
     ): FunGameImport {
         if ($game->hasRunningSession()) {
@@ -354,7 +345,7 @@ class ImportService
             throw new FunGameException('At most ' . self::MAX_QUESTIONS . ' questions per import.', 422, 'validation');
         }
 
-        $import = DB::transaction(function () use ($game, $user, $questions, $mode, $timer, $source, $sourceQuizId, $skipped) {
+        $import = DB::transaction(function () use ($game, $user, $questions, $mode, $timer, $source, $sourceDeckId, $skipped) {
             $removed = [];
             if ($mode === 'replace') {
                 $removed = $game->questions()->pluck('id')->map(fn ($id) => (int) $id)->all();
@@ -381,7 +372,7 @@ class ImportService
                 'fun_game_id' => $game->id,
                 'user_id' => $user->id,
                 'source' => $source,
-                'source_quiz_id' => $sourceQuizId,
+                'source_deck_id' => $sourceDeckId,
                 'mode' => $mode,
                 'previous_timer' => $previousTimer,
                 'added_question_ids' => $added,
@@ -397,7 +388,7 @@ class ImportService
             'user_id' => $user->id,
             'import_id' => $import->id,
             'source' => $source,
-            'source_quiz_id' => $sourceQuizId,
+            'source_deck_id' => $sourceDeckId,
             'mode' => $mode,
             'added' => $import->added_count,
             'removed' => $import->removed_count,
@@ -482,11 +473,6 @@ class ImportService
     private function key(string $text): string
     {
         return mb_strtolower(preg_replace('/\s+/', ' ', trim($text)));
-    }
-
-    private function imageUrl(?string $url): ?string
-    {
-        return $url && preg_match('/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i', $url) ? Str::limit($url, 2048, '') : null;
     }
 
     private function mostCommon(array $values): ?int

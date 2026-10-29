@@ -8,7 +8,7 @@ use App\Deck\Sessions\QuizRuntime;
 use App\Deck\Slides\SlideTypeRegistry;
 use App\Deck\Slides\Types\Quest\OpenEndedSlideType;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveAggregateService;
+use App\Deck\Broadcasts\LiveAggregateService;
 use Illuminate\Support\Facades\Cache;
 
 /**

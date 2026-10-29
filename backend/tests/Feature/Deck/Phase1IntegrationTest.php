@@ -13,7 +13,7 @@ use App\Models\Deck\DeckSessionSlideRun;
 use App\Models\Deck\Slide;
 use App\Models\Deck\SlideOption;
 use App\Models\File;
-use App\Services\Live\LiveAggregateService;
+use App\Deck\Broadcasts\LiveAggregateService;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Event;
@@ -40,7 +40,7 @@ const P1I_CONTENT_TYPES = [
     'heading', 'paragraph', 'bullets', 'numbered', 'quote', 'image', 'video', 'big_text', 'qr_code',
 ];
 
-// Quiz v2 types (tests/Feature/Deck/Quiz cover them); listed so the registry check below stays exact.
+// Quiz types (tests/Feature/Deck/Quiz cover them); listed so the registry check below stays exact.
 const P1I_QUIZ_TYPES = [
     'pick_answer_single', 'pick_answer_multi', 'short_answer', 'match_pairs', 'correct_order', 'categorise',
     'spinner_wheel', 'leaderboard', 'true_false', 'fill_blanks', 'drag_drop',
@@ -260,7 +260,7 @@ it('takes one answer of every Quest answer type through validate, store, aggrega
     expect($events)->toHaveCount(2 * $answerTypes->count());
     foreach ($events->chunk(2) as $pair) {
         [$hostOnly, $public] = $pair->values()->all();
-        expect($hostOnly->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}")
+        expect($hostOnly->broadcastOn()->name)->toBe("private-host.quest.{$session->id}")
             ->and($public->broadcastOn()->name)->toBe("session.quest.{$session->public_channel_key}")
             ->and($public->broadcastWith()['total_responses'])->toBe(1)
             // Pusher HTTP body (event data is JSON inside JSON) stays far below Reverb's 10 KB limit.

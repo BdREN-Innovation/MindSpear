@@ -13,8 +13,7 @@ class Dashboard extends BaseDashboard
         return [
             \App\Filament\Widgets\StatsOverview::class,
             \App\Filament\Widgets\UsersByDayChart::class,
-            \App\Filament\Widgets\SurveyResponsesByDayChart::class,
-            \App\Filament\Widgets\QuizParticipantsByDayChart::class,
+            \App\Filament\Widgets\ParticipantsByDayChart::class,
         ];
     }
 }

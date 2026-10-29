@@ -8,8 +8,8 @@ use App\Http\Requests\BaseFormRequest;
 use App\Models\Deck\Deck;
 
 /**
- * POST /quests/v2 (everything optional; title defaults to "Untitled quest")
- * and PATCH /quests/v2/{deck} (partial). Settings: see DeckSettings.
+ * POST /quests (everything optional; title defaults to "Untitled quest")
+ * and PATCH /quests/{deck} (partial). Settings: see DeckSettings.
  * visibility: 'private' (default) | 'public' (listed in Discover).
  */
 class DeckRequest extends BaseFormRequest

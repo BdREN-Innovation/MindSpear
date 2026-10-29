@@ -91,7 +91,7 @@ interface MockGame {
 	defaultMarks: number;
 	defaultNegativeMarks: number;
 	questions: HostQuestion[];
-	sourceQuizId: Id | null;
+	sourceDeckId: Id | null;
 	updatedAt: number;
 }
 
@@ -199,7 +199,7 @@ function gameFromSeed(seed: AdminQuizDetail): MockGame {
 		defaultMarks: seed.defaultMarks,
 		defaultNegativeMarks: seed.defaultNegativeMarks,
 		questions: seed.questions.map((q) => ({ ...q, secondsOverride: overrides[q.id] ?? null })),
-		sourceQuizId: null,
+		sourceDeckId: null,
 		updatedAt: Date.parse(seed.updatedAt),
 	};
 }
@@ -941,7 +941,7 @@ export class MockServer {
 			startsAt: this.iso(latest?.startsAt),
 			latestSessionId: latest?.id ?? null,
 			latestSessionStatus: latest?.status ?? null,
-			sourceQuizId: game.sourceQuizId,
+			sourceDeckId: game.sourceDeckId,
 			updatedAt: this.iso(game.updatedAt)!,
 			sessionCount: this.sessions.filter((s) => s.gameId === game.id).length,
 		};
@@ -998,7 +998,7 @@ export class MockServer {
 			defaultMarks: 1,
 			defaultNegativeMarks: 0,
 			questions: [],
-			sourceQuizId: null,
+			sourceDeckId: null,
 			updatedAt: this.now(),
 		};
 		this.applyInput(game, input);
@@ -1228,7 +1228,7 @@ export class MockServer {
 		});
 		const game = this.game(created.id);
 		game.questions = questions;
-		game.sourceQuizId = lib.id;
+		game.sourceDeckId = lib.id;
 		const summary = this.recordImport(game.id, [], "library_quiz", "append", questions.length, 0, this.skippedOf(rows));
 		return { game: this.hostGame(game.id), import: summary };
 	}

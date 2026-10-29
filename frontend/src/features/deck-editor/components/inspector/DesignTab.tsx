@@ -6,7 +6,7 @@ import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { DECK_THEME_KEYS, DECK_THEMES, getDeckTheme, type DeckTheme } from "@/features/deck/theme";
 import type { Deck, DeckSettingsPatch } from "@/features/deck/types";
-import { productCopy } from "../productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 
 export interface DesignTabProps {
 	deck: Deck;

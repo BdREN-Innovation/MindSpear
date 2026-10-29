@@ -28,14 +28,11 @@ import { deckRequest } from "./errors";
 import { authoringBase, DECK_TIMEOUTS } from "./routes";
 
 // Deck authoring (owner only, Sanctum via axiosInstance). Backend:
-// routes/deck/{quest,quiz}_authoring.php + {quest,quiz}_media.php, responses
-// camelCase (DeckPresenter / SlidePresenter / OptionPresenter). Every function
-// throws DeckApiError. There is no upload endpoint here: upload through
-// /library/files (features/file-library) and attach the returned file id.
-//
-// Every route answers 403 code `feature_disabled` when the user's
-// quest_v2_enabled / quiz_v2_enabled flag is off; adding slides past the cap
-// answers 422 `slide_limit_reached` (data.max_slides).
+// routes/deck/authoring.php + media.php, responses camelCase (DeckPresenter /
+// SlidePresenter / OptionPresenter). Every function throws DeckApiError.
+// There is no upload endpoint here: upload through /library/files
+// (features/file-library) and attach the returned file id. Adding slides past
+// the cap answers 422 `slide_limit_reached` (data.max_slides).
 //
 // Quiz (/quizzes): new decks are "Untitled quiz" with settings.get_ready_seconds 5;
 // addSlide offers quiz + content types only (422 unsupported_type otherwise) and
@@ -340,10 +337,10 @@ export function createAuthoringApi(product: DeckProduct): AuthoringApi {
 	};
 }
 
-/** Quest v2 authoring (/api/v1/quests/v2). */
+/** Quest authoring (/api/v1/quests). */
 export const questAuthoringApi = createAuthoringApi("quest");
 
-/** Quiz v2 authoring (/api/v1/quizzes). */
+/** Quiz authoring (/api/v1/quizzes). */
 export const quizAuthoringApi = createAuthoringApi("quiz");
 
 /** The authoring API of a product (shared instances). */

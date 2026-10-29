@@ -53,7 +53,7 @@ export interface DeviceParticipant {
 }
 
 export interface JoinDraft {
-	/** The product whose routes found the code (lookupSessionByCode); absent on drafts saved before Quiz v2 (= quest). */
+	/** The product whose routes found the code (lookupSessionByCode); absent on old drafts (= quest). */
 	product?: DeckProduct;
 	sessionId: number;
 	joinCode: string;

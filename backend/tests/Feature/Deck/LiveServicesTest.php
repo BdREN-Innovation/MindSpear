@@ -12,7 +12,6 @@ use App\Deck\Broadcasts\Payloads\SlideStateChangedPayload;
 use App\Deck\Slides\AbstractSlideType;
 use App\Deck\Slides\SlideTypeContract;
 use App\Deck\Slides\SlideTypeRegistry;
-use App\Events\Live\ImmediateLiveBroadcastEvent;
 use App\Events\Live\LiveBroadcastEvent;
 use App\Jobs\Deck\BroadcastDeckAggregate;
 use App\Models\Deck\Deck;
@@ -21,9 +20,8 @@ use App\Models\Deck\DeckParticipantAnswer;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
 use App\Models\User;
-use App\Services\Live\LiveAggregateService;
-use App\Services\Live\LiveSessionService;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Broadcasts\LiveAggregateService;
+use App\Deck\Participants\ParticipantTokenService;
 use Carbon\CarbonInterval;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -215,7 +213,7 @@ it('sends answer.submitted only to the private host channel, never to the public
 
     expect($events)->toHaveCount(1)
         ->and($events[0]->isPrivate())->toBeTrue()
-        ->and($events[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}")
+        ->and($events[0]->broadcastOn()->name)->toBe("private-host.quest.{$session->id}")
         ->and($events[0]->broadcastWith()['time_to_answer_ms'])->toBe(1500);
 
     Event::assertNotDispatched(LiveBroadcastEvent::class, fn (LiveBroadcastEvent $event) => in_array(
@@ -225,39 +223,17 @@ it('sends answer.submitted only to the private host channel, never to the public
     ) && $event->broadcastAs() === 'answer.submitted');
 });
 
-// --- LiveSessionService ------------------------------------------------------
+// --- Channels and participant counts ------------------------------------------
 
-it('derives deck channel names from the deck product and leaves legacy names alone', function () {
-    $live = app(LiveSessionService::class);
+it('names a deck session\'s public and host channels after its product', function () {
     $channels = app(DeckChannels::class);
     $quest = deckLiveServicesSession();
     $quiz = deckLiveServicesSession(Deck::PRODUCT_QUIZ);
 
-    expect($live->publicChannelFor($quest))->toBe("session.quest.{$quest->public_channel_key}")
-        ->and($live->hostChannelFor($quest))->toBe("host.quest.v2.{$quest->id}")
-        ->and($live->publicChannelFor($quiz))->toBe($channels->publicChannel($quiz))
-        ->and($live->hostChannelFor($quiz))->toBe($channels->hostChannel($quiz))
-        ->and($live->moduleFor($quiz))->toBe('quiz')
-        ->and($live->ensurePublicChannelKey($quest))->toBe($quest->public_channel_key)
-        ->and($live->hostChannel('quest', 5))->toBe('host.quest.5')
-        ->and($live->publicChannel('quiz', 'abc'))->toBe('session.quiz.abc');
-});
-
-it('routes legacy-style host broadcasts of a deck session to the v2 host channel', function () {
-    Event::fake([ImmediateLiveBroadcastEvent::class]);
-    $live = app(LiveSessionService::class);
-    $session = deckLiveServicesSession();
-
-    $live->broadcastHost('quest', $session, 'answer.submitted', ['x' => 1]);
-    $live->broadcastPublic('quest', $session, 'slide.changed', ['y' => 2]);
-
-    $events = Event::dispatched(ImmediateLiveBroadcastEvent::class)->map(fn ($call) => $call[0])->values();
-    expect($events)->toHaveCount(2)
-        ->and($events[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}")
-        ->and($events[0]->broadcastWith())->toMatchArray(['x' => 1, 'module' => 'quest', 'event' => 'answer.submitted'])
-        ->and($events[1]->broadcastOn()->name)->toBe("session.quest.{$session->public_channel_key}");
-
-    expect(fn () => $live->broadcastHost('quiz', $session, 'answer.submitted'))->toThrow(InvalidArgumentException::class);
+    expect($channels->publicChannel($quest))->toBe("session.quest.{$quest->public_channel_key}")
+        ->and($channels->hostChannel($quest))->toBe("host.quest.{$quest->id}")
+        ->and($channels->publicChannel($quiz))->toBe("session.quiz.{$quiz->public_channel_key}")
+        ->and($channels->hostChannel($quiz))->toBe("host.quiz.{$quiz->id}");
 });
 
 it('counts and broadcasts deck participants who have not left', function () {
@@ -268,11 +244,10 @@ it('counts and broadcasts deck participants who have not left', function () {
     DeckParticipant::factory()->count(2)->create(['deck_session_id' => $session->id]);
     DeckParticipant::factory()->create(['deck_session_id' => $session->id, 'left_at' => now()]);
 
-    $live = app(LiveSessionService::class);
-    $live->broadcastParticipantCount('quest', $session);
+    app(DeckBroadcaster::class)->broadcastParticipantCount($session);
 
     $events = deckLiveServicesEvents('participant.count.updated');
-    expect($live->participantCountPayload($session))->toBe(['session_id' => $session->id, 'participant_count' => 2])
+    expect(ParticipantCountUpdatedPayload::countFor($session))->toBe(2)
         ->and($events)->toHaveCount(1)
         ->and($events[0]->isPrivate())->toBeFalse()
         ->and($events[0]->broadcastWith())->toMatchArray(['participant_count' => 2, 'slide_run_id' => $run->id, 'session_id' => $session->id]);
@@ -282,10 +257,10 @@ it('counts deck participants after the join commits, not when the broadcast is r
     Event::fake([LiveBroadcastEvent::class]);
     $session = deckLiveServicesSession();
     DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
-    $live = app(LiveSessionService::class);
+    $broadcaster = app(DeckBroadcaster::class);
 
-    DB::transaction(function () use ($live, $session) {
-        $live->broadcastParticipantCount('quest', $session);
+    DB::transaction(function () use ($broadcaster, $session) {
+        $broadcaster->broadcastParticipantCount($session);
         // Another join lands before this transaction commits; the count must include it.
         DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
         expect(deckLiveServicesEvents('participant.count.updated'))->toHaveCount(0);
@@ -305,7 +280,7 @@ it('issues, validates, resolves and sanitises deck participant tokens', function
     $participant = DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
     $other = DeckParticipant::factory()->create(['deck_session_id' => deckLiveServicesSession()->id]);
 
-    $token = $tokens->issue($participant, $session);
+    $token = $tokens->issue($participant);
     $participant->refresh();
 
     expect(strlen($token))->toBe(64)
@@ -333,9 +308,9 @@ it('rejects expired and revoked deck participant tokens', function () {
     $kept = DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
     $outsider = DeckParticipant::factory()->create(['deck_session_id' => deckLiveServicesSession()->id]);
 
-    $expiredToken = $tokens->issue($expired, $session);
-    $revokedToken = $tokens->issue($revoked, $session);
-    $outsiderToken = $tokens->issue($outsider, $outsider->session);
+    $expiredToken = $tokens->issue($expired);
+    $revokedToken = $tokens->issue($revoked);
+    $outsiderToken = $tokens->issue($outsider);
 
     $expired->update(['participant_token_expires_at' => now()->subSecond()]);
     $tokens->revokeParticipant($revoked);
@@ -353,7 +328,7 @@ it('rejects expired and revoked deck participant tokens', function () {
 
 // --- Channel authorisation ---------------------------------------------------
 
-it('authorises host.{product}.v2 channels for the session host only and keeps legacy channels separate', function () {
+it('authorises host.{product} channels for the session host only', function () {
     config([
         'broadcasting.default' => 'reverb',
         'broadcasting.connections.reverb.key' => 'local',
@@ -370,23 +345,18 @@ it('authorises host.{product}.v2 channels for the session host only and keeps le
     ]);
 
     Sanctum::actingAs(User::find($quest->host_user_id));
-    $auth("host.quest.v2.{$quest->id}")->assertOk()->assertJsonStructure(['auth']);
-    $auth("host.quiz.v2.{$quest->id}")->assertForbidden();
-    $auth("host.quiz.v2.{$quiz->id}")->assertForbidden();
-    // A deck host gains nothing on the legacy channel with the same numeric id.
-    $auth("host.quest.{$quest->id}")->assertForbidden();
+    $auth("host.quest.{$quest->id}")->assertOk()->assertJsonStructure(['auth']);
+    // The product must match the session's: a quest host gets nothing under host.quiz.
+    $auth("host.quiz.{$quest->id}")->assertForbidden();
+    $auth("host.quiz.{$quiz->id}")->assertForbidden();
+    $auth("host.survey.{$quest->id}")->assertForbidden();
 
-    // The host channel needs the product's v2 flag, like the host HTTP routes.
-    $quizHost = User::find($quiz->host_user_id);
-    Sanctum::actingAs($quizHost);
-    $auth("host.quiz.v2.{$quiz->id}")->assertForbidden();
-    $quizHost->forceFill(['quiz_v2_enabled' => true])->save();
-    Sanctum::actingAs($quizHost->refresh());
-    $auth("host.quiz.v2.{$quiz->id}")->assertOk();
+    Sanctum::actingAs(User::find($quiz->host_user_id));
+    $auth("host.quiz.{$quiz->id}")->assertOk();
 
     Sanctum::actingAs($stranger);
-    $auth("host.quest.v2.{$quest->id}")->assertForbidden();
-    $auth("host.quiz.v2.{$quiz->id}")->assertForbidden();
+    $auth("host.quest.{$quest->id}")->assertForbidden();
+    $auth("host.quiz.{$quiz->id}")->assertForbidden();
 });
 
 // --- Aggregate debouncing (§1.7) ---------------------------------------------
@@ -582,7 +552,7 @@ it('keeps results of non-live reveal models on the host channel', function () {
     $events = deckLiveServicesEvents('slide.aggregate.updated');
     expect($events)->toHaveCount(1)
         ->and($events[0]->isPrivate())->toBeTrue()
-        ->and($events[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}");
+        ->and($events[0]->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}");
 });
 
 it('keeps live results on the host channel unless the slide shows them to participants', function (array $config, bool $public) {
@@ -600,7 +570,7 @@ it('keeps live results on the host channel unless the slide shows them to partic
         ->and($events[0]->isPrivate())->toBe(! $public)
         ->and($events[0]->broadcastOn()->name)->toBe($public
             ? "session.quest.{$run->session->public_channel_key}"
-            : "private-host.quest.v2.{$run->deck_session_id}");
+            : "private-host.quest.{$run->deck_session_id}");
 })->with([
     'no setting (default off)' => [[], false],
     'setting off' => [['show_results_to_participants' => false], false],
@@ -647,26 +617,23 @@ it('closes a run without results on the public channel and sends the final aggre
         ->and($closed[0]->broadcastWith()['total_responses'])->toBeNull()
         ->and($final)->toHaveCount(1)
         ->and($final[0]->isPrivate())->toBeTrue()
-        ->and($final[0]->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}")
+        ->and($final[0]->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}")
         ->and($final[0]->broadcastWith()['total_responses'])->toBe(2);
 })->with([
     'live type, default setting' => ['live_services_poll', []],
     'hidden reveal model, setting on' => ['live_services_hidden', ['show_results_to_participants' => true]],
 ]);
 
-it('skips debouncing when the window is zero and serves the current deck snapshot', function () {
+it('skips debouncing when the window is zero', function () {
     Event::fake([LiveBroadcastEvent::class]);
     Queue::fake([BroadcastDeckAggregate::class]);
     $run = deckLiveServicesRun();
-    $answer = deckLiveServicesAnswer($run);
-    $run->session->update(['current_slide_run_id' => $run->id]);
+    deckLiveServicesAnswer($run);
     $aggregates = app(LiveAggregateService::class);
 
     $aggregates->schedule($run, debounceMs: 0);
     $aggregates->schedule($run, debounceMs: 0);
 
-    expect(deckLiveServicesEvents('slide.aggregate.updated'))->toHaveCount(2)
-        ->and($aggregates->currentSnapshot('quest', $run->session->fresh()))->toBe(['total_responses' => 1, 'answer_ids' => [$answer->id]])
-        ->and($aggregates->currentSnapshot('quest', deckLiveServicesSession()))->toBeNull();
+    expect(deckLiveServicesEvents('slide.aggregate.updated'))->toHaveCount(2);
     Queue::assertNothingPushed();
 });

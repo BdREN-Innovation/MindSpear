@@ -1,8 +1,8 @@
 <?php
 
 /*
- * Shared helpers for the Quiz v2 engine / HTTP tests (QuizFeatureFlagTest,
- * QuizAuthoringApiTest, QuizSessionApiTest, QuizV2EndToEndTest). Not a test
+ * Shared helpers for the quiz engine / HTTP tests (QuizAuthoringApiTest,
+ * QuizSessionApiTest, QuizEndToEndTest). Not a test
  * file itself (no *Test.php suffix); each test file require_once's it.
  * Everything is prefixed `qapi` because Pest helpers are global.
  */
@@ -19,7 +19,7 @@ use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 
 const QAPI_AUTHOR = '/api/v1/quizzes';
-const QAPI_SESSIONS = '/api/v1/quiz-sessions/v2';
+const QAPI_SESSIONS = '/api/v1/quiz-sessions';
 
 /** Every Quiz-only slide type (products ['quiz']; pick_answer_multi is retired but still registered for old runs). */
 const QAPI_QUIZ_TYPES = [
@@ -28,7 +28,7 @@ const QAPI_QUIZ_TYPES = [
 ];
 
 /**
- * The scored types QuizV2EndToEndTest authors and plays (pick_answer_multi:
+ * The scored types QuizEndToEndTest authors and plays (pick_answer_multi:
  * added by its retired key, so it is a Pick answer with two correct options).
  * QuizNewTypesApiTest plays true_false, fill_blanks and drag_drop.
  */
@@ -49,7 +49,6 @@ function qapiSetUp(): void
         'cache.default' => 'array',
         'queue.default' => 'sync',
         'deck.aggregate_debounce_ms' => 0,
-        'deck.quiz_v2_default_enabled' => false,
         'app.frontend_url' => 'https://play.example.test',
     ]);
 
@@ -71,13 +70,10 @@ function qapiArrayRateLimiter(): void
     RateLimiterFacade::swap($fresh);
 }
 
-/** A host with Quiz v2 on (or off), Quest v2 on. */
-function qapiOwner(bool $quiz = true): User
+/** A quiz host. */
+function qapiOwner(): User
 {
-    $user = DeckFactory::newOwner();
-    $user->forceFill(['quiz_v2_enabled' => $quiz])->save();
-
-    return $user->refresh();
+    return DeckFactory::newOwner();
 }
 
 function qapiAsHost(User $host): void

@@ -9,7 +9,7 @@ use App\Models\Deck\DeckSessionSlideRun;
 use Illuminate\Support\Collection;
 
 /**
- * Base for the scored Quiz v2 types (pick_answer_single/multi, short_answer,
+ * Base for the scored quiz types (pick_answer_single/multi, short_answer,
  * match_pairs, correct_order, categorise). Abstract, so discovery skips it.
  *
  * products ['quiz'], category poll, reveal model hidden_until_reveal.

@@ -512,7 +512,7 @@ it('gives sensible defaults and never leaks answer keys or aggregates to partici
 
 it('builds LiveBroadcastEvent from payloads with channel privacy by visibility', function () {
     $public = LiveBroadcastEvent::fromPayload(deckFoundationPayload('public', 'slide.changed', ['slide_run_id' => 3]), 'session.quest.abc', ['module' => 'quest']);
-    $host = LiveBroadcastEvent::fromPayload(deckFoundationPayload('host', 'answer.submitted'), 'host.quest.v2.9');
+    $host = LiveBroadcastEvent::fromPayload(deckFoundationPayload('host', 'answer.submitted'), 'host.quest.9');
 
     expect($public->broadcastOn())->not->toBeInstanceOf(PrivateChannel::class)
         ->and($public->broadcastOn()->name)->toBe('session.quest.abc')
@@ -520,7 +520,7 @@ it('builds LiveBroadcastEvent from payloads with channel privacy by visibility',
         ->and($public->broadcastWith())->toBe(['module' => 'quest', 'slide_run_id' => 3, 'event' => 'slide.changed'])
         ->and($public->shouldBroadcastNow())->toBeFalse()
         ->and($host->broadcastOn())->toBeInstanceOf(PrivateChannel::class)
-        ->and($host->broadcastOn()->name)->toBe('private-host.quest.v2.9')
+        ->and($host->broadcastOn()->name)->toBe('private-host.quest.9')
         ->and($host->isPrivate())->toBeTrue();
 
     // Payload keys win over meta.
@@ -541,9 +541,9 @@ it('names deck channels per product', function () {
     $channels = app(DeckChannels::class);
 
     expect($channels->publicChannel($quest))->toBe("session.quest.{$quest->public_channel_key}")
-        ->and($channels->hostChannel($quest))->toBe("host.quest.v2.{$quest->id}")
+        ->and($channels->hostChannel($quest))->toBe("host.quest.{$quest->id}")
         ->and($channels->publicChannel($quiz))->toBe("session.quiz.{$quiz->public_channel_key}")
-        ->and($channels->hostChannel($quiz))->toBe("host.quiz.v2.{$quiz->id}");
+        ->and($channels->hostChannel($quiz))->toBe("host.quiz.{$quiz->id}");
 });
 
 it('routes host payloads only to the host channel and public ones only to the public channel', function () {
@@ -566,7 +566,7 @@ it('routes host payloads only to the host channel and public ones only to the pu
         ->and($public->broadcastWith())->toHaveKey('broadcasted_at')
         ->and($host->broadcastAs())->toBe('answer.submitted')
         ->and($host->broadcastOn())->toBeInstanceOf(PrivateChannel::class)
-        ->and($host->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}");
+        ->and($host->broadcastOn()->name)->toBe("private-host.quest.{$session->id}");
 
     expect(fn () => $broadcaster->broadcast($session, deckFoundationPayload('everyone')))->toThrow(InvalidArgumentException::class);
 });
@@ -593,7 +593,7 @@ it('broadcasts only after the surrounding transaction commits', function () {
     Event::assertNotDispatched(LiveBroadcastEvent::class, fn ($event) => $event->broadcastAs() === 'slide.rolled_back');
 });
 
-it('authorises the v2 host channel for the session host only', function () {
+it('authorises the host channel for the session host only', function () {
     config([
         'broadcasting.default' => 'reverb',
         'broadcasting.connections.reverb.key' => 'local',
@@ -610,11 +610,11 @@ it('authorises the v2 host channel for the session host only', function () {
     ]);
 
     Sanctum::actingAs($host);
-    $auth("host.quest.v2.{$session->id}")->assertOk()->assertJsonStructure(['auth']);
-    $auth("host.quiz.v2.{$session->id}")->assertForbidden();
+    $auth("host.quest.{$session->id}")->assertOk()->assertJsonStructure(['auth']);
+    $auth("host.quiz.{$session->id}")->assertForbidden();
 
     Sanctum::actingAs($stranger);
-    $auth("host.quest.v2.{$session->id}")->assertForbidden();
+    $auth("host.quest.{$session->id}")->assertForbidden();
 });
 
 // --- Profanity filter --------------------------------------------------------

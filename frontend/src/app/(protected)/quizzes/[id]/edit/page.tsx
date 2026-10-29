@@ -10,7 +10,7 @@ function slideParam(value: string | null): number | null {
 	return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-// Quiz v2 editor (/api/v1/quizzes). Rendered full-screen by app/(protected)/layout.tsx (no header / sidebar).
+// Quiz editor (/api/v1/quizzes). Rendered full-screen by app/(protected)/layout.tsx (no header / sidebar).
 export default function QuizEditPage() {
 	const { id } = useParams<{ id: string }>();
 	const initialSlideId = slideParam(useSearchParams().get("slide"));

@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { FileQuestion, Loader2, Lock, RefreshCw, WifiOff } from "lucide-react";
+import { FileQuestion, Loader2, RefreshCw, WifiOff } from "lucide-react";
 import { Modal } from "@/components/ui";
 import type { DeckApiError } from "@/features/deck/api/errors";
 import type { DeckProduct } from "@/features/deck/types";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 
 // Full-page states of the editor route and the delete confirmation.
 
@@ -37,27 +37,6 @@ export function EditorLoading({ product = "quest" }: { product?: DeckProduct }) 
 				Loading your {productCopy(product).noun}…
 			</p>
 		</main>
-	);
-}
-
-/** 403 feature_disabled: Quest v2 / Quiz v2 is switched off for this account. */
-export function FeatureDisabledPage({ error, product = "quest" }: { error: DeckApiError; product?: DeckProduct }) {
-	const copy = productCopy(product);
-	return (
-		<FullPage icon={<Lock className="h-6 w-6" aria-hidden />} title={`The new ${copy.noun} editor isn't available for your account`}>
-			<p className="text-sm text-dark-5 dark:text-dark-6">
-				{error.message || `${copy.v2} is not enabled for your account.`} Your existing {copy.plural} are still in My
-				Library.
-			</p>
-			<div className="flex flex-wrap justify-center gap-2">
-				<Link href={copy.libraryHref} className={linkClass}>
-					My {copy.plural}
-				</Link>
-				<Link href="/dashboard" className={primaryClass}>
-					Back to dashboard
-				</Link>
-			</div>
-		</FullPage>
 	);
 }
 

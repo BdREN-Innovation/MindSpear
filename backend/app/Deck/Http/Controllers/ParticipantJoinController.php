@@ -7,7 +7,7 @@ use App\Deck\Http\Requests\JoinDeckSessionRequest;
 use App\Deck\Participants\ParticipantJoinService;
 use App\Deck\Participants\ParticipantPresence;
 use App\Deck\Participants\SessionLookup;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;

@@ -2,87 +2,28 @@
 
 namespace App\Http\Controllers\Dashboard;
 
+use App\Deck\Authoring\DeckStatistics;
 use App\Http\Controllers\api\v1\ApiBaseController;
-use App\Models\Quest\Quest;
+use App\Models\Deck\Deck;
 use App\Models\Quiz\BankQuestion;
-use App\Models\Quiz\Quiz;
-use App\Models\Survey\Survey;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
 class DashboardController extends ApiBaseController
 {
+    public function __construct(private readonly DeckStatistics $decks) {}
+
     /**
-     * Get the count of quizzes, surveys, and quests for the authenticated user.
+     * GET /dashboard-statistics/dashboard → {quizzes, quests: DeckStatistics::forOwner(), question_bank_count}.
      */
-    public function dashboard(): JsonResponse
+    public function dashboard(Request $request): JsonResponse
     {
-        $userId = Auth::guard('api')->id();
-
-        // Quizzes count
-        $allQuizzesCount = Quiz::where('user_id', $userId)->count();
-        $liveQuizzesCount = Quiz::where('user_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->live();
-            })->count();
-
-        $completedQuizzesCount = Quiz::where('user_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->completed();
-            })->count();
-
-        $upcomingQuizzesCount = Quiz::where('user_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->upcoming();
-            })->count();
-
-        // Surveys count
-        $allSurveysCount = Survey::where('creator_id', $userId)->count();
-        $liveSurveysCount = Survey::where('creator_id', $userId)->where('is_published', true)->where('open_datetime', '<=', now())->where('close_datetime', '>=', now())->count();
-        $completedSurveysCount = Survey::where('creator_id', $userId)->where('close_datetime', '<=', now())->count();
-        $upcomingSurveysCount = Survey::where('creator_id', $userId)->where('open_datetime', '>', now())->count();
-
-        // Quests count
-        $allQuestsCount = Quest::where('creator_id', $userId)->count();
-        $liveQuestsCount = Quest::where('creator_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->where('running_status', true);
-            })->count();
-
-        $completedQuestsCount = Quest::where('creator_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->where('end_datetime', '<=', now());
-            })->count();
-
-        $upcomingQuestsCount = Quest::where('creator_id', $userId)
-            ->whereHas('sessions', function ($query) {
-                $query->where('start_datetime', '>', now());
-            })->count();
-
-        // Question Bank count
-        $totalQuestionBanksCount = BankQuestion::where('owner_id', $userId)->count();
-
+        $user = $request->user();
 
         return $this->okResponse([
-            'total_quiz_count' => $allQuizzesCount,
-            'total_survey_count' => $allSurveysCount,
-            'total_quest_count' => $allQuestsCount,
-            'total_question_bank_count' => $totalQuestionBanksCount,
-            'quizzes_count' => [
-                'live' => $liveQuizzesCount,
-                'completed' => $completedQuizzesCount,
-                'upcoming' => $upcomingQuizzesCount,
-            ],
-            'surveys_count' => [
-                'live' => $liveSurveysCount,
-                'completed' => $completedSurveysCount,
-                'upcoming' => $upcomingSurveysCount,
-            ],
-            'quests_count' => [
-                'live' => $liveQuestsCount,
-                'completed' => $completedQuestsCount,
-                'upcoming' => $upcomingQuestsCount,
-            ],
-        ], __('Quizzes count retrieved successfully.'));
+            'quizzes' => $this->decks->forOwner($user, Deck::PRODUCT_QUIZ),
+            'quests' => $this->decks->forOwner($user, Deck::PRODUCT_QUEST),
+            'question_bank_count' => BankQuestion::query()->where('owner_id', $user->id)->count(),
+        ], __('Dashboard statistics retrieved successfully.'));
     }
 }

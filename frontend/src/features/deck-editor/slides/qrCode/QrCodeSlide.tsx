@@ -12,7 +12,7 @@ import { ContentPhone, ContentStage, SlideTitleField, contentSize, fieldError } 
 // never slide data; the editor preview shows a sample. On phones the
 // audience has already joined, so they see "You're in!" instead of a QR.
 
-/** A code from the v2 alphabet (no O/0/I/1) so the sample looks real. */
+/** A code from the join-code alphabet (no O/0/I/1) so the sample looks real. */
 const SAMPLE_CODE = "ABC234";
 const DEFAULT_TITLE = "Scan to join";
 

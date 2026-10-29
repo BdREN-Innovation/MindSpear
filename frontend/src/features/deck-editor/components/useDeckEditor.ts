@@ -84,8 +84,6 @@ const PATCH_ERROR_PREFIXES = [
 export interface DeckEditor {
 	loadState: "loading" | "ready" | "error";
 	loadError: DeckApiError | null;
-	/** 403 feature_disabled from any call: the page shows a full-page message. */
-	blocked: DeckApiError | null;
 	deck: Deck | null;
 	selectedId: number | null;
 	select(slideId: number | null): void;
@@ -122,7 +120,6 @@ export function useDeckEditor(
 ): DeckEditor {
 	const [loadState, setLoadState] = useState<DeckEditor["loadState"]>("loading");
 	const [loadError, setLoadError] = useState<DeckApiError | null>(null);
-	const [blocked, setBlocked] = useState<DeckApiError | null>(null);
 	const [selectedId, setSelectedId] = useState<number | null>(null);
 	const [errors, setErrors] = useState<Record<number, FieldErrors>>({});
 	const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
@@ -172,13 +169,6 @@ export function useDeckEditor(
 				refreshStatus();
 			}
 		}
-
-		/** feature_disabled can arrive on any call (the flag can be switched off at any time). */
-		const isBlocked = (error: DeckApiError) => {
-			if (error.code !== "feature_disabled") return false;
-			setBlocked(error);
-			return true;
-		};
 
 		/* ---------------------------- slide copies ---------------------------- */
 
@@ -328,7 +318,6 @@ export function useDeckEditor(
 			} catch (reason) {
 				const error = toDeckApiError(reason);
 				removeLayer(slideId, key);
-				if (isBlocked(error)) return;
 				if (error.status === 422) {
 					// Rolled back; the Editor shows the field errors next to the inputs.
 					const fieldErrors = Object.keys(error.validationErrors).length ? error.validationErrors : { slide: [error.message] };
@@ -437,10 +426,8 @@ export function useDeckEditor(
 				} catch (reason) {
 					const error = toDeckApiError(reason);
 					removeLayer(slideId, key);
-					if (!isBlocked(error)) {
-						if (error.status === 422) setSlideErrors(slideId, error.validationErrors);
-						toast.error(error.message, { toastId: `option-${optionId}` });
-					}
+					if (error.status === 422) setSlideErrors(slideId, error.validationErrors);
+					toast.error(error.message, { toastId: `option-${optionId}` });
 					waiters.forEach((w) => w.reject(error));
 				}
 				bump();
@@ -461,12 +448,10 @@ export function useDeckEditor(
 					return result;
 				} catch (reason) {
 					const error = toDeckApiError(reason);
-					if (!isBlocked(error)) {
-						if (error.status === 422) {
-							setSlideErrors(slideId, Object.keys(error.validationErrors).length ? error.validationErrors : { [errorKey]: [error.message] });
-						}
-						toast.error(error.message, { toastId: `options-${slideId}` });
+					if (error.status === 422) {
+						setSlideErrors(slideId, Object.keys(error.validationErrors).length ? error.validationErrors : { [errorKey]: [error.message] });
 					}
+					toast.error(error.message, { toastId: `options-${slideId}` });
 					throw error;
 				}
 			};
@@ -569,7 +554,6 @@ export function useDeckEditor(
 						} catch (reason) {
 							const error = toDeckApiError(reason);
 							removeLayer(slideId, key);
-							if (isBlocked(error)) throw error;
 							if (error.status === 409) {
 								toast.info("The options changed somewhere else, so they were reloaded.");
 								await refetchSlide(slideId);
@@ -605,12 +589,10 @@ export function useDeckEditor(
 						bump();
 					} catch (reason) {
 						const error = toDeckApiError(reason);
-						if (!isBlocked(error)) {
-							if (error.status === 422) {
-								setSlideErrors(slideId, Object.keys(error.validationErrors).length ? error.validationErrors : { [field]: [error.message] });
-							} else {
-								toast.error(error.message);
-							}
+						if (error.status === 422) {
+							setSlideErrors(slideId, Object.keys(error.validationErrors).length ? error.validationErrors : { [field]: [error.message] });
+						} else {
+							toast.error(error.message);
 						}
 						throw error;
 					}
@@ -637,7 +619,7 @@ export function useDeckEditor(
 
 		const structuralError = (reason: unknown) => {
 			const error = toDeckApiError(reason);
-			if (!isBlocked(error)) toast.error(error.message, { toastId: `deck-${error.code}` });
+			toast.error(error.message, { toastId: `deck-${error.code}` });
 			return error;
 		};
 
@@ -665,7 +647,6 @@ export function useDeckEditor(
 					return slides;
 				} catch (reason) {
 					const error = toDeckApiError(reason);
-					isBlocked(error);
 					throw error;
 				}
 			});
@@ -797,10 +778,8 @@ export function useDeckEditor(
 				applySummary(summary, metaRef.current?.title.trim() !== title);
 			} catch (reason) {
 				const error = toDeckApiError(reason);
-				if (!isBlocked(error)) {
-					toast.error(error.message, { toastId: "deck-title" });
-					if (metaRef.current && confirmedMetaRef.current) metaRef.current = { ...metaRef.current, title: confirmedMetaRef.current.title };
-				}
+				toast.error(error.message, { toastId: "deck-title" });
+				if (metaRef.current && confirmedMetaRef.current) metaRef.current = { ...metaRef.current, title: confirmedMetaRef.current.title };
 			}
 			bump();
 		};
@@ -840,7 +819,6 @@ export function useDeckEditor(
 				applySummary(summary, !!titleTimerRef.current);
 			} catch (reason) {
 				const error = toDeckApiError(reason);
-				isBlocked(error);
 				if (metaRef.current) metaRef.current = { ...metaRef.current, settings: before };
 				throw error;
 			} finally {
@@ -859,7 +837,6 @@ export function useDeckEditor(
 				applySummary(summary, !!titleTimerRef.current);
 			} catch (reason) {
 				const error = toDeckApiError(reason);
-				isBlocked(error);
 				if (metaRef.current) metaRef.current = { ...metaRef.current, visibility: before };
 				throw error;
 			} finally {
@@ -908,7 +885,6 @@ export function useDeckEditor(
 			updateSettings,
 			setVisibility,
 			flushAll,
-			isBlocked,
 		};
 	}, [api, deckId]);
 
@@ -940,7 +916,7 @@ export function useDeckEditor(
 			.catch((reason) => {
 				const error = toDeckApiError(reason);
 				if (controller.signal.aborted || error.code === "cancelled") return;
-				if (!editor.isBlocked(error)) setLoadError(error);
+				setLoadError(error);
 				setLoadState("error");
 			});
 		return () => controller.abort();
@@ -992,7 +968,6 @@ export function useDeckEditor(
 	return {
 		loadState,
 		loadError,
-		blocked,
 		deck,
 		selectedId,
 		select: setSelectedId,

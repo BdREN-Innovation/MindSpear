@@ -6,8 +6,8 @@ import { toDeckApiError, type DeckApiError } from "@/features/deck/api/errors";
 import { sessionApiFor } from "@/features/deck/api/sessionApi";
 import type { Deck, DeckProduct, HostSessionState } from "@/features/deck/types";
 
-// Mount sequence (plan §6.1): POST /quests/v2/{deck}/sessions (quiz:
-// /quizzes/{deck}/sessions, then /quiz-sessions/v2/{id}/...). One live
+// Mount sequence (plan §6.1): POST /quests/{deck}/sessions (quiz:
+// /quizzes/{deck}/sessions, then /quiz-sessions/{id}/...). One live
 // session per deck: when one already exists the backend answers 409 conflict
 // with data.session_id, and the presenter resumes it (GET state) instead of
 // failing — so a reload, a second tab or a crashed laptop picks up where the
@@ -52,9 +52,7 @@ async function resumeRemembered(product: DeckProduct, deckId: number): Promise<H
 	try {
 		const state = await sessionApiFor(product).getState(id);
 		if (state.session.status === "live" && state.session.deck_id === deckId) return state;
-	} catch (reason) {
-		// The flag was switched off: say so instead of trying to start.
-		if (toDeckApiError(reason).code === "feature_disabled") throw reason;
+	} catch {
 		// Gone / not ours: forget it below.
 	}
 	rememberSession(product, deckId, null);

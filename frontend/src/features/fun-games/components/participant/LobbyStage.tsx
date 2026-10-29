@@ -1,7 +1,7 @@
 "use client";
 
 import { RadioTower, Users } from "lucide-react";
-import { ParticipantStage } from "@/features/live/components/Liveui/participant-ui";
+import { ParticipantStage } from "./ParticipantStage";
 import { useServerCountdown } from "../../hooks/useServerCountdown";
 import { describeTimer, formatCountdown } from "../../lib/format";
 import type { SessionState } from "../../types";

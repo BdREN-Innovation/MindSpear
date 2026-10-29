@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Hourglass } from "lucide-react";
-import { ParticipantShell } from "@/features/live/components/Liveui/participant-ui";
-import type { LiveSessionStatus } from "@/features/live/types";
+import { ParticipantShell, type ShellSessionStatus } from "./ParticipantShell";
 import { getParticipantApi } from "../../api";
 import { useAsyncResource } from "../../hooks/useAsyncResource";
 import { useParticipantSession } from "../../hooks/useParticipantSession";
@@ -18,7 +17,7 @@ import { ResultsStage } from "./ResultsStage";
 import { SequentialPlayer } from "./SequentialPlayer";
 import { StageMessage } from "./StageMessage";
 
-const SHELL_STATUS: Record<SessionStatus, LiveSessionStatus> = {
+const SHELL_STATUS: Record<SessionStatus, ShellSessionStatus> = {
 	waiting: "pending",
 	live: "started",
 	finishing: "started",

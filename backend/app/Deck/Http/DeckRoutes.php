@@ -17,18 +17,17 @@ use LogicException;
  * product-scoped routes through authoring() / sessions(); each route is
  * registered once per product listed in config('deck.routes') and carries
  * ->defaults('product', <product>), which DeckRoutes::product($request)
- * reads back. Quiz v2 adds a `quiz` entry to the config and gets the same
- * routes under its own prefixes with product = 'quiz'.
+ * reads back.
  *
  *   DeckRoutes::authoring(function (string $product) {
  *       Route::get('{deck}', [DeckAuthoringController::class, 'show'])->whereNumber('deck')->name('decks.show');
  *   });
- *   // GET /api/v1/quests/v2/{deck}, named deck.quest.decks.show, product = quest
+ *   // GET /api/v1/quests/{deck}, named deck.quest.decks.show, product = quest (and the same for quizzes)
  *
  * Laravel passes route defaults to the action after the URI parameters, so
  * `product` arrives as one extra trailing argument: harmless, but do not give
  * an action an optional trailing parameter it could land in. Constrain ids
- * with whereNumber() so /quests/v2/{deck} never shadows a literal segment.
+ * with whereNumber() so /quests/{deck} never shadows a literal segment.
  */
 final class DeckRoutes
 {
@@ -39,13 +38,13 @@ final class DeckRoutes
     /** Name of the route default that carries the product. */
     public const PRODUCT = 'product';
 
-    /** Editor routes: /api/v1/quests/v2/... (names deck.{product}.*). */
+    /** Editor routes: /api/v1/quizzes/..., /api/v1/quests/... (names deck.{product}.*). */
     public static function authoring(Closure $routes, ?array $products = null): void
     {
         self::area(self::AREA_AUTHORING, $routes, $products);
     }
 
-    /** Live session routes: /api/v1/quest-sessions/v2/... (names deck.{product}.sessions.*). */
+    /** Live session routes: /api/v1/quiz-sessions/..., /api/v1/quest-sessions/... (names deck.{product}.sessions.*). */
     public static function sessions(Closure $routes, ?array $products = null): void
     {
         self::area(self::AREA_SESSIONS, $routes, $products);

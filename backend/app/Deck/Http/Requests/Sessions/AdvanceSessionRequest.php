@@ -9,7 +9,7 @@ use App\Http\Requests\BaseFormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * POST /api/v1/{product}-sessions/v2/{session}/advance
+ * POST /api/v1/{product}-sessions/{session}/advance
  * {action: start_voting|close_voting|next_slide|previous_slide|jump_to
  *  (+ reveal, insert_leaderboard on quiz routes), target_run_id?: int (required for jump_to), force?: bool}
  */

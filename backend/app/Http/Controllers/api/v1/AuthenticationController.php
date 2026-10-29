@@ -11,9 +11,6 @@ use App\Http\Requests\Authentication\VerifyEmailRequest;
 use App\Mail\PasswordResetMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\PasswordResetToken;
-use App\Models\Quest\Quest;
-use App\Models\Quiz\Quiz;
-use App\Models\Quiz\QuizSession;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -357,47 +354,6 @@ class AuthenticationController extends ApiBaseController
 
             // Return a server error response
             return $this->serverErrorResponse([], __('Logout failed'));
-        }
-    }
-
-    /**
-     * Public join by code
-     */
-    public function publicJoinByCode(string $joinCode): JsonResponse
-    {
-        // Take first character to identify type
-        $typeIndicator = strtoupper(substr($joinCode, 0, 1));
-
-        try {
-            if ($typeIndicator === 'Q') {
-                // Quiz join code
-                $actualCode = substr($joinCode, 1);
-                $quizSession = QuizSession::with('quiz')->where('join_code', $actualCode)->first();
-
-                if (! $quizSession) {
-                    return $this->notFoundResponse([], __('Quiz session not found or has ended'));
-                }
-
-                return $this->okResponse(['quiz_session' => $quizSession], __('Quiz retrieved successfully'));
-            } elseif ($typeIndicator === 'T') {
-                // Quest join code
-                $actualCode = substr($joinCode, 1);
-                $quest = Quest::where('join_code', $actualCode)->first();
-
-                if (! $quest) {
-                    return $this->notFoundResponse([], __('Quest not found or has ended'));
-                }
-
-                return $this->okResponse(['quest' => $quest], __('Quest retrieved successfully'));
-            } else {
-                return $this->badRequestResponse([], __('Invalid join code format'));
-            }
-        } catch (\Exception $e) {
-            // Log the error message
-            Log::error('Public join by code error: ' . $e->getMessage());
-
-            // Return a server error response
-            return $this->serverErrorResponse([], __('Failed to retrieve by join code'));
         }
     }
 }

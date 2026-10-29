@@ -2,7 +2,7 @@
 
 namespace App\Jobs\Deck;
 
-use App\Services\Live\LiveAggregateService;
+use App\Deck\Broadcasts\LiveAggregateService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;

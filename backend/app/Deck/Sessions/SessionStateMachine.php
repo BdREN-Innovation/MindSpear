@@ -20,9 +20,8 @@ use App\Jobs\Deck\TransitionSlideRunJob;
 use App\Models\Deck\Deck;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveAggregateService;
-use App\Services\Live\LiveSessionService;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Broadcasts\LiveAggregateService;
+use App\Deck\Participants\ParticipantTokenService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -144,7 +143,6 @@ class SessionStateMachine
         private readonly SlideTypeRegistry $registry,
         private readonly DeckBroadcaster $broadcaster,
         private readonly LiveAggregateService $aggregates,
-        private readonly LiveSessionService $live,
         private readonly ParticipantTokenService $tokens,
         private readonly DeckChannels $channels,
         private readonly QuizRuntime $quiz,
@@ -727,7 +725,7 @@ class SessionStateMachine
         $job = (new TransitionSlideRunJob((int) $s->id, (int) $run->id, (int) $run->state_version, $run->state))
             ->delay($runAt);
 
-        $this->live->afterCommit(function () use ($job) {
+        DB::afterCommit(function () use ($job) {
             try {
                 Bus::dispatch($job);
             } catch (Throwable $exception) {

@@ -44,7 +44,7 @@ class FunGame extends Model
         'seconds_per_question',
         'default_marks',
         'default_negative_marks',
-        'source_quiz_id',
+        'source_deck_id',
         'scoring_mode',
         'shuffle_questions',
         'questions_per_player',
@@ -58,7 +58,7 @@ class FunGame extends Model
         'seconds_per_question' => 'integer',
         'default_marks' => 'float',
         'default_negative_marks' => 'float',
-        'source_quiz_id' => 'integer',
+        'source_deck_id' => 'integer',
         'shuffle_questions' => 'boolean',
         'questions_per_player' => 'integer',
     ];

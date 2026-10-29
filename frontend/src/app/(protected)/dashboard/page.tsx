@@ -1,60 +1,27 @@
 "use client";
 
-import React, { useEffect } from "react";
-import CreateQuiz from "@/features/quiz/components/CreateQuiz";
-// Surveys and reports are switched off for now.
-// import CreateSurvey from "@/features/survey/components/CreateSurvey";
-import CreateQuest from "@/features/quest/components/CreateQuest";
-import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "@/stores/store";
-import { setMultipleSelectedItems } from "@/features/quiz/store/quizItems/quizSlice"
-// import ReportDashboard from "@/features/dashboard/views/ReportDashboard";
+import { useSelector } from "react-redux";
+import type { RootState } from "@/stores/store";
 import StatsOverview from "@/features/dashboard/views/StatsOverview";
-// import ReportSlider from "@/features/dashboard/views/ReportSlider";
-
-interface UserInfoState {
-	id: number;
-	full_name: string;
-	email: string;
-	profile_picture?: string | null;
-}
-
-
+import { NewDeckCard } from "@/features/deck-library/NewDeckCard";
 
 export default function Dashboard() {
-	const user = useSelector(
-		(state: RootState) => state.auth.user
-	) as UserInfoState | null;
-	const dispatch = useDispatch();
-
-	useEffect(() => {
-		dispatch(setMultipleSelectedItems([]));
-	}, []);
-
-
+	const user = useSelector((state: RootState) => state.auth.user);
 
 	return (
-		<div className="min-h-screen pb-20 font-[family-name:var(--font-geist-sans)] dark:bg-dark flex flex-col gap-6 mx-4">
-			<h3 className="text-[2.25rem] font-bold text-[#222] dark:text-white mb-2">
-				Welcome, <span className="text-primary">{user?.full_name}</span>
-				!
+		<div className="mx-4 flex min-h-screen flex-col gap-6 pb-20 font-[family-name:var(--font-geist-sans)] dark:bg-dark">
+			<h3 className="mb-2 text-[2.25rem] font-bold text-[#222] dark:text-white">
+				Welcome, <span className="text-primary">{user?.full_name}</span>!
 			</h3>
 
-			{/* Section Title */}
-			<h4 className="text-xl font-semibold text-[#222] dark:text-white max-w-6xl w-full">
-				Quick Actions
-			</h4>
+			<h4 className="w-full max-w-6xl text-xl font-semibold text-[#222] dark:text-white">Quick Actions</h4>
 
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
-				<CreateQuiz />
-				{/* <CreateSurvey /> */}
-				<CreateQuest />
-				{/* <ReportDashboard /> */}
-				{/* <Reports /> */}
+			<div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+				<NewDeckCard product="quiz" />
+				<NewDeckCard product="quest" />
 			</div>
-			<div>
-				<StatsOverview />
-			</div>
+
+			<StatsOverview />
 		</div>
 	);
 }

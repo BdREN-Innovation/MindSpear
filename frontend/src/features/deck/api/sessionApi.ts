@@ -16,23 +16,21 @@ import { deckRequest } from "./errors";
 import { authoringBase, DECK_TIMEOUTS, sessionsBase } from "./routes";
 
 // Host side of a live session (Sanctum via axiosInstance; the deck owner only,
-// everyone else 404). Backend: routes/deck/{quest,quiz}_sessions.php +
-// quest_qa.php + {quest,quiz}_participants.php (aggregate). Responses are
-// snake_case HOST STATE (SessionStatePresenter::host). A presenter must NOT
-// send X-Participant-Token: on the dual routes (state, aggregate, Q&A feed,
-// leaderboard) that header selects the participant view; axiosInstance only
-// adds it for legacy attempt URLs.
+// everyone else 404). Backend: routes/deck/sessions.php + qa.php +
+// participants.php (aggregate). Responses are snake_case HOST STATE
+// (SessionStatePresenter::host). A presenter must NOT send X-Participant-Token:
+// on the dual routes (state, aggregate, Q&A feed, leaderboard) that header
+// selects the participant view.
 //
-// Quiz (/quiz-sessions/v2): HOST STATE gains `quiz` {submitted_count, spin,
-// leaderboard}; advance takes `reveal`; getLeaderboard reads the ranking. Host
-// routes answer 403 feature_disabled without quiz_v2_enabled. No Q&A routes.
+// Quiz (/quiz-sessions): HOST STATE gains `quiz` {submitted_count, spin,
+// leaderboard}; advance takes `reveal`; getLeaderboard reads the ranking. No Q&A routes.
 
 type Id = number | string;
 
 export interface SessionApi {
 	readonly product: DeckProduct;
 	/**
-	 * POST /quests/v2/{deck}/sessions — 201 HOST STATE (snapshots every slide).
+	 * POST /quests/{deck}/sessions — 201 HOST STATE (snapshots every slide).
 	 * 409 conflict with data.session_id when a live session already exists
 	 * (resume it with getState), or when the deck has no slides; 422
 	 * unsupported_type / slides.{pos}.media* (pin_on_image without an image).
@@ -60,7 +58,7 @@ export interface SessionApi {
 	moderateQuestion(sessionId: Id, questionId: Id, flags: QaModerationFlags): Promise<QaHostItem>;
 	/**
 	 * Quiz only: GET {session}/leaderboard?limit=1..100 (default 10) — top N by total points with
-	 * points_delta from the last revealed slide; `me` is null for the host. 403 feature_disabled, 422 limit.
+	 * points_delta from the last revealed slide; `me` is null for the host. 422 limit.
 	 */
 	getLeaderboard(sessionId: Id, options?: { limit?: number; signal?: AbortSignal }): Promise<LeaderboardResponse>;
 }
@@ -148,10 +146,10 @@ export function createSessionApi(product: DeckProduct): SessionApi {
 	};
 }
 
-/** Quest v2 host session API. */
+/** Quest host session API (/api/v1/quest-sessions; start under /api/v1/quests/{deck}/sessions). */
 export const questSessionApi = createSessionApi("quest");
 
-/** Quiz v2 host session API (/api/v1/quiz-sessions/v2; start under /api/v1/quizzes/{deck}/sessions). */
+/** Quiz host session API (/api/v1/quiz-sessions; start under /api/v1/quizzes/{deck}/sessions). */
 export const quizSessionApi = createSessionApi("quiz");
 
 /** The host session API of a product (shared instances). */

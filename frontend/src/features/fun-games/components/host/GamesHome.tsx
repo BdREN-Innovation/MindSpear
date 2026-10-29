@@ -201,7 +201,7 @@ export function GamesHome() {
 												>
 													{game.title}
 												</Link>
-												{game.sourceQuizId ? (
+												{game.sourceDeckId ? (
 													<span className="text-xs text-dark-5">From My Library</span>
 												) : null}
 											</td>

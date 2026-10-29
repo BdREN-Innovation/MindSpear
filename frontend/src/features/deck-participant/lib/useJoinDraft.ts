@@ -13,7 +13,7 @@ import {
 } from "@/features/deck/live/participantSession";
 import type { DeckProduct } from "@/features/deck/types";
 import { friendlyError } from "./errors";
-import { isV2JoinCode, sanitizeJoinCode } from "./joinCode";
+import { isCompleteJoinCode, sanitizeJoinCode } from "./joinCode";
 
 // The join draft for /play/[code] and /play/[code]/avatar: the stored one
 // from /play (or /join), or a fresh by-code lookup when the page was opened
@@ -45,7 +45,7 @@ export interface JoinDraftResult {
 
 export function useJoinDraft(rawCode: string): JoinDraftResult {
 	const code = sanitizeJoinCode(rawCode).code;
-	const valid = isV2JoinCode(rawCode);
+	const valid = isCompleteJoinCode(rawCode);
 	const [draft, setDraft] = useState<ResolvedJoinDraft | null>(null);
 	const [existing, setExisting] = useState<StoredParticipantSession | null>(null);
 	const [status, setStatus] = useState<JoinDraftStatus>(valid ? "loading" : "invalid");

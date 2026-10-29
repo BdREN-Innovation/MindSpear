@@ -8,7 +8,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 require_once __DIR__ . '/QuizApiHelpers.php';
 
 /*
- * Quiz v2 authoring (QUIZ_REDESIGN_PLAN.md §2.1): /api/v1/quizzes on the
+ * Quiz authoring (QUIZ_REDESIGN_PLAN.md §2.1): /api/v1/quizzes on the
  * shared deck controllers with product = quiz. Quiz-only fields (slides:
  * points_min / points_max / speed_bonus_enabled, options: is_correct) work
  * here and are refused on the Quest routes; quiz-only types are refused on
@@ -41,7 +41,7 @@ it('creates a quiz deck with a qr_code slide and the 5 s Get ready default', fun
     $quest = Deck::factory()->ownedBy($host)->create();
     $this->getJson(QAPI_AUTHOR)->assertOk()->assertJsonPath('data.meta.total', 1)->assertJsonPath('data.items.0.id', $deck['id']);
     $this->getJson(QAPI_AUTHOR . "/{$quest->id}")->assertNotFound();
-    $this->getJson("/api/v1/quests/v2/{$deck['id']}")->assertNotFound();
+    $this->getJson("/api/v1/quests/{$deck['id']}")->assertNotFound();
 });
 
 it('seeds each quiz type with its timer, points and options, and scopes types per product', function () {
@@ -80,9 +80,9 @@ it('seeds each quiz type with its timer, points and options, and scopes types pe
             ->assertStatus(422)->assertJsonPath('data.code', 'unsupported_type');
     }
 
-    $questDeck = $this->postJson('/api/v1/quests/v2', ['title' => 'Q'])->assertCreated()->json('data.deck.id');
+    $questDeck = $this->postJson('/api/v1/quests', ['title' => 'Q'])->assertCreated()->json('data.deck.id');
     foreach (QAPI_QUIZ_TYPES as $quizType) {
-        $this->postJson("/api/v1/quests/v2/{$questDeck}/slides", ['type' => $quizType])
+        $this->postJson("/api/v1/quests/{$questDeck}/slides", ['type' => $quizType])
             ->assertStatus(422)->assertJsonPath('data.code', 'unsupported_type');
     }
 
@@ -130,27 +130,27 @@ it('edits points on quiz slides within 0..1000 and min <= max', function () {
 it('refuses the quiz-only fields on Quest routes', function () {
     $host = qapiOwner();
     qapiAsHost($host);
-    $deckId = $this->postJson('/api/v1/quests/v2', ['title' => 'Quest'])->json('data.deck.id');
-    $slide = $this->postJson("/api/v1/quests/v2/{$deckId}/slides", ['type' => 'poll_single'])->assertCreated()->json('data.slide');
+    $deckId = $this->postJson('/api/v1/quests', ['title' => 'Quest'])->json('data.deck.id');
+    $slide = $this->postJson("/api/v1/quests/{$deckId}/slides", ['type' => 'poll_single'])->assertCreated()->json('data.slide');
     $option = $slide['options'][0]['id'];
 
     expect($slide['pointsMin'])->toBeNull()->and($slide['pointsMax'])->toBeNull();
 
     foreach (['points_min' => 10, 'points_max' => 20, 'speed_bonus_enabled' => true] as $field => $value) {
-        $this->patchJson("/api/v1/quests/v2/{$deckId}/slides/{$slide['id']}", [$field => $value])
+        $this->patchJson("/api/v1/quests/{$deckId}/slides/{$slide['id']}", [$field => $value])
             ->assertStatus(422)
             ->assertJsonPath("data.validation_errors.{$field}.0", 'This field is only available on quiz slides.');
     }
 
-    $this->patchJson("/api/v1/quests/v2/{$deckId}/slides/{$slide['id']}", ['points_min' => null])
+    $this->patchJson("/api/v1/quests/{$deckId}/slides/{$slide['id']}", ['points_min' => null])
         ->assertStatus(422)->assertJsonValidationErrors(['points_min'], 'data.validation_errors');
 
-    $this->patchJson("/api/v1/quests/v2/{$deckId}/slides/{$slide['id']}/options/{$option}", ['is_correct' => true])
+    $this->patchJson("/api/v1/quests/{$deckId}/slides/{$slide['id']}/options/{$option}", ['is_correct' => true])
         ->assertStatus(422)->assertJsonPath('data.validation_errors.is_correct.0', 'This field is only available on quiz slides.');
-    $this->postJson("/api/v1/quests/v2/{$deckId}/slides/{$slide['id']}/options", ['label' => 'x', 'is_correct' => false])
+    $this->postJson("/api/v1/quests/{$deckId}/slides/{$slide['id']}/options", ['label' => 'x', 'is_correct' => false])
         ->assertStatus(422)->assertJsonValidationErrors(['is_correct'], 'data.validation_errors');
 
-    $this->postJson("/api/v1/quests/v2/{$deckId}/slides/bulk", ['slides' => [
+    $this->postJson("/api/v1/quests/{$deckId}/slides/bulk", ['slides' => [
         ['type' => 'poll_single', 'points_max' => 10, 'options' => [['label' => 'a', 'is_correct' => true], ['label' => 'b']]],
     ]])->assertStatus(422)
         ->assertJsonValidationErrors(['slides.0.points_max', 'slides.0.options.0.is_correct'], 'data.validation_errors');

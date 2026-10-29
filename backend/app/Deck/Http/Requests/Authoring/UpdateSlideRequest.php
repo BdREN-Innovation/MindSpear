@@ -6,7 +6,7 @@ use App\Deck\Authoring\SlideInput;
 use App\Http\Requests\BaseFormRequest;
 
 /**
- * PATCH /quests/v2/{deck}/slides/{slide}: any of title, body, config,
+ * PATCH /quests/{deck}/slides/{slide}: any of title, body, config,
  * time_limit_seconds, get_ready_seconds; on quiz routes also points_min,
  * points_max, speed_bonus_enabled (QuizFields). Type-specific checks (config via
  * validateConfig, body via the type's validateBody) run in the service.

@@ -1,6 +1,6 @@
 import type { QuizSlideTypeKey, QuizStanding, SlideOption } from "@/features/deck/types";
 
-// Copy the Quiz v2 types share between the big screen and phones, so both
+// Copy the quiz types share between the big screen and phones, so both
 // read the same fallback question and the same standing line.
 
 const QUIZ_FALLBACK_TITLES: Record<QuizSlideTypeKey, string> = {

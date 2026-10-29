@@ -23,7 +23,7 @@ class HostSessionController extends DeckController
         private readonly SessionStateMachine $machine,
     ) {}
 
-    /** POST /quests/v2/{deck}/sessions → 201 host state (+ session_id, join_code, public_channel_key). */
+    /** POST /quests/{deck}/sessions → 201 host state (+ session_id, join_code, public_channel_key). */
     public function start(Request $request, string $deck): JsonResponse
     {
         $session = $this->launcher->start($this->ownedDeck($request, $deck), $request->user());
@@ -31,7 +31,7 @@ class HostSessionController extends DeckController
         return $this->createdResponse(SessionStatePresenter::host($session), 'Session started.');
     }
 
-    /** POST /quest-sessions/v2/{session}/advance {action, target_run_id?, force?} */
+    /** POST /quest-sessions/{session}/advance {action, target_run_id?, force?} */
     public function advance(AdvanceSessionRequest $request, string $session): JsonResponse
     {
         $session = $this->machine->advance(
@@ -44,7 +44,7 @@ class HostSessionController extends DeckController
         return $this->okResponse(SessionStatePresenter::host($session));
     }
 
-    /** POST /quest-sessions/v2/{session}/end */
+    /** POST /quest-sessions/{session}/end */
     public function end(Request $request, string $session): JsonResponse
     {
         $session = $this->machine->end($this->ownedSession($request, $session));

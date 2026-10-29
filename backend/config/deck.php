@@ -2,7 +2,7 @@
 
 /*
 |--------------------------------------------------------------------------
-| Shared slide engine (Quest v2 and Quiz v2)
+| The slide engine behind quizzes and quests (decks)
 |--------------------------------------------------------------------------
 */
 
@@ -21,34 +21,21 @@ return [
     /*
     | URL prefixes (under /api/v1) per product, used by App\Deck\Http\DeckRoutes.
     | `authoring` holds the deck/slide/option editor routes, `sessions` the live
-    | session routes. Quiz v2 adds its own entry (e.g. 'quizzes' /
-    | 'quiz-sessions') and reuses every controller with product = 'quiz'.
+    | session routes; both products share every controller.
     */
     'routes' => [
         'quest' => [
-            'authoring' => 'quests/v2',
-            'sessions' => 'quest-sessions/v2',
+            'authoring' => 'quests',
+            'sessions' => 'quest-sessions',
         ],
-        // Quiz v2 (QUIZ_REDESIGN_PLAN.md §2.1). Sessions live under /v2 because
-        // legacy Quiz v1 still owns GET /api/v1/quiz-sessions/{id}/state.
         'quiz' => [
             'authoring' => 'quizzes',
-            'sessions' => 'quiz-sessions/v2',
+            'sessions' => 'quiz-sessions',
         ],
     ],
 
     /*
-    | Quest v2 rollout (plan §8.3). Authoring and hosting need
-    | users.quest_v2_enabled (toggled in the admin panel); true here turns
-    | Quest v2 on for every account. Participants never need it.
-    */
-    'quest_v2_default_enabled' => (bool) env('QUEST_V2_DEFAULT_ENABLED', false),
-
-    // Quiz v2 rollout, the same way: users.quiz_v2_enabled, or everyone when true.
-    'quiz_v2_default_enabled' => (bool) env('QUIZ_V2_DEFAULT_ENABLED', false),
-
-    /*
-    | Quiz v2 live behaviour (QUIZ_REDESIGN_PLAN.md "Live session state
+    | Quiz live behaviour (QUIZ_REDESIGN_PLAN.md "Live session state
     | machine", "Scoring model").
     | - get_ready_seconds: the "Get ready" countdown new quiz decks seed into
     |   their answer slides, and the one a quiz slide without its own value
@@ -94,7 +81,7 @@ return [
         'max' => [
             'ranking' => 12,
             'scales' => 20,
-            // Quiz v2 (QUIZ_REDESIGN_PLAN.md catalog). match_pairs counts cells (2 per pair).
+            // Quiz types (QUIZ_REDESIGN_PLAN.md catalog). match_pairs counts cells (2 per pair).
             'pick_answer_single' => 10,
             'pick_answer_multi' => 10,
             'true_false' => 2,

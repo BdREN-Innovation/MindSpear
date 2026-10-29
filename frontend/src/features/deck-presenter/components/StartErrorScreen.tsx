@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ImageOff, Lock, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ImageOff, RefreshCw } from "lucide-react";
 import type { DeckApiError } from "@/features/deck/api/errors";
 import type { Deck, DeckProduct } from "@/features/deck/types";
-import { productCopy } from "@/features/deck-editor/components/productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { getSlideType } from "@/features/deck-editor/slideRegistry";
 
 // Why a session could not start, with a way out:
-// - 403 feature_disabled: Quest v2 / Quiz v2 is off for this account;
 // - 422 slides.{pos}.media*: a slide (pin on image) needs an image;
 // - 422 unsupported_type / slides.{pos}.type: a slide type this product lacks;
 // - 409 conflict without session_id: the deck has no slides;
@@ -68,11 +67,7 @@ export function StartErrorScreen({ deckId, product = "quest", deck, error, onRet
 	let canRetry = false;
 	let showEditor = true;
 
-	if (error.code === "feature_disabled") {
-		Icon = Lock;
-		title = `${copy.v2} isn't enabled for your account`;
-		showEditor = false;
-	} else if (mediaMissing) {
+	if (mediaMissing) {
 		Icon = ImageOff;
 		title = problems.length === 1 ? "One slide needs an image" : "Some slides need an image";
 		message = "Add the image in the editor, then start presenting again.";

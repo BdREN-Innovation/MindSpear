@@ -5,7 +5,7 @@ namespace App\Deck\Http\Requests\Authoring;
 use App\Deck\Authoring\DeckAuthoringService;
 use App\Http\Requests\BaseFormRequest;
 
-/** GET /quests/v2?search=&sort=updated|created|title&direction=asc|desc&per_page=&page= */
+/** GET /quests?search=&sort=updated|created|title&direction=asc|desc&per_page=&page= */
 class ListDecksRequest extends BaseFormRequest
 {
     use RejectsInvalidUtf8;

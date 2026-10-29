@@ -26,8 +26,8 @@ import { DECK_TIMEOUTS, sessionsBase } from "./routes";
 // Participant side of a live session (anonymous). Uses its own axios instance:
 // no Sanctum Bearer header, no redirect-to-login on 401 (axiosInstance does
 // both), and the participant token goes in X-Participant-Token on every token
-// route. Backend: routes/deck/{quest,quiz}_{sessions,participants,review}.php
-// (+ quest_qa.php). Every function throws DeckApiError.
+// route. Backend: routes/deck/{sessions,participants,review,qa}.php. Every
+// function throws DeckApiError.
 //
 // Every route is product-scoped (a quiz session is 404 on the quest routes and
 // vice versa): find the product with lookupSessionByCode(), then keep using
@@ -305,10 +305,10 @@ export function createParticipantApi(product: DeckProduct): ParticipantApi {
 	};
 }
 
-/** Quest v2 participant API. */
+/** Quest participant API (/api/v1/quest-sessions). */
 export const questParticipantApi = createParticipantApi("quest");
 
-/** Quiz v2 participant API (/api/v1/quiz-sessions/v2). */
+/** Quiz participant API (/api/v1/quiz-sessions). */
 export const quizParticipantApi = createParticipantApi("quiz");
 
 /** The participant API of a product (shared instances). */

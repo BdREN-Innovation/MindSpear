@@ -6,7 +6,7 @@ use App\Deck\Support\OptionLimits;
 use App\Http\Requests\BaseFormRequest;
 
 /**
- * POST /quests/v2/{deck}/slides/{slide}/options/reorder: [{id, position}, ...] with positions 1..n
+ * POST /quests/{deck}/slides/{slide}/options/reorder: [{id, position}, ...] with positions 1..n
  * or {options: [...]}. Positions are 1-based (like stored positions): together they
  * must be exactly 1..n (each once). The service checks that the ids are
  * every option of the slide.

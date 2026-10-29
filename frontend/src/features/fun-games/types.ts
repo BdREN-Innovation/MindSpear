@@ -467,7 +467,8 @@ export interface HostGameSummary {
 	startsAt: IsoDateTime | null;
 	latestSessionId: Id | null;
 	latestSessionStatus: SessionStatus | null;
-	sourceQuizId: Id | null;
+	/** The My Library quiz the game was copied from. */
+	sourceDeckId: Id | null;
 	updatedAt: IsoDateTime;
 	sessionCount: number;
 }

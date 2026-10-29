@@ -10,16 +10,15 @@ use App\Deck\Http\Resources\QaQuestionPresenter;
 use App\Deck\Participants\ParticipantReadAccess;
 use App\Deck\Participants\SessionLookup;
 use App\Deck\Qa\SessionQaService;
-use App\Deck\Support\DeckFeature;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckSession;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Live audience Q&A (plan §3.1, §3.4) under /api/v1/quest-sessions/v2
+ * Live audience Q&A (plan §3.1, §3.4) under /api/v1/quest-sessions
  * (routes/deck/quest_qa.php). Rules live in SessionQaService; item shapes in
  * QaQuestionPresenter (snake_case, identical to the realtime payloads).
  */
@@ -76,7 +75,7 @@ class QaController extends DeckController
      * With an X-Participant-Token header: that participant's feed (token
      * checked exactly like deck.participant: 404 session, 401 token).
      * Without one: the signed-in host's moderation feed (401 when signed
-     * out, 403 feature_disabled without Quest v2, 404 when not the host).
+     * out, 404 when not the host).
      */
     public function index(QaFeedRequest $request, string $session, string $run): JsonResponse
     {
@@ -110,7 +109,6 @@ class QaController extends DeckController
 
         // What auth:sanctum does after authenticating, so $request->user() is the host.
         Auth::shouldUse('sanctum');
-        DeckFeature::assertEnabled($request->user(), $this->product($request));
 
         return [$this->ownedSession($request, $sessionId), null];
     }

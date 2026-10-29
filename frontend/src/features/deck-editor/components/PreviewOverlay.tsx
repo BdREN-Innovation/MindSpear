@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
 import { isScoredQuizSlideTypeKey, type DeckProduct, type RunState, type Slide } from "@/features/deck/types";
 import { PhonePreview, type PhoneAnswer } from "./PhonePreview";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { previewStateFor, ScaledSlide, SlidePresenterPreview } from "./SlidePreview";
 
 export interface PreviewOverlayProps {

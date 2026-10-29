@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Shared helpers for the Quiz v2 slide type tests (required by each
+ * Shared helpers for the quiz slide type tests (required by each
  * *TypeTest.php; not a test file itself).
  */
 

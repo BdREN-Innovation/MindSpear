@@ -10,7 +10,7 @@ use App\Models\Deck\DeckQaQuestion;
 use App\Models\Deck\DeckQaUpvote;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Collection;
@@ -56,7 +56,7 @@ function qaApiFixture(array $config = [], string $state = DeckSessionSlideRun::S
             'emoji_avatar' => $emoji,
         ]);
         $participants[] = $participant;
-        $tokens[] = app(ParticipantTokenService::class)->issue($participant, $session);
+        $tokens[] = app(ParticipantTokenService::class)->issue($participant);
     }
 
     return compact('host', 'deck', 'session', 'run', 'participants', 'tokens');
@@ -66,7 +66,7 @@ function qaApiUrl(DeckSession|int|string $session, string $path): string
 {
     $id = $session instanceof DeckSession ? $session->id : $session;
 
-    return "/api/v1/quest-sessions/v2/{$id}/" . ltrim($path, '/');
+    return "/api/v1/quest-sessions/{$id}/" . ltrim($path, '/');
 }
 
 function qaApiToken(string $token): array
@@ -118,14 +118,14 @@ function qaApiBroadcasts(string $event): Collection
 
 // --- routes ------------------------------------------------------------------
 
-it('registers the Q&A routes under quest-sessions/v2 with participant and host middleware', function () {
+it('registers the Q&A routes under quest-sessions with participant and host middleware', function () {
     $routes = Route::getRoutes();
     $expect = [
-        'deck.quest.sessions.qa.questions.store' => ['POST', 'api/v1/quest-sessions/v2/{session}/slide-runs/{run}/qa/questions', 'store', 'deck.participant'],
-        'deck.quest.sessions.qa.questions.index' => ['GET', 'api/v1/quest-sessions/v2/{session}/slide-runs/{run}/qa/questions', 'index', 'throttle:deck-participant'],
-        'deck.quest.sessions.qa.questions.upvote' => ['POST', 'api/v1/quest-sessions/v2/{session}/qa/questions/{question}/upvote', 'upvote', 'deck.participant'],
-        'deck.quest.sessions.qa.questions.upvote.destroy' => ['DELETE', 'api/v1/quest-sessions/v2/{session}/qa/questions/{question}/upvote', 'removeUpvote', 'deck.participant'],
-        'deck.quest.sessions.qa.questions.moderate' => ['PATCH', 'api/v1/quest-sessions/v2/{session}/qa/questions/{question}', 'moderate', 'auth:sanctum'],
+        'deck.quest.sessions.qa.questions.store' => ['POST', 'api/v1/quest-sessions/{session}/slide-runs/{run}/qa/questions', 'store', 'deck.participant'],
+        'deck.quest.sessions.qa.questions.index' => ['GET', 'api/v1/quest-sessions/{session}/slide-runs/{run}/qa/questions', 'index', 'throttle:deck-participant'],
+        'deck.quest.sessions.qa.questions.upvote' => ['POST', 'api/v1/quest-sessions/{session}/qa/questions/{question}/upvote', 'upvote', 'deck.participant'],
+        'deck.quest.sessions.qa.questions.upvote.destroy' => ['DELETE', 'api/v1/quest-sessions/{session}/qa/questions/{question}/upvote', 'removeUpvote', 'deck.participant'],
+        'deck.quest.sessions.qa.questions.moderate' => ['PATCH', 'api/v1/quest-sessions/{session}/qa/questions/{question}', 'moderate', 'auth:sanctum'],
     ];
 
     foreach ($expect as $name => [$method, $uri, $action, $middleware]) {

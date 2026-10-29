@@ -18,4 +18,3 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthenticationController::class, 'logout']);
 });
 
-Route::get('/public/join-by-code/{joinCode}', [AuthenticationController::class, 'publicJoinByCode']);

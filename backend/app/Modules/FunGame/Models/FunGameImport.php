@@ -11,7 +11,7 @@ class FunGameImport extends Model
         'fun_game_id',
         'user_id',
         'source',
-        'source_quiz_id',
+        'source_deck_id',
         'mode',
         'previous_questions',
         'previous_timer',
@@ -26,7 +26,7 @@ class FunGameImport extends Model
     protected $casts = [
         'fun_game_id' => 'integer',
         'user_id' => 'integer',
-        'source_quiz_id' => 'integer',
+        'source_deck_id' => 'integer',
         'previous_questions' => 'array',
         'previous_timer' => 'array',
         'added_count' => 'integer',

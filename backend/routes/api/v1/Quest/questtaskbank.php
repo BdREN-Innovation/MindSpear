@@ -11,6 +11,5 @@ Route::middleware('auth:sanctum')->prefix('quest/task-bank')->group(function () 
     Route::post('/update/{id}', [QuestTaskBankController::class, 'update']);
     Route::delete('/delete/{id}', [QuestTaskBankController::class, 'destroy']);
     Route::post('/restore/{id}', [QuestTaskBankController::class, 'restore']);
-    Route::post('/use-in-quest/{id}', [QuestTaskBankController::class, 'useInQuest']);
 });
 

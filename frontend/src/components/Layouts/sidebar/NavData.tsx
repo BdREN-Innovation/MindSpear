@@ -3,7 +3,6 @@ import { NAV_DATA } from "./data";
 import { MenuItem } from "./menu-item";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { ChevronLeft } from "lucide-react";
 import { ChevronUp } from "./icons";
 
 type SubItemNew = {

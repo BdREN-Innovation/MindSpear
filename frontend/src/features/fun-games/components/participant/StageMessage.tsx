@@ -1,5 +1,5 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { ParticipantStage } from "@/features/live/components/Liveui/participant-ui";
+import { ParticipantStage } from "./ParticipantStage";
 import { cn } from "@/lib/utils";
 
 type StageMessageProps = {

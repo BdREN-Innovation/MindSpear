@@ -17,7 +17,7 @@ use App\Models\Deck\Slide;
 use App\Models\Deck\SlideOption;
 use App\Models\File;
 use App\Models\User;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Cache\RateLimiter as CacheRateLimiter;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
@@ -102,14 +102,14 @@ function sessApiFile(User $owner, array $overrides = []): File
 function sessApiStart(User $host, Deck $deck): DeckSession
 {
     Sanctum::actingAs($host);
-    $response = test()->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated();
+    $response = test()->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated();
 
     return DeckSession::findOrFail($response->json('data.session_id'));
 }
 
 function sessApiAdvance(DeckSession $session, array $body): TestResponse
 {
-    return test()->postJson("/api/v1/quest-sessions/v2/{$session->id}/advance", $body);
+    return test()->postJson("/api/v1/quest-sessions/{$session->id}/advance", $body);
 }
 
 function sessApiCurrent(DeckSession $session): DeckSessionSlideRun
@@ -122,13 +122,13 @@ function sessApiParticipant(DeckSession $session): array
 {
     $participant = DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
 
-    return [$participant, app(ParticipantTokenService::class)->issue($participant, $session)];
+    return [$participant, app(ParticipantTokenService::class)->issue($participant)];
 }
 
 /** The participant's resync: GET {session}/state with X-Participant-Token (plan §7.6). */
 function sessApiParticipantState(DeckSession $session, string $token): TestResponse
 {
-    return test()->getJson("/api/v1/quest-sessions/v2/{$session->id}/state", [ParticipantTokenService::HEADER => $token]);
+    return test()->getJson("/api/v1/quest-sessions/{$session->id}/state", [ParticipantTokenService::HEADER => $token]);
 }
 
 /** Size of the Pusher HTTP body Reverb would receive for a captured broadcast. */
@@ -186,7 +186,7 @@ it('starts a live session and snapshots every non-deleted slide', function () {
     $image->delete();
 
     Sanctum::actingAs($host);
-    $response = $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated()
+    $response = $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated()
         ->assertJsonPath('status', true)
         ->assertJsonPath('data.session.status', 'live')
         ->assertJsonPath('data.session.total_slides', 5)
@@ -211,7 +211,7 @@ it('starts a live session and snapshots every non-deleted slide', function () {
         ])
         ->and($response->json('data.channels'))->toBe([
             'public' => "session.quest.{$session->public_channel_key}",
-            'host' => "host.quest.v2.{$session->id}",
+            'host' => "host.quest.{$session->id}",
         ])
         ->and($runs->pluck('type_snapshot')->all())->toBe(['poll_single', 'heading', 'image', 'poll_multi', 'qa_audience'])
         ->and($runs->pluck('position_snapshot')->all())->toBe([1, 2, 3, 4, 5])
@@ -264,12 +264,12 @@ it('never brings back a deck default timer the slide turned off', function () {
 
     // Through the real authoring API: seeded from the deck, then switched off on the slide.
     Sanctum::actingAs($host);
-    $authored = $this->postJson('/api/v1/quests/v2', ['title' => 'Timers'])->assertCreated()->json('data.deck.id');
-    $this->patchJson("/api/v1/quests/v2/{$authored}", ['settings' => ['get_ready_seconds' => 5, 'default_time_limit' => 30]])->assertOk();
-    $slideId = $this->postJson("/api/v1/quests/v2/{$authored}/slides", ['type' => 'poll_single'])->assertCreated()->json('data.slide.id');
+    $authored = $this->postJson('/api/v1/quests', ['title' => 'Timers'])->assertCreated()->json('data.deck.id');
+    $this->patchJson("/api/v1/quests/{$authored}", ['settings' => ['get_ready_seconds' => 5, 'default_time_limit' => 30]])->assertOk();
+    $slideId = $this->postJson("/api/v1/quests/{$authored}/slides", ['type' => 'poll_single'])->assertCreated()->json('data.slide.id');
     expect(Slide::findOrFail($slideId)->only(['time_limit_seconds', 'get_ready_seconds']))
         ->toBe(['time_limit_seconds' => 30, 'get_ready_seconds' => 5]);
-    $this->patchJson("/api/v1/quests/v2/{$authored}/slides/{$slideId}", ['get_ready_seconds' => 0, 'time_limit_seconds' => null])->assertOk();
+    $this->patchJson("/api/v1/quests/{$authored}/slides/{$slideId}", ['get_ready_seconds' => 0, 'time_limit_seconds' => null])->assertOk();
 
     $authoredSession = sessApiStart($host, Deck::findOrFail($authored));
     $run = $authoredSession->runs()->where('slide_id', $slideId)->sole();
@@ -286,7 +286,7 @@ it('refuses to snapshot a pin on image slide without a usable image and names it
     $deck = sessApiDeck($host, [['heading'], ['pin_on_image']]);
 
     Sanctum::actingAs($host);
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")
         ->assertStatus(422)
         ->assertJsonPath('status', false)
         ->assertJsonPath('message', 'Validation Error')
@@ -296,7 +296,7 @@ it('refuses to snapshot a pin on image slide without a usable image and names it
     $file = sessApiFile($host, ['width' => null, 'height' => null]);
     $deck->slides()->where('type', 'pin_on_image')->update(['media_file_id' => $file->id]);
 
-    $response = $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertStatus(422);
+    $response = $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertStatus(422);
     $errors = $response->json('data.validation_errors');
 
     expect(array_keys($errors))->toContain('slides.2.media', 'slides.2.media.width', 'slides.2.media.height')
@@ -304,7 +304,7 @@ it('refuses to snapshot a pin on image slide without a usable image and names it
         ->and(DeckSession::where('deck_id', $deck->id)->count())->toBe(0);
 
     $file->forceFill(['width' => 640, 'height' => 480])->save();
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertCreated();
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertCreated();
 });
 
 it('allows one live session per deck at a time', function () {
@@ -312,12 +312,12 @@ it('allows one live session per deck at a time', function () {
     $deck = sessApiDeck($host, [['poll_single']]);
     $first = sessApiStart($host, $deck);
 
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")
         ->assertStatus(409)
         ->assertJsonPath('data.code', 'conflict')
         ->assertJsonPath('data.session_id', $first->id);
 
-    $this->postJson("/api/v1/quest-sessions/v2/{$first->id}/end")->assertOk();
+    $this->postJson("/api/v1/quest-sessions/{$first->id}/end")->assertOk();
     $second = sessApiStart($host, $deck);
 
     expect($second->id)->not->toBe($first->id)
@@ -331,17 +331,17 @@ it('refuses empty decks, other hosts, other products, guests and types the produ
     Slide::factory()->ofType('heading')->create(['deck_id' => $quiz->id]);
     $deck = sessApiDeck($host, [['heading']]);
 
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertUnauthorized();
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertUnauthorized();
 
     Sanctum::actingAs($host);
-    $this->postJson("/api/v1/quests/v2/{$empty->id}/sessions")->assertStatus(409)->assertJsonPath('data.code', 'conflict');
-    $this->postJson("/api/v1/quests/v2/{$quiz->id}/sessions")->assertNotFound()->assertJsonPath('message', 'Deck not found.');
+    $this->postJson("/api/v1/quests/{$empty->id}/sessions")->assertStatus(409)->assertJsonPath('data.code', 'conflict');
+    $this->postJson("/api/v1/quests/{$quiz->id}/sessions")->assertNotFound()->assertJsonPath('message', 'Deck not found.');
 
     $deck->delete();
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertNotFound();
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertNotFound();
 
     $other = sessApiDeck(DeckFactory::newOwner(), [['heading']]);
-    $this->postJson("/api/v1/quests/v2/{$other->id}/sessions")->assertNotFound();
+    $this->postJson("/api/v1/quests/{$other->id}/sessions")->assertNotFound();
 
     app(SlideTypeRegistry::class)->register(new class () extends AbstractSlideType {
         public function key(): string
@@ -366,7 +366,7 @@ it('refuses empty decks, other hosts, other products, guests and types the produ
     });
     $mixed = sessApiDeck($host, [['heading'], ['sess_api_quiz_only', ['config' => []]]]);
 
-    $this->postJson("/api/v1/quests/v2/{$mixed->id}/sessions")
+    $this->postJson("/api/v1/quests/{$mixed->id}/sessions")
         ->assertStatus(422)
         ->assertJsonPath('data.code', 'unsupported_type')
         ->assertJsonPath('data.type', 'sess_api_quiz_only')
@@ -395,7 +395,7 @@ it('retries join code collisions up to five times', function () {
     app()->instance(JoinCodeGenerator::class, $generator(array_fill(0, 5, $taken)));
 
     Sanctum::actingAs($host);
-    $this->postJson("/api/v1/quests/v2/{$deck->id}/sessions")->assertStatus(409)->assertJsonPath('data.code', 'conflict');
+    $this->postJson("/api/v1/quests/{$deck->id}/sessions")->assertStatus(409)->assertJsonPath('data.code', 'conflict');
 
     $codes = collect(range(1, 200))->map(fn () => (new JoinCodeGenerator())->candidate());
     expect($codes->every(fn (string $code) => preg_match(SESS_API_CODE_PATTERN, $code) === 1))->toBeTrue()
@@ -410,7 +410,7 @@ it('looks up live sessions by join code, case-insensitively, and shows nothing p
     $session = sessApiStart($host, $deck);
     $code = $session->join_code;
 
-    $response = $this->getJson('/api/v1/quest-sessions/v2/by-code/' . strtolower($code))->assertOk();
+    $response = $this->getJson('/api/v1/quest-sessions/by-code/' . strtolower($code))->assertOk();
 
     expect($response->json('data'))->toBe([
         'session_id' => $session->id,
@@ -421,15 +421,15 @@ it('looks up live sessions by join code, case-insensitively, and shows nothing p
         'public_channel_key' => $session->public_channel_key,
     ]);
 
-    $this->getJson('/api/v1/quest-sessions/v2/by-code/' . substr($code, 0, 3) . '-' . strtolower(substr($code, 3)))
+    $this->getJson('/api/v1/quest-sessions/by-code/' . substr($code, 0, 3) . '-' . strtolower(substr($code, 3)))
         ->assertOk()->assertJsonPath('data.session_id', $session->id);
-    $this->getJson('/api/v1/quest-sessions/v2/by-code/ZZZZZZZZZZZZ')->assertNotFound()->assertJsonPath('data.code', 'not_found');
+    $this->getJson('/api/v1/quest-sessions/by-code/ZZZZZZZZZZZZ')->assertNotFound()->assertJsonPath('data.code', 'not_found');
 
     $quizSession = DeckSession::factory()->live()->create(['deck_id' => Deck::factory()->quiz()->create()->id, 'join_code' => 'QUIZ' . Str::upper(Str::random(6))]);
-    $this->getJson("/api/v1/quest-sessions/v2/by-code/{$quizSession->join_code}")->assertNotFound();
+    $this->getJson("/api/v1/quest-sessions/by-code/{$quizSession->join_code}")->assertNotFound();
 
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk();
-    $this->getJson("/api/v1/quest-sessions/v2/by-code/{$code}")->assertNotFound();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertOk();
+    $this->getJson("/api/v1/quest-sessions/by-code/{$code}")->assertNotFound();
 });
 
 it('finds live sessions of either product through the product-neutral play lookup', function () {
@@ -449,7 +449,7 @@ it('finds live sessions of either product through the product-neutral play looku
         ->assertJsonPath('data.deck_title', 'Friday quiz');
     $this->getJson('/api/v1/play/by-code/ZZZZZZZZZZZZ')->assertNotFound()->assertJsonPath('data.code', 'not_found');
 
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertOk();
     $this->getJson("/api/v1/play/by-code/{$session->join_code}")->assertNotFound();
     expect(app('router')->getRoutes()->getByName('deck.play.by-code')->gatherMiddleware())->toContain('throttle:deck-lookup');
 });
@@ -477,7 +477,7 @@ it('throttles by-code lookups per IP, whatever participant token is sent', funct
     $session = sessApiStart($host, sessApiDeck($host, [['poll_single']]));
     app('auth')->forgetGuards();
     $lookup = fn (string $code, string $ip = '10.0.0.9') => $this->withServerVariables(['REMOTE_ADDR' => $ip])
-        ->getJson("/api/v1/quest-sessions/v2/by-code/{$code}", [ParticipantTokenService::HEADER => Str::random(64)]);
+        ->getJson("/api/v1/quest-sessions/by-code/{$code}", [ParticipantTokenService::HEADER => Str::random(64)]);
 
     // Found codes only use the classroom-sized budget.
     foreach (range(1, 40) as $i) {
@@ -519,7 +519,7 @@ it('gives the host every run with the live aggregate and participants only what 
     ]);
     Sanctum::actingAs($host);
 
-    $hostView = $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertOk();
+    $hostView = $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertOk();
     expect($hostView->json('data.participant_count'))->toBe(2)
         ->and($hostView->json('data.runs'))->toHaveCount(2)
         ->and($hostView->json('data.runs.0'))->not->toHaveKey('aggregate')
@@ -571,9 +571,9 @@ it('keeps both state views to their own callers', function () {
 
     // Another host: 404, like a session that does not exist.
     Sanctum::actingAs(DeckFactory::newOwner());
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertNotFound()->assertJsonPath('message', 'Session not found.');
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertNotFound()->assertJsonPath('message', 'Session not found.');
     sessApiAdvance($session, ['action' => 'start_voting'])->assertNotFound();
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertNotFound();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertNotFound();
 
     // GET state serves a participant token with the participant view; tokens only work for their own session.
     $this->app['auth']->forgetGuards();
@@ -584,17 +584,17 @@ it('keeps both state views to their own callers', function () {
         ->assertJsonMissingPath('data.join');
     sessApiParticipantState($session, $otherToken)->assertUnauthorized()->assertJsonPath('data.code', 'unauthorized');
     sessApiParticipantState($session, 'not-a-token')->assertUnauthorized();
-    $this->getJson('/api/v1/quest-sessions/v2/999999999999/state', [ParticipantTokenService::HEADER => $token])->assertNotFound();
+    $this->getJson('/api/v1/quest-sessions/999999999999/state', [ParticipantTokenService::HEADER => $token])->assertNotFound();
     // Signed out and no token: 401.
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertUnauthorized()->assertJsonPath('data.code', 'unauthorized');
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertUnauthorized()->assertJsonPath('data.code', 'unauthorized');
 
     // The participant-state alias is token-only and answers the same view.
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/participant-state")->assertUnauthorized()->assertJsonPath('data.code', 'unauthorized');
-    $alias = $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/participant-state", [ParticipantTokenService::HEADER => $token])->assertOk();
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/participant-state")->assertUnauthorized()->assertJsonPath('data.code', 'unauthorized');
+    $alias = $this->getJson("/api/v1/quest-sessions/{$session->id}/participant-state", [ParticipantTokenService::HEADER => $token])->assertOk();
     expect($alias->json('data'))->toBe(sessApiParticipantState($session, $token)->json('data'));
 
     // Participant tokens never open the host actions.
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/advance", ['action' => 'start_voting'], [ParticipantTokenService::HEADER => $token])->assertUnauthorized();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/advance", ['action' => 'start_voting'], [ParticipantTokenService::HEADER => $token])->assertUnauthorized();
     expect(sessApiCurrent($session)->state)->toBe('waiting');
 });
 
@@ -643,7 +643,7 @@ it('runs a poll through waiting, voting and closed and broadcasts every transiti
     expect($closed->broadcastWith()['aggregate'])->toBeNull()
         ->and($closed->isPrivate())->toBeFalse()
         ->and($final->isPrivate())->toBeTrue()
-        ->and($final->broadcastOn()->name)->toBe("private-host.quest.v2.{$session->id}");
+        ->and($final->broadcastOn()->name)->toBe("private-host.quest.{$session->id}");
 
     // A closed run is never reopened or closed twice.
     sessApiAdvance($session, ['action' => 'start_voting'])->assertStatus(409)->assertJsonPath('data.state', 'closed');
@@ -813,7 +813,7 @@ it('refuses transitions once the session is not live', function () {
     sessApiAdvance($pending, ['action' => 'start_voting'])->assertStatus(409)->assertJsonPath('data.status', 'pending');
 
     $session = sessApiStart($host, $deck);
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertOk();
     sessApiAdvance($session, ['action' => 'start_voting'])->assertStatus(409)->assertJsonPath('message', 'This session is not live.');
 });
 
@@ -942,7 +942,7 @@ it('applies an overdue timer before answering the aggregate, for the host and pa
     $session = sessApiStart($host, sessApiDeck($host, [['poll_single', ['time_limit_seconds' => 10, 'config' => $config]]]));
     $run = sessApiCurrent($session);
     [, $token] = sessApiParticipant($session);
-    $url = "/api/v1/quest-sessions/v2/{$session->id}/slide-runs/{$run->id}/aggregate";
+    $url = "/api/v1/quest-sessions/{$session->id}/slide-runs/{$run->id}/aggregate";
     $headers = $viewer === 'participant' ? [ParticipantTokenService::HEADER => $token] : [];
 
     sessApiAdvance($session, ['action' => 'start_voting'])->assertOk();
@@ -1025,7 +1025,7 @@ it('applies an overdue timer on the next state read when no job ran', function (
         ->assertJsonPath('data.seconds_remaining', 10);
 
     $this->travel(10)->seconds();
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertOk()
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertOk()
         ->assertJsonPath('data.current_run.state', 'closed')
         ->assertJsonPath('data.seconds_remaining', null);
     expect($run->fresh()->state_version)->toBe(3);
@@ -1046,7 +1046,7 @@ it('never sleeps in the request or skips a countdown when the sync queue runs a 
     expect(sessApiCurrent($session)->state)->toBe('get_ready');
 
     $this->travel(2)->seconds();
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertOk()->assertJsonPath('data.current_run.state', 'voting');
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertOk()->assertJsonPath('data.current_run.state', 'voting');
 });
 
 it('treats close_voting as done when the time limit closed the slide in the same request', function () {
@@ -1075,7 +1075,7 @@ it('ends a session, closes the voting slide and revokes every participant token'
     sessApiAdvance($session, ['action' => 'start_voting'])->assertOk();
     sessApiParticipantState($session, $token)->assertOk();
 
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk()
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertOk()
         ->assertJsonPath('message', 'Session ended.')
         ->assertJsonPath('data.session.status', 'ended')
         ->assertJsonPath('data.session.ended_at', now()->toISOString())
@@ -1105,8 +1105,8 @@ it('ends a session, closes the voting slide and revokes every participant token'
     expect(sessApiEvents()->map->broadcastAs()->last())->toBe('session.ended');
 
     sessApiParticipantState($session, $token)->assertUnauthorized();
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertStatus(409)->assertJsonPath('data.code', 'invalid_state');
-    $this->getJson("/api/v1/quest-sessions/v2/{$session->id}/state")->assertOk()->assertJsonPath('data.session.status', 'ended');
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertStatus(409)->assertJsonPath('data.code', 'invalid_state');
+    $this->getJson("/api/v1/quest-sessions/{$session->id}/state")->assertOk()->assertJsonPath('data.session.status', 'ended');
 });
 
 it('locks the session row and then the run row for host actions and session end', function () {
@@ -1115,7 +1115,7 @@ it('locks the session row and then the run row for host actions and session end'
 
     DB::enableQueryLog();
     sessApiAdvance($session, ['action' => 'start_voting'])->assertOk();
-    $this->postJson("/api/v1/quest-sessions/v2/{$session->id}/end")->assertOk();
+    $this->postJson("/api/v1/quest-sessions/{$session->id}/end")->assertOk();
     $locks = collect(DB::getQueryLog())->pluck('query')->filter(fn (string $sql) => str_ends_with($sql, 'for update'))->values();
     DB::disableQueryLog();
 

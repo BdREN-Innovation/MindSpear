@@ -6,7 +6,7 @@ import { JOIN_CODE_LENGTH, sanitizeJoinCode } from "../lib/joinCode";
 
 // Six slot boxes over one real <input>: the keyboard, paste, autofill and
 // screen readers all deal with a single plain text field, while the boxes
-// show progress. Upper-cases as you type and drops characters the v2
+// show progress. Upper-cases as you type and drops characters the
 // alphabet never uses (reported through onChange's `rejected`).
 
 export interface CodeInputProps {

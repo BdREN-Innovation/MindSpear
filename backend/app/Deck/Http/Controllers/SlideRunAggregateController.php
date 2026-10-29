@@ -7,8 +7,7 @@ use App\Deck\Participants\ParticipantReadAccess;
 use App\Deck\Participants\SessionLookup;
 use App\Deck\Participants\SlideRunResultsService;
 use App\Deck\Sessions\SessionStateMachine;
-use App\Deck\Support\DeckFeature;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -21,9 +20,7 @@ use Illuminate\Support\Facades\Gate;
  * else 403 results_hidden, also for a run the host has not reached yet). A
  * participant's token keeps working here after the session ended (review
  * screen, ParticipantReadAccess). A signed-in user who does not host the
- * session and sends no token gets 404; no credentials at all is 401. A host
- * without Quest v2 (DeckFeature) gets 403 feature_disabled, unless the
- * request carries a participant token (then it is a participant read).
+ * session and sends no token gets 404; no credentials at all is 401.
  *
  * Like GET state, an overdue timer is applied first
  * (SessionStateMachine::syncDue), so a late timer job never leaves the
@@ -48,14 +45,7 @@ class SlideRunAggregateController extends DeckController
         $sentToken = filled($request->header(ParticipantTokenService::HEADER));
 
         if ($user && Gate::forUser($user)->allows('manage', $deckSession)) {
-            if (DeckFeature::enabled($user, $product)) {
-                return $this->okResponse($this->results->forHost($this->sessionRun($this->machine->syncDue($deckSession), $run), $page));
-            }
-
-            // A host without Quest v2: 403, unless this is a participant's read (token sent).
-            if (! $sentToken) {
-                DeckFeature::assertEnabled($user, $product);
-            }
+            return $this->okResponse($this->results->forHost($this->sessionRun($this->machine->syncDue($deckSession), $run), $page));
         }
 
         $participant = $this->access->participant($request, $deckSession);

@@ -12,7 +12,7 @@ require_once __DIR__ . '/QuizTypeHelpers.php';
 require_once __DIR__ . '/QuizApiHelpers.php';
 
 /*
- * Quiz v2 review fixes Q-S2 / Q-S3 (QUIZ_REDESIGN_PLAN.md "Review fixes"):
+ * Quiz review fixes Q-S2 / Q-S3 (QUIZ_REDESIGN_PLAN.md "Review fixes"):
  * display orders are a keyed (app.key) per-participant shuffle with no
  * "never the given order" rule, and opaque option keys are salted per run.
  */

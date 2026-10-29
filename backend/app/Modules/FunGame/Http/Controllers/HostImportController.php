@@ -66,7 +66,7 @@ class HostImportController extends FunGameController
                 'seconds_per_question' => $suggested['secondsPerQuestion'],
                 'total_seconds' => $suggested['totalSeconds'],
                 'allow_navigation' => true,
-                'source_quiz_id' => $quiz->id,
+                'source_deck_id' => $quiz->id,
             ]);
             $skipped = $this->skippedRows($converted['rows']);
             $import = $this->imports->apply($game, $user, $converted['questions'], 'append', null, 'library_quiz', $quiz->id, $skipped);
@@ -77,7 +77,7 @@ class HostImportController extends FunGameController
         $this->logger->info('game.created_from_library', [
             'game_id' => $game->id,
             'user_id' => $user->id,
-            'source_quiz_id' => $quiz->id,
+            'source_deck_id' => $quiz->id,
         ]);
 
         return $this->createdResponse([
@@ -98,12 +98,12 @@ class HostImportController extends FunGameController
             $converted = $this->imports->fromLibrary($quiz, $model->default_marks, $model->default_negative_marks);
             $questions = $converted['questions'];
             $rows = $converted['rows'];
-            $sourceQuizId = $quiz->id;
+            $sourceDeckId = $quiz->id;
         } else {
             $converted = $this->imports->fromJson($data['questions'] ?? [], $model, $mode);
             $rows = $converted['rows'];
             $questions = array_values(array_filter($converted['questions']));
-            $sourceQuizId = null;
+            $sourceDeckId = null;
         }
 
         $errors = collect($rows)->where('status', 'error')->count();
@@ -125,7 +125,7 @@ class HostImportController extends FunGameController
             $mode,
             $data['timer'] ?? null,
             $data['source'],
-            $sourceQuizId,
+            $sourceDeckId,
             $skipped,
         );
 

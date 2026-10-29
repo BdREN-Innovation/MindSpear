@@ -10,8 +10,6 @@ use App\Deck\Support\ProfanityFilter;
 use App\Models\Deck\Deck;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckSession;
-use App\Services\Live\LiveSessionService;
-use App\Services\Live\ParticipantTokenService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -25,7 +23,6 @@ class ParticipantJoinService
 {
     public function __construct(
         private readonly ParticipantTokenService $tokens,
-        private readonly LiveSessionService $live,
         private readonly DeckBroadcaster $broadcaster,
         private readonly ProfanityFilter $profanity,
         private readonly ParticipantPresence $presence,
@@ -77,14 +74,14 @@ class ParticipantJoinService
                 'total_points' => $locked->product() === Deck::PRODUCT_QUIZ ? 0 : null,
                 'joined_at' => now(),
             ]);
-            $token = $this->tokens->issue($participant, $locked);
+            $token = $this->tokens->issue($participant);
 
             return [$participant->setRelation('session', $locked), $token, $locked, false];
         }, 3);
 
         if (! $rejoined) {
             $this->broadcaster->broadcast($session, ParticipantJoinedPayload::fromParticipant($participant, $session->current_slide_run_id));
-            $this->live->broadcastParticipantCount($session->product(), $session);
+            $this->broadcaster->broadcastParticipantCount($session);
         }
 
         return ['participant' => $participant, 'token' => $token, 'rejoined' => $rejoined];

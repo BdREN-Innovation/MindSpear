@@ -8,7 +8,7 @@ import type { DeckProduct, DeckQaSort, DeckSettings, DeckSettingsPatch, DeckVisi
 import { SegmentedField, SelectField, ToggleField, type ChoiceOption } from "../slides/shared";
 import { ThemeGrid } from "./inspector/DesignTab";
 import { GET_READY_CHOICES, timeLimitOptions } from "./inspector/SettingsTab";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 
 // Deck-wide settings (backend DeckRequest → DeckSettings): default_time_limit,
 // get_ready_seconds, theme, show_qr_sidebar, default_qa_sort, plus the deck's

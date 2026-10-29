@@ -6,7 +6,7 @@ use App\Deck\Exceptions\DeckException;
 use App\Deck\Http\DeckRoutes;
 use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckSession;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Closure;
 use Illuminate\Http\Request;
 use LogicException;

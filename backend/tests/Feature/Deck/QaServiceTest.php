@@ -227,7 +227,7 @@ it('sends new questions only to the host when the feed is hidden from participan
     $event = deckQaBroadcasts('qa.question.submitted')->sole();
     expect($event->isPrivate())->toBeTrue()
         ->and($event->broadcastOn())->toBeInstanceOf(PrivateChannel::class)
-        ->and($event->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}");
+        ->and($event->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}");
 });
 
 // --- Upvotes -------------------------------------------------------------
@@ -409,7 +409,7 @@ it('sends a hidden question\'s trailing count to the host only', function () {
     expect($upvoted)->toHaveCount(2)
         ->and($upvoted->first()->isPrivate())->toBeFalse() // leading edge, before the hide
         ->and($upvoted->last()->isPrivate())->toBeTrue()
-        ->and($upvoted->last()->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}")
+        ->and($upvoted->last()->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}")
         ->and($upvoted->last()->broadcastWith()['upvote_count'])->toBe(2);
 });
 
@@ -427,7 +427,7 @@ it('keeps the host\'s count current when a vote is removed from a hidden questio
 
     $event = deckQaBroadcasts('qa.question.upvoted')->sole();
     expect($event->isPrivate())->toBeTrue()
-        ->and($event->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}")
+        ->and($event->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}")
         ->and($event->broadcastWith())->toMatchArray(['question_id' => $question->id, 'slide_run_id' => $run->id, 'upvote_count' => 0]);
 });
 
@@ -444,7 +444,7 @@ it('sends upvote counts only to the host when the feed is hidden from participan
     $upvoted = deckQaBroadcasts('qa.question.upvoted');
     expect($upvoted)->toHaveCount(2)
         ->and($upvoted->every(fn (LiveBroadcastEvent $e) => $e->isPrivate()
-            && $e->broadcastOn()->name === "private-host.quest.v2.{$run->deck_session_id}"))->toBeTrue()
+            && $e->broadcastOn()->name === "private-host.quest.{$run->deck_session_id}"))->toBeTrue()
         ->and($upvoted->last()->broadcastWith()['upvote_count'])->toBe(2);
 });
 
@@ -479,7 +479,7 @@ it('moderates with a full host payload and a redacted public payload', function 
     $host = $events->first(fn (LiveBroadcastEvent $e) => $e->isPrivate());
     $public = $events->first(fn (LiveBroadcastEvent $e) => ! $e->isPrivate());
 
-    expect($host->broadcastOn()->name)->toBe("private-host.quest.v2.{$run->deck_session_id}")
+    expect($host->broadcastOn()->name)->toBe("private-host.quest.{$run->deck_session_id}")
         ->and($host->broadcastWith())->toMatchArray([
             'question_id' => $question->id,
             'body' => 'Embarrassing question?',

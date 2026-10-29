@@ -1,4 +1,4 @@
-// v2 join codes (backend JoinCodeGenerator): 6 characters from an alphabet
+// Join codes (backend JoinCodeGenerator): 6 characters from an alphabet
 // without the look-alikes O/0 and I/1. The backend ignores case, spaces and
 // dashes; we normalise the same way before checking.
 // Codes are unique across products: the product comes from the lookup
@@ -16,7 +16,7 @@ export interface SanitizedJoinCode {
 	rejected: string[];
 }
 
-/** Keep only v2 alphabet characters (upper-cased, spaces and dashes ignored), capped at 6. */
+/** Keep only alphabet characters (upper-cased, spaces and dashes ignored), capped at 6. */
 export function sanitizeJoinCode(raw: string): SanitizedJoinCode {
 	const rejected: string[] = [];
 	let code = "";
@@ -31,8 +31,8 @@ export function sanitizeJoinCode(raw: string): SanitizedJoinCode {
 	return { code, rejected };
 }
 
-/** True when `raw` (after trimming, upper-casing and dropping spaces/dashes) is a full v2 code. */
-export function isV2JoinCode(raw: string): boolean {
+/** True when `raw` (after trimming, upper-casing and dropping spaces/dashes) is a full code. */
+export function isCompleteJoinCode(raw: string): boolean {
 	const normalised = raw.trim().toUpperCase().replace(/[\s-]+/g, "");
 	return normalised.length === JOIN_CODE_LENGTH && [...normalised].every((char) => ALPHABET_SET.has(char));
 }

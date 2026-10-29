@@ -5,7 +5,7 @@ namespace App\Deck\Scoring;
 use App\Deck\Slides\ScoreResult;
 
 /**
- * The Quiz v2 scoring formula (QUIZ_REDESIGN_PLAN.md "Scoring model"), pure.
+ * The quiz scoring formula (QUIZ_REDESIGN_PLAN.md "Scoring model"), pure.
  *
  * Settings come from a run's config_snapshot['scoring'], which the session
  * launcher fills from the slide columns:

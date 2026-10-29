@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
 
 		return config;
 	},
+	// Players join at /play; /join was the old page (links and QR codes may still point at it).
+	async redirects() {
+		return [{ source: "/join", destination: "/play", permanent: true }];
+	},
 		// Docker/local: the browser calls Laravel through this app (same origin), so
 	// the site works at any address (localhost, 0.0.0.0, a LAN or public IP)
 	// without CORS. Production routes these paths in Nginx instead (READMEv2.md).

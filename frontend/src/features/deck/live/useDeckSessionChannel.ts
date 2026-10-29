@@ -122,7 +122,7 @@ export interface UseDeckSessionChannelOptions<S extends DeckSessionState> {
 	fetchState: (signal: AbortSignal) => Promise<S>;
 	/** A state you already hold (e.g. the start-session response): rendered at once, still resynced on subscribe. */
 	initialState?: S | null;
-	/** Presenter: the session id, to also listen on `private-host.{product}.v2.{id}` for host-only aggregates and Q&A. */
+	/** Presenter: the session id, to also listen on `private-host.{product}.{id}` for host-only aggregates and Q&A. */
 	hostSessionId?: number | null;
 	/**
 	 * GET state after every slide.changed (e.g. a participant who needs has_answered for a

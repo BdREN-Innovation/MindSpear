@@ -45,7 +45,7 @@ export {
 export { submitErrorMessage, useSubmit, type UseSubmitResult } from "./useSubmit";
 export { haptic, useDebouncedValue, usePrefersReducedMotion } from "./hooks";
 
-// Quiz v2 (QF1): additive helpers for the quiz slide types.
+// Quiz (QF1): additive helpers for the quiz slide types.
 export {
 	CorrectMarker,
 	EditorError,

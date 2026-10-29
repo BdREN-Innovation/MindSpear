@@ -14,7 +14,7 @@ use App\Models\Deck\DeckParticipant;
 use App\Models\Deck\DeckParticipantAnswer;
 use App\Models\Deck\DeckSession;
 use App\Models\Deck\DeckSessionSlideRun;
-use App\Services\Live\LiveAggregateService;
+use App\Deck\Broadcasts\LiveAggregateService;
 
 /**
  * Live session views (snake_case, like the broadcast payloads):
@@ -51,7 +51,7 @@ use App\Services\Live\LiveAggregateService;
  */
 class SessionStatePresenter
 {
-    /** Frontend route of the participant join page (/play/[code]; /join stays the legacy v1 page). */
+    /** Frontend route of the participant join page (/play/[code]). */
     public const JOIN_PATH = '/play/';
 
     /** @return array{session_id:int, join_code:string, product:?string, deck_title:?string, status:string, public_channel_key:string} */

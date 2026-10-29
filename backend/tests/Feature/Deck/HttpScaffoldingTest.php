@@ -21,7 +21,7 @@ use App\Models\Deck\SlideOption;
 use App\Models\File;
 use App\Models\User;
 use App\Providers\DeckServiceProvider;
-use App\Services\Live\ParticipantTokenService;
+use App\Deck\Participants\ParticipantTokenService;
 use Database\Factories\Deck\DeckFactory;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\Request;
@@ -139,7 +139,7 @@ function deckHttpLiveSession(?User $host = null, string $product = Deck::PRODUCT
     $session = DeckSession::factory()->live()->create(['deck_id' => $deck->id, 'host_user_id' => $host->id]);
     $run = DeckSessionSlideRun::factory()->create(['deck_session_id' => $session->id]);
     $participant = DeckParticipant::factory()->create(['deck_session_id' => $session->id]);
-    $token = app(ParticipantTokenService::class)->issue($participant, $session);
+    $token = app(ParticipantTokenService::class)->issue($participant);
 
     return compact('host', 'deck', 'session', 'run', 'participant', 'token');
 }
@@ -197,17 +197,17 @@ it('loads route files from a directory in name order with product defaults', fun
     $authoring = Route::getRoutes()->getByName('deck.quest.probe-a');
     $sessions = Route::getRoutes()->getByName('deck.quest.sessions.probe-b');
 
-    expect($authoring->uri())->toBe('api/v1/quests/v2/probe-a')
+    expect($authoring->uri())->toBe('api/v1/quests/probe-a')
         ->and($authoring->defaults)->toBe(['product' => 'quest'])
         ->and($authoring->gatherMiddleware())->toContain('api')
-        ->and($sessions->uri())->toBe('api/v1/quest-sessions/v2/{session}/probe-b')
+        ->and($sessions->uri())->toBe('api/v1/quest-sessions/{session}/probe-b')
         ->and($sessions->defaults)->toBe(['product' => 'quest']);
 
-    $this->get('/api/v1/quests/v2/probe-a')->assertOk()->assertSee('quest');
+    $this->get('/api/v1/quests/probe-a')->assertOk()->assertSee('quest');
 });
 
 it('registers product-scoped routes once per configured product', function () {
-    config(['deck.routes.quiz' => ['authoring' => 'quizzes/v2-probe', 'sessions' => 'quiz-sessions/v2-probe']]);
+    config(['deck.routes.quiz' => ['authoring' => 'quizzes/v2-probe', 'sessions' => 'quiz-sessions-probe']]);
 
     Route::middleware('api')->prefix('api/v1')->group(function () {
         DeckRoutes::authoring(fn (string $product) => Route::get('product-probe', fn () => $product)->name('product-probe'));
@@ -215,14 +215,14 @@ it('registers product-scoped routes once per configured product', function () {
     });
     Route::getRoutes()->refreshNameLookups();
 
-    expect(Route::getRoutes()->getByName('deck.quest.product-probe')->uri())->toBe('api/v1/quests/v2/product-probe')
+    expect(Route::getRoutes()->getByName('deck.quest.product-probe')->uri())->toBe('api/v1/quests/product-probe')
         ->and(Route::getRoutes()->getByName('deck.quiz.product-probe')->uri())->toBe('api/v1/quizzes/v2-probe/product-probe')
         ->and(Route::getRoutes()->getByName('deck.quiz.sessions.quiz-only-probe'))->not->toBeNull()
         ->and(Route::getRoutes()->getByName('deck.quest.sessions.quiz-only-probe'))->toBeNull();
 
-    $this->get('/api/v1/quests/v2/product-probe')->assertSee('quest');
+    $this->get('/api/v1/quests/product-probe')->assertSee('quest');
     $this->get('/api/v1/quizzes/v2-probe/product-probe')->assertSee('quiz');
-    expect(DeckRoutes::prefixes('authoring'))->toBe(['quest' => 'quests/v2', 'quiz' => 'quizzes/v2-probe']);
+    expect(DeckRoutes::prefixes('authoring'))->toBe(['quest' => 'quests', 'quiz' => 'quizzes/v2-probe']);
 });
 
 it('refuses routes without a product and unknown products', function () {
@@ -571,15 +571,4 @@ it('registers the deck rate limiters', function () {
         ->and($join[1]->key)->toBe('deck-join-ip:10.0.0.1')
         ->and($author->key)->toBe('deck-author:10.0.0.1')
         ->and(RateLimiter::limiter('deck-join')(Request::create('/x', 'POST', ['display_name' => ['x']]))[0]->key)->toEndWith('|');
-});
-
-it('exposes quest_v2_enabled on the profile, off by default', function () {
-    $user = DeckFactory::newOwner(null)->refresh();
-    expect($user->quest_v2_enabled)->toBeFalse();
-
-    Sanctum::actingAs($user);
-    $this->getJson('/api/v1/profile/show')->assertOk()->assertJsonPath('data.profile.quest_v2_enabled', false);
-
-    $user->update(['quest_v2_enabled' => true]);
-    $this->getJson('/api/v1/profile/show')->assertOk()->assertJsonPath('data.profile.quest_v2_enabled', true);
 });

@@ -1,8 +1,7 @@
 <?php
 
 use App\Models\File;
-use App\Models\Quiz\Question;
-use App\Models\Quiz\Quiz;
+use App\Models\Quiz\BankQuestion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
@@ -179,17 +178,14 @@ it('renames files and streams their content to the owner', function () {
         ->assertHeader('content-disposition', 'attachment; filename="Biology notes.txt"');
 });
 
-it('warns before deleting an image that questions still use', function () {
+it('warns before deleting an image that bank questions still use', function () {
     $user = libUser();
     Sanctum::actingAs($user);
     $upload = libUpload(UploadedFile::fake()->image('cell.png', 20, 20))->assertCreated();
     $id = $upload->json('data.file.id');
 
-    $quiz = Quiz::create(['title' => 'Cells', 'user_id' => $user->id, 'visibility' => 'private']);
-    Question::create([
-        'quiz_id' => $quiz->id,
+    BankQuestion::create([
         'owner_id' => $user->id,
-        'serial_number' => 1,
         'question_type' => 'quiz_single_choice',
         'question_text' => 'What is shown?',
         'options' => ['choices' => ['A', 'B'], 'correct_answer' => 0],
@@ -200,7 +196,7 @@ it('warns before deleting an image that questions still use', function () {
     $this->deleteJson("/api/v1/library/files/{$id}")
         ->assertStatus(409)
         ->assertJsonPath('data.code', 'file_in_use')
-        ->assertJsonPath('data.references.quiz questions', 1);
+        ->assertJsonPath('data.references.question bank', 1);
     expect(File::find($id))->not->toBeNull();
 
     $this->deleteJson("/api/v1/library/files/{$id}?force=1")->assertOk();

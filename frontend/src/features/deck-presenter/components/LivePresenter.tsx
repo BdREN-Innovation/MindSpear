@@ -10,7 +10,7 @@ import { useDeckSessionChannel } from "@/features/deck/live/useDeckSessionChanne
 import { DeckThemeProvider, getDeckTheme } from "@/features/deck/theme";
 import type { Deck, DeckProduct, HostSessionState, ParticipantRunView, SlideAggregate } from "@/features/deck/types";
 import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/slides/types";
-import { productCopy } from "@/features/deck-editor/components/productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { useFullscreen } from "../hooks/useFullscreen";
 import { useHostControls } from "../hooks/useHostControls";
 import { usePresenterKeyboard } from "../hooks/usePresenterKeyboard";

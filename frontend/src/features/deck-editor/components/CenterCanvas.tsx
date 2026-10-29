@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { DeckProduct, Slide } from "@/features/deck/types";
 import { getSlideType } from "../slideRegistry";
-import { productCopy } from "./productCopy";
+import { productCopy } from "@/features/deck/productCopy";
 import { ScaledSlide, SlidePresenterPreview } from "./SlidePreview";
 
 export interface CenterCanvasProps {

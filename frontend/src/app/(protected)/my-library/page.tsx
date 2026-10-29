@@ -1,68 +1,39 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import NewQuiz from "@/features/dashboard/components/Library/NewQuiz";
-// Surveys are switched off for now.
-// import NewSurvey from "@/features/dashboard/components/Library/NewSurvey";
-import NewQuest from "@/features/dashboard/components/Library/NewQuest";
+import { productCopy } from "@/features/deck/productCopy";
+import type { DeckProduct } from "@/features/deck/types";
+import { DeckLibrarySection } from "@/features/deck-library/DeckLibrarySection";
 
-const TABS = ["Quiz", /* "Survey", */ "Quest"] as const;
-type TabType = (typeof TABS)[number];
+const TABS: DeckProduct[] = ["quiz", "quest"];
 
-const TAB_MAPPING: Record<string, TabType> = {
-	quiz: "Quiz",
-	// survey: "Survey",
-	quest: "Quest",
-};
-
+/** My Library: the user's quizzes and quests, one tab each (?tab=quiz|quest). */
 export default function MyLibraryPage() {
-	const searchParams = useSearchParams();
-	const [activeTab, setActiveTab] = useState<TabType>("Quiz");
-
-	useEffect(() => {
-		const tabParam = searchParams.get("tab");
-
-		if (tabParam && TAB_MAPPING[tabParam]) {
-			setActiveTab(TAB_MAPPING[tabParam]);
-		} else {
-			setActiveTab("Quiz");
-		}
-	}, [searchParams]);
-
-	const renderTabContent = () => {
-		switch (activeTab) {
-			case "Quiz":
-				return <NewQuiz />;
-			// case "Survey":
-			// 	return <NewSurvey />;
-			case "Quest":
-				return <NewQuest />;
-			default:
-				return null;
-		}
-	};
+	const tab = useSearchParams().get("tab");
+	const active: DeckProduct = tab === "quest" ? "quest" : "quiz";
 
 	return (
-		<div className=" ms:mx-auto  p-4 min-h-screen w-full overflow-auto scrollbar-hidden">
-			<div className="flex gap-3 mb-6">
-				{TABS.map((tab) => (
-					<button
-						key={tab}
-						className={`px-5 py-3 rounded-[10px] text-sm font-semibold border transition-colors
-              ${activeTab === tab
-								? "bg-primary text-white border-primary"
-								: "bg-white dark:bg-dark-3 dark:text-white dark:border-gray-7 text-gray-700 border-primary hover:bg-gray-100"
-							}`}
-						onClick={() => setActiveTab(tab)}
+		<div className="min-h-screen w-full overflow-auto p-4 scrollbar-hidden">
+			<nav aria-label="Library" className="mb-6 flex gap-3">
+				{TABS.map((product) => (
+					<Link
+						key={product}
+						href={`/my-library?tab=${product}`}
+						aria-current={product === active ? "page" : undefined}
+						className={`rounded-[10px] border px-5 py-3 text-sm font-semibold transition-colors ${
+							product === active
+								? "border-primary bg-primary text-white"
+								: "border-primary bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-7 dark:bg-dark-3 dark:text-white"
+						}`}
 					>
-						{tab}
-					</button>
+						{productCopy(product).Noun}
+					</Link>
 				))}
-			</div>
+			</nav>
 
-			<div className="bg-white dark:bg-transparent w-full">
-				{renderTabContent()}
+			<div className="w-full bg-white dark:bg-transparent">
+				<DeckLibrarySection key={active} product={active} />
 			</div>
 		</div>
 	);

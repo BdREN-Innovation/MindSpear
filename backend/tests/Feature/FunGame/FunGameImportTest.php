@@ -1,7 +1,8 @@
 <?php
 
-use App\Models\Quiz\Question;
-use App\Models\Quiz\Quiz;
+use App\Models\Deck\Deck;
+use App\Models\Deck\Slide;
+use App\Models\Deck\SlideOption;
 use App\Models\User;
 use App\Modules\FunGame\Models\FunGame;
 use App\Modules\FunGame\Models\FunGameQuestion;
@@ -33,35 +34,37 @@ function fgImportUser(): User
     ]);
 }
 
-/** A My Library quiz with one question of each kind the creator produces. */
-function fgLibraryQuiz(User $user): Quiz
+/**
+ * A My Library quiz deck: a QR code slide, then one question slide of each
+ * kind the editor makes (content slides are never listed).
+ */
+function fgLibraryQuiz(User $user): Deck
 {
-    $quiz = Quiz::create(['title' => 'Networks <b>Basics</b>', 'description' => '<p>Week 3</p>', 'user_id' => $user->id, 'visibility' => 'private']);
-    $q = fn (int $n, string $type, string $text, array $choices, $correct, int $points = 2, int $limit = 20) => Question::create([
-        'quiz_id' => $quiz->id,
-        'owner_id' => $user->id,
-        'serial_number' => $n,
-        'question_type' => $type,
-        'question_text' => $text,
-        'options' => ['choices' => $choices, 'correct_answer' => $correct, 'color' => []],
-        'points' => $points,
-        'time_limit_seconds' => $limit,
-        'visibility' => 'private',
-    ]);
-    $q(1, 'quiz_single_choice', 'Default port for HTTPS?', ['80', '443', '', '22'], 1);
-    $q(2, 'true_false_choice', 'TCP is connection-oriented.', ['True', 'False'], 0, 1);
-    $q(3, 'quiz_multiple_choice', 'Which is a transport protocol?', ['IP', 'UDP', 'ARP'], [1], 3, 45);
-    $q(4, 'quiz_multiple_choice', 'Pick both link-layer protocols', ['Ethernet', 'PPP', 'HTTP'], [0, 1]);
-    $q(5, 'sort_answer_choice', 'Order the OSI layers', ['Physical', 'Link', 'Network'], [0, 1, 2]);
-    $q(6, 'quiz_single_choice', 'Blank correct answer', ['A', '', 'C'], 1);
+    $deck = Deck::factory()->quiz()->ownedBy($user)->create(['title' => 'Networks Basics', 'description' => 'Week 3']);
+    $slide = function (string $type, string $title, array $options = [], int $limit = 20) use ($deck) {
+        $slide = Slide::factory()->ofType($type)->create(['deck_id' => $deck->id, 'title' => $title, 'time_limit_seconds' => $limit]);
+        foreach ($options as [$label, $correct]) {
+            SlideOption::factory()->create(['slide_id' => $slide->id, 'label' => $label, 'is_correct' => $correct]);
+        }
 
-    return $quiz;
+        return $slide;
+    };
+    $slide('qr_code', 'Join');
+    $slide('pick_answer_single', 'Default port for HTTPS?', [['80', false], ['443', true], ['', false], ['22', false]]);
+    $slide('true_false', 'TCP is connection-oriented.', [['True', true], ['False', false]]);
+    $slide('pick_answer_single', 'Which is a transport protocol?', [['IP', false], ['UDP', true], ['ARP', false]], 45);
+    $slide('pick_answer_single', 'Pick both link-layer protocols', [['Ethernet', true], ['PPP', true], ['HTTP', false]]);
+    $slide('correct_order', 'Order the OSI layers', [['Physical', null], ['Link', null], ['Network', null]]);
+    $slide('pick_answer_single', 'Blank correct answer', [['A', false], ['', true], ['C', false]]);
+
+    return $deck;
 }
 
 it('lists only the host\'s own library quizzes and previews the conversion', function () {
     $user = fgImportUser();
     $quiz = fgLibraryQuiz($user);
-    fgLibraryQuiz(fgImportUser()); // someone else's
+    $other = fgLibraryQuiz(fgImportUser());
+    Deck::factory()->ownedBy($user)->create(); // a quest
     Sanctum::actingAs($user);
 
     $list = $this->getJson('/api/v1/fun-games/host/library-quizzes')->assertOk()->json('data.quizzes');
@@ -69,13 +72,13 @@ it('lists only the host\'s own library quizzes and previews the conversion', fun
         ->and($list[0]['questionCount'])->toBe(6);
 
     $preview = $this->getJson("/api/v1/fun-games/host/library-quizzes/{$quiz->id}/preview")->assertOk()->json('data');
-    expect(collect($preview['rows'])->pluck('status')->all())->toBe(['ready', 'ready', 'check', 'skipped', 'skipped', 'skipped'])
+    expect(collect($preview['rows'])->pluck('status')->all())->toBe(['ready', 'ready', 'ready', 'skipped', 'skipped', 'skipped'])
         ->and($preview['importable'])->toBe(3)
         ->and($preview['rows'][3]['messages'][0])->toContain('2 correct answers')
-        ->and($preview['rows'][4]['messages'][0])->toContain('Sort answer')
+        ->and($preview['rows'][4]['messages'][0])->toContain('Correct order')
+        ->and($preview['rows'][5]['messages'][0])->toContain('No correct answer')
         ->and($preview['suggestedTimer']['secondsPerQuestion'])->toBe(20);
 
-    $other = Quiz::where('user_id', '!=', $user->id)->latest('id')->first();
     $this->getJson("/api/v1/fun-games/host/library-quizzes/{$other->id}/preview")->assertNotFound();
 });
 
@@ -87,8 +90,9 @@ it('creates a draft game from a library quiz that owns its own copy of the quest
     $response = $this->postJson('/api/v1/fun-games/host/games/from-library', ['quizId' => $quiz->id])->assertCreated();
     $game = $response->json('data.game');
 
-    expect($game['title'])->toBe('Networks <b>Basics</b>')
+    expect($game['title'])->toBe('Networks Basics')
         ->and($game['description'])->toBe('Week 3')
+        ->and($game['sourceDeckId'])->toBe((string) $quiz->id)
         ->and($game['published'])->toBeFalse()
         ->and($game['timer'])->toMatchArray(['mode' => 'perQuestion', 'secondsPerQuestion' => 20])
         ->and($game['questions'])->toHaveCount(3)
@@ -98,12 +102,12 @@ it('creates a draft game from a library quiz that owns its own copy of the quest
     $first = $game['questions'][0];
     expect(collect($first['options'])->pluck('text')->all())->toBe(['80', '443', '22'])
         ->and(collect($first['options'])->firstWhere('id', $first['correctOptionId'])['text'])->toBe('443')
-        ->and($first['marks'])->toEqual(2);
+        ->and($first['marks'])->toEqual(1);
     // A different time limit is kept as a per-question override.
     expect($game['questions'][2]['secondsOverride'])->toBe(45);
 
     // Editing the library quiz later doesn't change the game.
-    Question::where('quiz_id', $quiz->id)->update(['question_text' => 'Changed']);
+    Slide::where('deck_id', $quiz->id)->update(['title' => 'Changed']);
     expect(FunGameQuestion::where('fun_game_id', $game['id'])->pluck('text')->contains('Changed'))->toBeFalse();
 });
 

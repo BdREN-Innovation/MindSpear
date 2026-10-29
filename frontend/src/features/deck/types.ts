@@ -1,4 +1,4 @@
-// Shared slide engine (Quest v2 + Quiz v2): every shape the deck API and the
+// The slide engine behind quizzes and quests: every shape the deck API and the
 // realtime channels send. Derived from the backend code, which is the
 // contract (QUEST_REDESIGN_PLAN.md / QUIZ_REDESIGN_PLAN.md "Implementation notes"):
 //   - authoring responses: backend/app/Deck/Http/Resources/{Deck,Slide,Option,Media}Presenter.php (camelCase)
@@ -57,7 +57,7 @@ export type ContentSlideTypeKey =
 	| "big_text"
 	| "qr_code";
 
-/** Quiz v2 types (products ['quiz']). The scored ones take answers; spinner_wheel and leaderboard do not. */
+/** Quiz types (products ['quiz']). The scored ones take answers; spinner_wheel and leaderboard do not. */
 export type QuizSlideTypeKey =
 	| "pick_answer_single"
 	/** Retired: Pick answer takes several correct answers now. Kept so past runs still render. */
@@ -212,7 +212,7 @@ export const DECK_LIMITS = {
 	openEndedPageSize: 20,
 } as const;
 
-/** Quiz v2 limits and defaults (config/deck.php `quiz`, SlideInput, Quiz/*SlideType constants). */
+/** Quiz limits and defaults (config/deck.php `quiz`, SlideInput, Quiz/*SlideType constants). */
 export const QUIZ_LIMITS = {
 	/** slides.points_min / points_max: 0..maxPoints, min ≤ max. */
 	maxPoints: 1000,
@@ -473,7 +473,7 @@ export interface QrCodeConfig {
 	show_join_code: boolean;
 }
 
-/* --- Quiz v2 --------------------------------------------------------- */
+/* --- Quiz ------------------------------------------------------------ */
 
 /**
  * A type without settings. PHP sends an empty config as `[]` (authoring config
@@ -1017,7 +1017,7 @@ export interface PinOnImageAggregate {
 /** Content types: `[]` inside a presenter run, `{}` from GET .../aggregate. */
 export type EmptyAggregate = Record<string, never> | never[];
 
-/* --- Quiz v2 aggregates ---------------------------------------------- */
+/* --- Quiz aggregates ------------------------------------------------- */
 /* Hidden from participants until `reveal` (403 results_hidden); the host
    gets them live on the host channel. Every scored aggregate ends with
    `correct` (the answer key). */
@@ -1687,7 +1687,7 @@ export interface JoinInfo {
 export interface SessionChannels {
 	/** "session.{product}.{public_channel_key}" */
 	public: string;
-	/** "host.{product}.v2.{session_id}" (private) */
+	/** "host.{product}.{session_id}" (private) */
 	host: string;
 }
 
@@ -2256,11 +2256,6 @@ export type DeckErrorCode =
 	| "results_hidden"
 	| "too_many_requests"
 	| "payload_too_large"
-	/**
-	 * 403: users.quest_v2_enabled / quiz_v2_enabled is off (authoring + host routes, incl. host leaderboard).
-	 * Profile `quest_v2_enabled` / `quiz_v2_enabled` tells the UI up front. Participants are never gated.
-	 */
-	| "feature_disabled"
 	/** 422: the deck would exceed max slides (data.max_slides; also validation_errors.slides). */
 	| "slide_limit_reached"
 	/** 422 without a code. */
