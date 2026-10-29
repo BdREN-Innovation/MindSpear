@@ -474,23 +474,40 @@ NEXT_PUBLIC_APP_URL=https://mindspear.app
 NEXT_PUBLIC_AI_API_URL=/ai-api
 ```
 
-The AI server (`ai-server/`, FastAPI on port 8001) runs as its own process or container with
-`OPENAI_API_KEY`, `LARAVEL_API_URL=https://mindspear.app/api/v1` and no `CORS_ORIGINS` (the browser
-reaches it through `/ai-api` on the site's origin). Add to the Nginx server block:
-
-```nginx
-location /ai-api/ {
-    proxy_pass http://127.0.0.1:8001/;
-    proxy_read_timeout 180s;
-}
-```
-
 Build:
 
 ```bash
 npm ci
 npm run build
 chown -R www-data:www-data /var/www/mindspear/frontend/.next
+```
+
+### 8.1 AI Server
+
+The AI server (`ai-server/`, FastAPI on 127.0.0.1:8001) writes quiz / quest / fun-game items. The
+browser reaches it through `/ai-api` on the site's origin (Nginx, section 10), so it needs no CORS.
+It runs on Ubuntu 24.04's Python 3.12 in a uv-managed virtualenv:
+
+```bash
+curl -LsSf https://astral.sh/uv/0.12.23/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+cd /var/www/mindspear/ai-server
+# The system Python, not a uv-downloaded one under /root that www-data can't read.
+uv sync --frozen --no-dev --python /usr/bin/python3.12
+cp .env.example .env
+chown root:www-data .env
+chmod 640 .env
+```
+
+Edit `/var/www/mindspear/ai-server/.env`:
+
+```env
+APP_ENV=production
+CORS_ORIGINS=
+LARAVEL_API_URL=https://mindspear.app/api/v1
+AUTH_DISABLED=false
+OPENAI_API_KEY=REPLACE_WITH_OPENAI_KEY
+OPENAI_MODEL=gpt-4o
 ```
 
 ### 9. systemd Services
@@ -561,19 +578,41 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
+Create `/etc/systemd/system/mindspear-ai.service`:
+
+```ini
+[Unit]
+Description=MindSpear AI server (question generation)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+# Settings are read from .env in this directory.
+WorkingDirectory=/var/www/mindspear/ai-server
+ExecStart=/var/www/mindspear/ai-server/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
 Start services:
 
 ```bash
 systemctl daemon-reload
-systemctl enable --now mindspear-frontend mindspear-reverb mindspear-queue
-systemctl status mindspear-frontend mindspear-reverb mindspear-queue --no-pager
+systemctl enable --now mindspear-frontend mindspear-reverb mindspear-queue mindspear-ai
+systemctl status mindspear-frontend mindspear-reverb mindspear-queue mindspear-ai --no-pager
 ```
 
 Check local listeners:
 
 ```bash
-ss -ltnp | grep -E ':2000|:8080|:5432|:6379'
+ss -ltnp | grep -E ':2000|:8001|:8080|:5432|:6379'
 curl -I http://127.0.0.1:2000
+curl http://127.0.0.1:8001/health
 ```
 
 ### 10. Nginx
@@ -720,6 +759,14 @@ server {
     location ~ /\.(?!well-known).* { deny all; }
     location ~* \.(?:env|log|sqlite)$ { deny all; }
 
+    # The AI server (section 8.1). A generation with a top-up can take minutes.
+    location ^~ /ai-api/ {
+        proxy_pass http://127.0.0.1:8001/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_read_timeout 300s;
+    }
+
     location /_next/static/ {
         proxy_pass http://127.0.0.1:2000;
         proxy_cache_valid 200 1y;
@@ -776,7 +823,7 @@ echo '* * * * * cd /var/www/mindspear/backend && /usr/bin/php8.4 artisan schedul
 
 ```bash
 systemctl status nginx php8.4-fpm postgresql redis-server --no-pager
-systemctl status mindspear-frontend mindspear-reverb mindspear-queue --no-pager
+systemctl status mindspear-frontend mindspear-reverb mindspear-queue mindspear-ai --no-pager
 ```
 
 ### HTTP
@@ -785,6 +832,8 @@ systemctl status mindspear-frontend mindspear-reverb mindspear-queue --no-pager
 curl -I https://mindspear.app
 curl -I https://mindspear.app/up
 curl -I https://mindspear.app/api/v1/user-check
+curl https://mindspear.app/ai-api/health
+curl -i -X POST https://mindspear.app/ai-api/v1/generate
 ```
 
 Expected:
@@ -792,6 +841,7 @@ Expected:
 - `https://mindspear.app` returns `200` or a valid app redirect.
 - `https://mindspear.app/up` returns `200`.
 - `https://mindspear.app/api/v1/user-check` returns `401` when unauthenticated; that proves the request reached Laravel.
+- `https://mindspear.app/ai-api/health` returns `{"status":"ok"}`, and the unauthenticated `POST .../v1/generate` returns `401`; that proves Nginx reaches the AI server.
 
 Test Reverb with a real WebSocket upgrade request, not `curl -I`:
 
@@ -940,6 +990,10 @@ npm ci
 npm run build
 chown -R www-data:www-data /var/www/mindspear/frontend/.next
 systemctl restart mindspear-frontend
+
+cd /var/www/mindspear/ai-server
+uv sync --frozen --no-dev --python /usr/bin/python3.12
+systemctl restart mindspear-ai
 
 nginx -t
 systemctl reload nginx

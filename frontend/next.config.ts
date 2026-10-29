@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
 	images: {
 		domains: ["mindspear.app", "lh3.googleusercontent.com"],
 	},
+	experimental: {
+		// The rewrites below are cut off after 30 s by default; an AI generation (/ai-api) with a
+		// top-up often takes longer. 5 minutes covers the AI server's own model timeouts and retries.
+		proxyTimeout: 300_000,
+	},
 	webpack(config, { isServer }) {
 		// Apply the node-loader for .node files
 		config.module.rules.push({

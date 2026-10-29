@@ -1,0 +1,44 @@
+[project]
+name = "mindspear-ai-server"
+version = "0.1.0"
+description = "MindSpear AI generation service: writes quiz, quest and fun-game questions from document text."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "httpx>=0.27,<1",
+    "langgraph>=0.2.60,<2",
+    "langchain-core>=0.3.30,<2",
+    "langchain-openai>=0.3,<2",
+    "langchain-openrouter>=0.2.9,<0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

@@ -85,4 +85,4 @@ db_dumps/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-/ai-server/
+# /ai-server/
