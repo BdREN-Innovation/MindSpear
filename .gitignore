@@ -88,3 +88,4 @@ __pycache__/
 # /ai-server/
 # Playwright MCP browser session output
 .playwright-mcp/
+/backend_js/

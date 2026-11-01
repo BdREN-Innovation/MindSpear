@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
 	// `next dev` / `next start` elsewhere are unaffected.
 	output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
 	images: {
-		domains: ["mindspear.app", "lh3.googleusercontent.com"],
+		domains: ["mindspear.app", "dev.mindspear.app", "lh3.googleusercontent.com"],
 	},
 	experimental: {
 		// The rewrites below are cut off after 30 s by default; an AI generation (/ai-api) with a

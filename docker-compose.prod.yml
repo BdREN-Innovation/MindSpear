@@ -1,0 +1,166 @@
+# Production stack for https://dev.mindspear.app, behind the nginx installed on this server
+# (deploy/nginx/dev.mindspear.app.conf). Settings, each with a .env.prod.example template beside it:
+#   backend/.env.prod    Laravel, PostgreSQL and Redis
+#   ai-server/.env.prod  the AI server
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# The project name keeps these containers and volumes separate from docker-compose.yml (dev),
+# so both can run on this machine. Only four services publish a port, on 127.0.0.1, so they are
+# reached through nginx; PostgreSQL and Redis publish none.
+name: mindspear-prod
+
+x-backend: &backend
+  image: mindspear-prod-backend
+  env_file: backend/.env.prod
+  volumes:
+    - storage:/app/storage/app
+  networks:
+    - mindspear
+  restart: unless-stopped
+
+x-after-backend: &after-backend
+  depends_on:
+    # Healthy means migrations have finished (see backend/docker/prod/entrypoint.sh).
+    backend:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: backend/.env.prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - mindspear
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    env_file: backend/.env.prod
+    # appendonly: queued jobs survive a restart.
+    command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes:
+      - redisdata:/data
+    networks:
+      - mindspear
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+      interval: 5s
+      retries: 10
+
+  # php-fpm. Also the one service that migrates and seeds on start (RUN_MIGRATIONS).
+  backend:
+    <<: *backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: app
+    environment:
+      RUN_MIGRATIONS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 180s
+
+  # nginx in front of php-fpm: serves public/ and uploaded files.
+  backend-web:
+    image: mindspear-prod-backend-web
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: web
+    ports:
+      - "127.0.0.1:8100:80"
+    volumes:
+      - storage:/app/storage/app:ro
+    networks:
+      - mindspear
+    restart: unless-stopped
+    <<: *after-backend
+
+  # Live websockets; nginx forwards wss://dev.mindspear.app/app/... here.
+  reverb:
+    <<: [*backend, *after-backend]
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    ports:
+      - "127.0.0.1:8180:8080"
+
+  # The default queue: live broadcasts and aggregate snapshots. Without it they are never sent.
+  # --sleep=0.2: the last chart update of a burst is not held back by up to 3 s.
+  queue:
+    <<: [*backend, *after-backend]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=default", "--sleep=0.2", "--tries=3", "--max-time=3600"]
+
+  # Fun Games: scores finished games.
+  fungames-queue:
+    <<: [*backend, *after-backend]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=fungames", "--tries=3", "--max-time=3600"]
+
+  # Fun Games: locks questions, opens the next one and ends games on the server clock.
+  # Exits hourly (--max-runtime) and is restarted fresh.
+  fungames-ticker:
+    <<: [*backend, *after-backend]
+    command: ["php", "artisan", "fun-games:tick", "--loop", "--max-runtime=3600"]
+
+  frontend:
+    image: mindspear-prod-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: run
+      # Compiled into the browser bundle, so they can't come from env_file: after changing one,
+      # rebuild with `up -d --build frontend`. nginx routes /api/v1 and /ai-api, so no Next.js
+      # rewrites. The Reverb key (public) must equal REVERB_APP_KEY in backend/.env.prod.
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://dev.mindspear.app/api/v1
+        NEXT_PUBLIC_APP_URL: https://dev.mindspear.app
+        NEXT_PUBLIC_AI_API_URL: /ai-api
+        NEXT_PUBLIC_REVERB_APP_KEY: 30c628dbab604ec2cfaa43f4018cde23
+        NEXT_PUBLIC_REVERB_HOST: dev.mindspear.app
+        NEXT_PUBLIC_REVERB_PORT: 443
+        NEXT_PUBLIC_REVERB_SCHEME: https
+    ports:
+      - "127.0.0.1:3100:3000"
+    networks:
+      - mindspear
+    restart: unless-stopped
+    depends_on:
+      - backend-web
+      - reverb
+
+  # AI question generation. Checks the user's token against Laravel, then calls OpenRouter.
+  # Its settings are in ai-server/.env.prod (template: ai-server/.env.prod.example).
+  ai-server:
+    image: mindspear-prod-ai-server
+    build: ./ai-server
+    env_file: ai-server/.env.prod
+    ports:
+      - "127.0.0.1:8101:8001"
+    networks:
+      - mindspear
+    restart: unless-stopped
+    depends_on:
+      - backend-web
+
+networks:
+  mindspear:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  # Uploaded files. Mounted over storage/app, so public and private uploads survive rebuilds.
+  storage:
