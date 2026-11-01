@@ -99,15 +99,12 @@ services:
       - "127.0.0.1:8180:8080"
 
   # The default queue: live broadcasts and aggregate snapshots. Without it they are never sent.
-  # --sleep=0.2: the last chart update of a burst is not held back by up to 3 s.
+  # --sleep=0.2: the last chart update of a burst is not held back by up to 3 s. Also scores
+  # finished Fun Games (the "fungames" queue), listed second so live updates go first. If scoring
+  # is held up, the ticker scores a game itself about 10 s after it ends.
   queue:
     <<: [*backend, *after-backend]
-    command: ["php", "artisan", "queue:work", "redis", "--queue=default", "--sleep=0.2", "--tries=3", "--max-time=3600"]
-
-  # Fun Games: scores finished games.
-  fungames-queue:
-    <<: [*backend, *after-backend]
-    command: ["php", "artisan", "queue:work", "redis", "--queue=fungames", "--tries=3", "--max-time=3600"]
+    command: ["php", "artisan", "queue:work", "redis", "--queue=default,fungames", "--sleep=0.2", "--tries=3", "--max-time=3600"]
 
   # Fun Games: locks questions, opens the next one and ends games on the server clock.
   # Exits hourly (--max-runtime) and is restarted fresh.
