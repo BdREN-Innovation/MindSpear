@@ -92,30 +92,13 @@ services:
     restart: unless-stopped
     command: php artisan fun-games:tick --loop --max-runtime=3600
 
-  # Fun Games: scores finished games. Only the "fungames" queue, so it doesn't
-  # pick up other queued work. If it isn't running, the ticker scores a game
-  # itself about 10 s after it ends.
-  fungames-queue:
-    build: ./backend
-    env_file: ./backend/.env.docker
-    volumes:
-      - ./backend:/app
-      # artisan serve's request workers read /app/.env, not container env vars
-      - ./backend/.env.docker:/app/.env
-      - /app/vendor
-    networks:
-      - mindspear
-    depends_on:
-      backend:
-        condition: service_started
-    restart: unless-stopped
-    command: php artisan queue:work redis --queue=fungames --tries=3 --max-time=3600
-
   # The default queue: queued live broadcasts (LiveBroadcastEvent), live
   # aggregate snapshots and the trailing deck aggregate / Q&A upvote
   # broadcasts. Without it those jobs are never sent. --sleep=0.2: an idle
   # worker polls every 0.2 s instead of 3 s, so the last chart update of a
-  # burst is not held back by up to 3 s.
+  # burst is not held back by up to 3 s. Also scores finished Fun Games (the
+  # "fungames" queue), listed second so live updates go first. If scoring is
+  # held up, the ticker scores a game itself about 10 s after it ends.
   queue:
     build: ./backend
     env_file: ./backend/.env.docker
@@ -130,7 +113,7 @@ services:
       backend:
         condition: service_started
     restart: unless-stopped
-    command: php artisan queue:work redis --queue=default --sleep=0.2 --tries=3 --max-time=3600
+    command: php artisan queue:work redis --queue=default,fungames --sleep=0.2 --tries=3 --max-time=3600
 
   # The production build (frontend/Dockerfile, "run" stage): no hot reload, so code changes
   # need `docker compose up -d --build frontend`. For `next dev` with hot reload, build

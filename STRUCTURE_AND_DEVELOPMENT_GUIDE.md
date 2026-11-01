@@ -819,8 +819,8 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 | `postgres`, `redis` | Databases (PostgreSQL 16, Redis 7) |
 | `backend` | `migrate --force`, seed when empty, `storage:link`, `artisan serve` on 8000 |
 | `reverb` | `reverb:start` on 8080 |
-| `queue` | `queue:work` on the default queue: slide timers, trailing aggregate and Q&A upvote broadcasts. Without it, timers only advance through the read-time fallback and the trailing (final) result broadcasts are never sent. |
-| `fungames-ticker`, `fungames-queue` | `fun-games:tick --loop`; the `fungames` queue (scoring) |
+| `queue` | `queue:work` on the default queue, then the `fungames` queue: slide timers, trailing aggregate and Q&A upvote broadcasts, Fun Games scoring. Without it, timers only advance through the read-time fallback, the trailing (final) result broadcasts are never sent, and Fun Games scoring waits for the ticker's fallback. |
+| `fungames-ticker` | `fun-games:tick --loop` |
 | `frontend`, `frontend-dev` | Production build on 2000; `next dev` with hot reload on 3001 |
 | `ai-server` | FastAPI on 8001 (needs `ai-server/.env`) |
 
