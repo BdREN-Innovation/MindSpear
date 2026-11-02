@@ -10,7 +10,7 @@ Route::post('/forgot-password', [AuthenticationController::class, 'forgotPasswor
 Route::post('/forgot-password-resend', [AuthenticationController::class, 'forgotPasswordResend']);
 Route::post('/reset-password', [AuthenticationController::class, 'resetPassword']);
 Route::post('/verify-email', [AuthenticationController::class, 'verifyEmail']);
-Route::post('/resend-verification', [AuthenticationController::class, 'resendVerificationEmail']);
+Route::post('/resend-verification', [AuthenticationController::class, 'resendVerificationEmail'])->middleware('throttle:resend-verification');
 
 // 🔒 Protected routes using Sanctum tokens
 Route::middleware('auth:sanctum')->group(function () {

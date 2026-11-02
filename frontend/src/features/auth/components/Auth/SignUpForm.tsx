@@ -12,6 +12,7 @@ import { registerUser, clearError } from "@/features/auth/store/authSlice";
 import type { RootState, AppDispatch } from "@/stores/store";
 import Image from "next/image";
 import Link from "next/link";
+import ResendVerificationEmail from "./ResendVerificationEmail";
 
 const formSchema = z
 	.object({
@@ -33,6 +34,8 @@ export default function SignUpForm() {
 	const { loading: registerLoading, error: registerError } = useSelector((state: RootState) => state.auth);
 	const [apiMassage, setMassage] = useState<string | null>(null);
 	const [isVerify, setIsVerify] = useState(false);
+	const [emailFailed, setEmailFailed] = useState(false);
+	const [registeredEmail, setRegisteredEmail] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
 	const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
 
@@ -54,7 +57,14 @@ export default function SignUpForm() {
 		const result = await dispatch(registerUser(data));
 
 		if (registerUser.fulfilled.match(result)) {
-			setMassage("Registration successful! Please check your email.");
+			const failed = result.payload.emailSent === false;
+			setEmailFailed(failed);
+			setMassage(
+				failed
+					? "Your account was created, but we could not send the verification email. Please try again below."
+					: "Registration successful! Please check your email."
+			);
+			setRegisteredEmail(data.email);
 			setIsVerify(true);
 			// Reset form after successful registration
 			reset();
@@ -75,7 +85,11 @@ export default function SignUpForm() {
 				</Link>
 				<h1 className="text-3xl font-bold mb-2 text-[#222]">
 					{" "}
-					{isVerify ? " Check your email!" : ""}
+					{isVerify
+						? emailFailed
+							? "We couldn't send your email"
+							: " Check your email!"
+						: ""}
 				</h1>
 				<p className="text-lg mb-4 text-center max-w-md text-[#222]">
 					{isVerify
@@ -85,7 +99,13 @@ export default function SignUpForm() {
 			</div>
 
 			{isVerify ? (
-				""
+				<ResendVerificationEmail
+					email={registeredEmail}
+					onSent={() => {
+						setEmailFailed(false);
+						setMassage("Your verification link is on its way.");
+					}}
+				/>
 			) : (
 				<form onSubmit={handleSubmit(onSubmit)}>
 					<div className="grid grid-cols-2 gap-4">
