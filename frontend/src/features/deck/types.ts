@@ -171,6 +171,8 @@ export const DECK_LIMITS = {
 	maxSlideTitle: 280,
 	maxOptionLabel: 200,
 	maxOptionPayloadBytes: 512,
+	/** matrix_2x2 axis end labels (Matrix2x2SlideType::LABEL_MAX). */
+	maxAxisLabel: 80,
 	minTimeLimitSeconds: 5,
 	maxTimeLimitSeconds: 3600,
 	maxGetReadySeconds: 30,

@@ -71,7 +71,7 @@ export function ChapterList({ chapters, parts, selected, unit, maxParts, onToggl
 						onChange={(e) => setFilter(e.target.value)}
 						placeholder="Find a chapter"
 						aria-label="Find a chapter"
-						className="h-8 w-full rounded-lg border border-stroke pl-8 pr-8 text-xs outline-none focus:border-primary dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
+						className="h-8 w-full rounded-lg border border-stroke pl-8 pr-8 text-xs outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
 					/>
 					{filter ? (
 						<button type="button" onClick={() => setFilter("")} aria-label="Clear" className="absolute right-2 top-1/2 -translate-y-1/2 text-dark-5 hover:text-dark">
@@ -100,10 +100,10 @@ export function ChapterList({ chapters, parts, selected, unit, maxParts, onToggl
 								className={cn(
 									"flex items-center gap-1 rounded-lg border transition",
 									state === "all"
-										? "border-primary bg-primary-50/60 dark:bg-dark-2"
+										? "border-secondary bg-secondary-50/60 dark:bg-dark-2"
 										: state === "some"
-											? "border-primary/40"
-											: "border-stroke hover:border-primary/50 dark:border-stroke-dark",
+											? "border-secondary-200"
+											: "border-stroke hover:border-secondary-200 dark:border-stroke-dark",
 								)}
 							>
 								{chapter.hasChildren && !query ? (
@@ -121,12 +121,12 @@ export function ChapterList({ chapters, parts, selected, unit, maxParts, onToggl
 								<button
 									type="button"
 									onClick={() => onToggle(chapter, state !== "all")}
-									className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+									className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pr-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50"
 								>
 									<span
 										className={cn(
 											"flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded border-2",
-											state === "none" ? "border-gray-4 bg-white dark:bg-dark-2" : "border-primary bg-primary text-white",
+											state === "none" ? "border-gray-4 bg-white dark:bg-dark-2" : "border-secondary-500 bg-secondary-500 text-white",
 										)}
 									>
 										{state === "all" ? <Check className="h-3 w-3" aria-hidden /> : state === "some" ? <Minus className="h-3 w-3" aria-hidden /> : null}

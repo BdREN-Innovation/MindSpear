@@ -5,15 +5,17 @@ schema is a Union told apart by "type".
 
 The models check the shapes and the MEANING of the answer key (one correct
 option on a single-answer pick, a right and a wrong one on a multi, distinct
-choices, items that name a listed category). A question that fails is
-dropped here, where a top-up can replace it, instead of by the frontend
-mapper after the fact. They accept more items than the backend allows: the
-mapper trims and clamps to the backend option limits, so a question with 9
-order items is cut down, not thrown away. The caps here only stop absurd output.
+choices, items that name a listed category, a sentence that has blanks). A
+question that fails is dropped here, where a top-up can replace it, instead
+of by the frontend mapper after the fact. They accept more items than the
+backend allows: the mapper trims and clamps to the backend option limits, so
+a question with 9 order items is cut down, not thrown away. The caps here
+only stop absurd output.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -24,6 +26,14 @@ from app.generation.schemas.common import ItemModel, Text, distinct, text_key
 from app.generation.types import Noun, QuestionType, TargetSpec
 
 SANE_MAX = 50
+
+#: A blank of a fill_blanks / drag_drop sentence: its answer in [square brackets] (backend BlankText).
+_BLANK = re.compile(r"\[([^\[\]\n]*)\]")
+
+#: Backend BlankText limits. A sentence can't be shortened without breaking it, so one over them is dropped here.
+MAX_SENTENCE = 600
+MAX_BLANKS = 10
+MAX_BLANK_ANSWER = 60
 
 
 class Choice(ItemModel):
@@ -86,6 +96,51 @@ class CorrectOrder(ItemModel):
         return self
 
 
+def blank_answers(sentence: str) -> list[str]:
+    """The answers of a sentence's blanks, in reading order (empty brackets stay text)."""
+    return [answer.strip() for answer in _BLANK.findall(sentence) if answer.strip()]
+
+
+def _check_blanks(sentence: str) -> list[str]:
+    answers = blank_answers(sentence)
+    if len(sentence) > MAX_SENTENCE:
+        raise ValueError(f"the sentence is longer than {MAX_SENTENCE} characters")
+    if not 1 <= len(answers) <= MAX_BLANKS:
+        raise ValueError(f"the sentence needs 1–{MAX_BLANKS} [bracketed] blanks")
+    if any(len(answer) > MAX_BLANK_ANSWER for answer in answers):
+        raise ValueError("a blank's answer is too long")
+    return answers
+
+
+class FillBlanks(ItemModel):
+    type: Literal["fill_blanks"]
+    title: Text
+    #: Each missing word in [square brackets]; players type it.
+    sentence: Text
+
+    @model_validator(mode="after")
+    def _has_blanks(self) -> FillBlanks:
+        _check_blanks(self.sentence)
+        return self
+
+
+class DragDrop(ItemModel):
+    type: Literal["drag_drop"]
+    title: Text
+    #: Each missing word in [square brackets]; players drag it from a word bank.
+    sentence: Text
+    #: Wrong words added to the word bank.
+    distractors: list[Text] = Field(default_factory=list, max_length=SANE_MAX)
+
+    @model_validator(mode="after")
+    def _has_blanks_and_a_wrong_word(self) -> DragDrop:
+        answers = {text_key(answer) for answer in _check_blanks(self.sentence)}
+        # With no wrong word in the bank, the last blank fills itself.
+        if not any(text_key(word) not in answers for word in self.distractors):
+            raise ValueError("drag_drop needs at least one distractor that is not an answer")
+        return self
+
+
 class Pair(ItemModel):
     left: Text
     right: Text
@@ -130,13 +185,16 @@ class Categorise(ItemModel):
 
 #: A plain Union (JSON Schema anyOf, which every structured-output mode accepts): the
 #: "type" literal on each member still makes validation unambiguous.
-QuizSlide = PickAnswerSingle | PickAnswerMulti | TrueFalse | ShortAnswer | CorrectOrder | MatchPairs | Categorise
+QuizSlide = (
+    PickAnswerSingle | PickAnswerMulti | TrueFalse | ShortAnswer | FillBlanks | DragDrop | CorrectOrder | MatchPairs | Categorise
+)
 
 
+#: Labels as in the editor's slide picker. Both pick kinds become one "Pick answer" slide.
 QUESTION_TYPES = (
     QuestionType(
         "pick_answer_single",
-        "Pick answer · one correct",
+        "Pick answer",
         '"pick_answer_single": exactly 4 options, exactly ONE with "correct": true and the others "correct": false; '
         "plausible distractors, correct option at a random position.",
         shape=(
@@ -159,7 +217,7 @@ QUESTION_TYPES = (
     ),
     QuestionType(
         "true_false",
-        "True / False",
+        "True or false",
         '"true_false": the title is a statement that is clearly true or clearly false according to the material; '
         '"answer" is true or false. Mix true and false statements.',
         shape='{ "type": "true_false", "title": "string", "answer": true }',
@@ -171,6 +229,31 @@ QUESTION_TYPES = (
         "spellings or synonyms of that one answer, each under 100 characters (matching ignores letter case).",
         shape='{ "type": "short_answer", "title": "string", "accepted_answers": ["string", "string"] }',
         hint="Typed answer, up to 5 accepted spellings",
+    ),
+    QuestionType(
+        "fill_blanks",
+        "Fill in the blanks",
+        '"fill_blanks": one sentence (under 40 words) stated in or closely paraphrased from the material, with 1–3 '
+        "key words or short terms in [square brackets]; each bracket holds the missing word, which players type, so "
+        'it has one clear spelling (matching ignores letter case). "title" is a short instruction such as "Fill in '
+        'the blanks". Use square brackets only for blanks.',
+        shape=(
+            '{ "type": "fill_blanks", "title": "string", '
+            '"sentence": "Plants make food by [photosynthesis] using energy from [sunlight]." }'
+        ),
+        hint="Players type the missing words",
+    ),
+    QuestionType(
+        "drag_drop",
+        "Drag and drop",
+        '"drag_drop": one sentence like "fill_blanks" with 2–4 key words in [square brackets], plus 2–4 '
+        '"distractors": plausible wrong words of the same kind, none equal to an answer. Players drag the words from a '
+        'word bank into the blanks. "title" is a short instruction such as "Drag the words into place".',
+        shape=(
+            '{ "type": "drag_drop", "title": "string", "sentence": "Water [boils] at 100 °C and [freezes] at 0 °C.", '
+            '"distractors": ["melts", "evaporates"] }'
+        ),
+        hint="Players drag words into the blanks",
     ),
     QuestionType(
         "correct_order",
@@ -223,6 +306,7 @@ SPEC = registry.register(
             "Do not repeat questions.",
         ),
         type_field="type",
-        text_field="title",
+        # Blank questions share titles ("Fill in the blanks"): their sentence tells them apart.
+        text_fields=("title", "sentence"),
     )
 )

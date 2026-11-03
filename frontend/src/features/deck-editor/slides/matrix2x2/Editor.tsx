@@ -1,6 +1,6 @@
 "use client";
 
-import type { AxisLabels } from "@/features/deck/types";
+import { DECK_LIMITS, type AxisLabels } from "@/features/deck/types";
 import type { EditorProps } from "../types";
 import { TextField } from "../shared";
 import { QuestionField } from "../shared/editorKit";
@@ -9,8 +9,6 @@ import { MatrixPlane } from "./MatrixPlane";
 // matrix_2x2 editor (plan §5.4): the question, the four axis labels (≤ 80 chars each,
 // config x_axis / y_axis merge per key) and a small live preview of the
 // plane; the canvas shows the full Presenter with sample dots.
-
-const LABEL_MAX = 80;
 
 type AxisKey = "x_axis" | "y_axis";
 
@@ -25,7 +23,7 @@ export function Matrix2x2Editor({ slide, onChange, errors, disabled }: EditorPro
 				label={label}
 				value={value}
 				placeholder={placeholder}
-				maxLength={LABEL_MAX}
+				maxLength={DECK_LIMITS.maxAxisLabel}
 				showCount
 				debounceMs={300}
 				disabled={disabled}

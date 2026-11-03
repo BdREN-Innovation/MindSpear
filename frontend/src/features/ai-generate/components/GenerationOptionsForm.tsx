@@ -1,12 +1,23 @@
 "use client";
 
 import { useId } from "react";
+import { Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MAX_QUESTIONS, QUESTION_TYPES, TARGET_NOUN, type GenerationOptions, type GenerationTarget } from "../types";
+import { QUESTION_TYPES } from "../questionTypes";
+import { MAX_QUESTIONS, TARGET_NOUN, type GenerationOptions, type GenerationTarget } from "../types";
 
 const fieldClass =
-	"w-full rounded-lg border border-stroke bg-white px-3 py-2 text-sm text-dark outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white";
-const labelClass = "mb-1 block text-sm font-semibold text-dark dark:text-white";
+	"w-full rounded-lg border border-stroke bg-white px-3 py-2 text-sm text-dark outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white";
+const labelClass = "mb-1.5 block text-sm font-semibold text-dark dark:text-white";
+
+/** A chosen chip: the MindSpear orchid, soft, so the orange stays with the main action. */
+const chipOn = "border-secondary-200 bg-secondary-50 text-secondary-600 dark:border-secondary-700 dark:bg-secondary-900/40 dark:text-secondary-200";
+const chipOff =
+	"border-stroke bg-white text-dark-4 hover:border-secondary-200 hover:text-dark dark:border-stroke-dark dark:bg-dark-2 dark:text-dark-6 dark:hover:text-white";
+const chipBase = "rounded-lg border font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/40";
+
+/** One tap for the usual counts; the stepper covers the rest. */
+const COUNT_PRESETS = [5, 10, 15, 20];
 
 interface Props {
 	target: GenerationTarget;
@@ -18,12 +29,16 @@ interface Props {
 export function GenerationOptionsForm({ target, value, onChange }: Props) {
 	const id = useId();
 	const noun = TARGET_NOUN[target];
+	const count = value.questionCount;
 	const set = <K extends keyof GenerationOptions>(key: K, v: GenerationOptions[K]) => onChange({ ...value, [key]: v });
+	const setCount = (next: number) => set("questionCount", Math.max(1, Math.min(MAX_QUESTIONS, Math.round(next) || 1)));
 	const toggleType = (type: string) =>
 		set("questionTypes", value.questionTypes.includes(type) ? value.questionTypes.filter((t) => t !== type) : [...value.questionTypes, type]);
+	const stepClass =
+		"flex w-9 items-center justify-center text-dark-4 transition hover:bg-gray-1 hover:text-dark disabled:pointer-events-none disabled:opacity-40 dark:text-dark-6 dark:hover:bg-dark-3 dark:hover:text-white";
 
 	return (
-		<div className="space-y-4">
+		<div className="space-y-5">
 			<div>
 				<label htmlFor={`${id}-topic`} className={labelClass}>
 					Topic <span className="text-red">*</span>
@@ -35,25 +50,40 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 				<label htmlFor={`${id}-count`} className={labelClass}>
 					Number of {noun.plural} <span className="font-normal text-dark-5">(max {MAX_QUESTIONS})</span>
 				</label>
-				<div className="flex items-center gap-3">
-					<input
-						type="range"
-						min={1}
-						max={MAX_QUESTIONS}
-						value={value.questionCount}
-						onChange={(e) => set("questionCount", Number(e.target.value))}
-						className="flex-1 accent-primary"
-						aria-label={`Number of ${noun.plural}`}
-					/>
-					<input
-						id={`${id}-count`}
-						type="number"
-						min={1}
-						max={MAX_QUESTIONS}
-						value={value.questionCount}
-						onChange={(e) => set("questionCount", Math.max(1, Math.min(MAX_QUESTIONS, Number(e.target.value) || 1)))}
-						className={cn(fieldClass, "w-20 text-center")}
-					/>
+				<div className="flex flex-wrap items-center gap-2">
+					<div className="inline-flex h-10 overflow-hidden rounded-lg border border-stroke bg-white focus-within:border-secondary focus-within:ring-2 focus-within:ring-secondary/20 dark:border-stroke-dark dark:bg-dark-2">
+						<button type="button" onClick={() => setCount(count - 1)} disabled={count <= 1} aria-label={`Fewer ${noun.plural}`} className={stepClass}>
+							<Minus className="h-4 w-4" aria-hidden />
+						</button>
+						<input
+							id={`${id}-count`}
+							type="number"
+							inputMode="numeric"
+							min={1}
+							max={MAX_QUESTIONS}
+							value={count}
+							// Typing replaces the number instead of adding to it.
+							onFocus={(e) => e.target.select()}
+							onChange={(e) => setCount(Number(e.target.value))}
+							className="w-12 border-x border-stroke bg-transparent text-center text-sm font-semibold tabular-nums text-dark outline-none [appearance:textfield] dark:border-stroke-dark dark:text-white [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+						/>
+						<button type="button" onClick={() => setCount(count + 1)} disabled={count >= MAX_QUESTIONS} aria-label={`More ${noun.plural}`} className={stepClass}>
+							<Plus className="h-4 w-4" aria-hidden />
+						</button>
+					</div>
+					<div className="flex gap-1.5" role="group" aria-label={`Common numbers of ${noun.plural}`}>
+						{COUNT_PRESETS.map((preset) => (
+							<button
+								key={preset}
+								type="button"
+								onClick={() => setCount(preset)}
+								aria-pressed={count === preset}
+								className={cn(chipBase, "h-10 min-w-10 px-3 text-sm tabular-nums", count === preset ? chipOn : chipOff)}
+							>
+								{preset}
+							</button>
+						))}
+					</div>
 				</div>
 			</div>
 
@@ -62,21 +92,19 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 					{noun.singular.charAt(0).toUpperCase() + noun.singular.slice(1)} types <span className="text-red">*</span>
 				</legend>
 				<div className="flex flex-wrap gap-2">
-					{QUESTION_TYPES[target].map((type) => {
-						const on = value.questionTypes.includes(type.value);
+					{QUESTION_TYPES[target].map(({ value: type, label, icon: Icon, hint }) => {
+						const on = value.questionTypes.includes(type);
 						return (
 							<button
-								key={type.value}
+								key={type}
 								type="button"
-								onClick={() => toggleType(type.value)}
+								onClick={() => toggleType(type)}
 								aria-pressed={on}
-								title={type.hint}
-								className={cn(
-									"rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-									on ? "border-primary bg-primary text-white" : "border-stroke text-dark-4 hover:border-primary/60 dark:border-stroke-dark dark:text-dark-6",
-								)}
+								title={hint}
+								className={cn(chipBase, "inline-flex h-8 items-center gap-1.5 px-2.5 text-xs", on ? chipOn : chipOff)}
 							>
-								{type.label}
+								<Icon className={cn("h-3.5 w-3.5 shrink-0", on ? "text-secondary-500 dark:text-secondary-300" : "text-dark-5")} aria-hidden />
+								{label}
 							</button>
 						);
 					})}

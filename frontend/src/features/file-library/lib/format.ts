@@ -18,13 +18,13 @@ export function formatDate(iso: string | null): string {
 	return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-/** Badge colours and labels per extension. */
-const TYPE_STYLES: Record<string, { label: string; className: string }> = {
-	pdf: { label: "PDF", className: "bg-red-light-5 text-red-dark" },
-	docx: { label: "DOCX", className: "bg-blue-light-5 text-blue-dark" },
-	pptx: { label: "PPTX", className: "bg-primary-50 text-primary-dark" },
-	txt: { label: "TXT", className: "bg-gray-2 text-dark-4 dark:bg-dark-3 dark:text-dark-6" },
-	mp4: { label: "MP4", className: "bg-yellow-light-4 text-yellow-dark-2" },
+/** Label and colour per extension: the colours people know the formats by (PDF red, Word blue, PowerPoint orange-red). */
+const TYPE_STYLES: Record<string, { label: string; color: string }> = {
+	pdf: { label: "PDF", color: "#D93025" },
+	docx: { label: "DOCX", color: "#2B579A" },
+	pptx: { label: "PPTX", color: "#C43E1C" },
+	txt: { label: "TXT", color: "#64748B" },
+	mp4: { label: "MP4", color: "#7E2D78" },
 };
 
 /** Used before the server's list has loaded; keep in sync with config/file_library.php. */
@@ -46,7 +46,7 @@ export function typeStyle(file: Pick<LibraryFile, "extension" | "category">) {
 	return (
 		TYPE_STYLES[ext] ?? {
 			label: ext ? ext.toUpperCase() : file.category === "image" ? "IMG" : file.category === "video" ? "VIDEO" : "FILE",
-			className: "bg-secondary/10 text-secondary",
+			color: "#64748B",
 		}
 	);
 }

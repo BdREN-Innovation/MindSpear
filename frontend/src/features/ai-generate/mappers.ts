@@ -1,21 +1,29 @@
 import type { ImportFileQuestionV1 } from "@/features/fun-games/types";
 import { DECK_LIMITS, QUIZ_LIMITS, type BulkSlideInput, type BulkSlidesInput, type OptionInput } from "@/features/deck/types";
-import { textKey, type FunGameAiQuestion, type GeneratedFor, type QuestAiSlide, type QuizAiSlide } from "./types";
+import { parseSentence } from "@/features/deck/lib/blanks";
+import { textKey, type FunGameAiQuestion, type GeneratedFor, type QuestAiAxis, type QuestAiSlide, type QuizAiSlide } from "./types";
 
 // Turn AI output into the payloads each editor already saves.
 
 /** Quest types whose options are free text slots; the others take none. */
-const QUEST_OPTION_TYPES = new Set(["poll_single", "poll_multi", "scales", "ranking", "rating"]);
+const QUEST_OPTION_TYPES = new Set(["poll_single", "poll_multi", "scales", "ranking", "points_allocation", "rating"]);
+
+const axisLabels = (axis: QuestAiAxis | null | undefined) => ({
+	low: (axis?.low ?? "").trim().slice(0, DECK_LIMITS.maxAxisLabel),
+	high: (axis?.high ?? "").trim().slice(0, DECK_LIMITS.maxAxisLabel),
+});
 
 /**
  * Slides for POST /quests/{deck}/slides/bulk (backend BulkSlidesRequest):
- * {type, title, options?: [{label}]}; config stays at the type defaults.
- * Labels are trimmed, de-duplicated and capped like the backend (title ≤ 280,
- * label ≤ 200, ranking ≤ 12 / scales ≤ 20 / others ≤ 30 options).
+ * {type, title, options?: [{label}]}; config stays at the type defaults, but
+ * for a 2×2 matrix's axis labels. Labels are trimmed, de-duplicated and capped
+ * like the backend (title ≤ 280, label ≤ 200, axis label ≤ 80, ranking ≤ 12 /
+ * scales ≤ 20 / others ≤ 30 options).
  */
 export function toQuestSlides(slides: QuestAiSlide[]): BulkSlideInput[] {
 	return slides.slice(0, DECK_LIMITS.maxBulkSlides).map((slide) => {
 		const title = slide.title.trim().slice(0, DECK_LIMITS.maxSlideTitle);
+		if (slide.type === "matrix_2x2") return { type: slide.type, title, config: { x_axis: axisLabels(slide.x_axis), y_axis: axisLabels(slide.y_axis) } };
 		if (!QUEST_OPTION_TYPES.has(slide.type)) return { type: slide.type, title };
 
 		const seen = new Set<string>();
@@ -137,6 +145,28 @@ function toQuizSlide(slide: QuizAiSlide): BulkSlideInput | null {
 			if (answers.length < optionMin("short_answer")) return null;
 			return { type: "short_answer", title, options: answers.map((label) => ({ label })) };
 		}
+		case "fill_blanks":
+		case "drag_drop": {
+			// The answers stay in the sentence's [brackets]. A sentence can't be cut without breaking it, so one
+			// the backend would reject (BlankText: ≤ 600 characters, ≤ 10 blanks, answers ≤ 60) is left out.
+			const text = slide.sentence.trim();
+			const { answers, brackets } = parseSentence(text);
+			if (
+				answers.length === 0 ||
+				brackets > QUIZ_LIMITS.maxBlanks ||
+				text.length > QUIZ_LIMITS.maxSentenceLength ||
+				answers.some((answer) => answer.length > QUIZ_LIMITS.maxBlankAnswer)
+			) {
+				return null;
+			}
+			// Every blank typed (missing blank settings default to {mode: "type"}).
+			if (slide.type === "fill_blanks") return { type: "fill_blanks", title, config: { text, blanks: [], case_sensitive: false } };
+			const taken = new Set(answers.map(textKey));
+			const distractors = uniqueTexts(slide.distractors)
+				.filter((word) => word.length <= QUIZ_LIMITS.maxBlankAnswer && !taken.has(textKey(word)))
+				.slice(0, QUIZ_LIMITS.maxDragDistractors);
+			return { type: "drag_drop", title, config: { text, distractors } };
+		}
 		case "correct_order": {
 			// The author order (option position) is the correct order.
 			const items = uniqueTexts(slide.items).slice(0, optionMax("correct_order"));
@@ -207,7 +237,8 @@ function toQuizSlide(slide: QuizAiSlide): BulkSlideInput | null {
 /**
  * Slides for POST /quizzes/{deck}/slides/bulk (backend BulkSlidesRequest +
  * QuizFields): pick answers carry options[].is_correct, short_answer its
- * accepted answers as labels, correct_order its items in the correct order,
+ * accepted answers as labels, fill_blanks / drag_drop the sentence (and the
+ * wrong words) in config, correct_order its items in the correct order,
  * match_pairs payload {side, pair_key}, categorise config.categories and
  * payload {correct_category_key}. Scoring and timing stay at the quiz
  * defaults. Slides that end up below their type's option minimum are left out.

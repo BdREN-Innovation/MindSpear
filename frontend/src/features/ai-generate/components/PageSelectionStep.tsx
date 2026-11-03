@@ -111,7 +111,7 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					{hasChapters ? (
-						<div className="flex h-8 items-center rounded-lg border border-stroke p-0.5 dark:border-stroke-dark" role="radiogroup" aria-label="Select by">
+						<div className="flex h-8 items-center rounded-lg bg-gray-2 p-0.5 dark:bg-dark-3" role="radiogroup" aria-label="Select by">
 							{(
 								[
 									["chapters", "By chapter", BookOpen],
@@ -126,7 +126,7 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 									onClick={() => setMode(value)}
 									className={cn(
 										"flex h-full items-center gap-1 rounded-md px-2 text-xs font-semibold transition",
-										mode === value ? "bg-primary text-white" : "text-dark-5 hover:text-dark dark:hover:text-white",
+										mode === value ? "bg-white text-dark shadow-sm dark:bg-dark-2 dark:text-white" : "text-dark-5 hover:text-dark dark:hover:text-white",
 									)}
 								>
 									<Icon className="h-3.5 w-3.5" aria-hidden />
@@ -147,13 +147,13 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 							onChange={(e) => setRange(e.target.value)}
 							placeholder="e.g. 1-5, 8"
 							aria-label={`Select ${unit}s by number`}
-							className="h-8 w-28 rounded-lg border border-stroke px-2 text-xs outline-none focus:border-primary dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
+							className="h-8 w-28 rounded-lg border border-stroke px-2 text-xs outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
 						/>
 						<button type="submit" className="h-8 rounded-lg border border-stroke px-2 text-xs font-semibold text-dark hover:bg-gray-2 dark:border-stroke-dark dark:text-white dark:hover:bg-dark-2">
 							Apply
 						</button>
 					</form>
-					<button type="button" onClick={() => set(ids)} className="h-8 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary-50 dark:hover:bg-dark-2">
+					<button type="button" onClick={() => set(ids)} className="h-8 rounded-lg px-2 text-xs font-semibold text-secondary-600 hover:bg-secondary-50 dark:text-secondary-200 dark:hover:bg-dark-2">
 						Select all
 					</button>
 					<button type="button" onClick={() => set([])} className="h-8 rounded-lg px-2 text-xs font-semibold text-dark-5 hover:bg-gray-2 dark:hover:bg-dark-2">
@@ -194,8 +194,8 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 										onClick={() => toggle(part)}
 										aria-pressed={isOn}
 										className={cn(
-											"relative block w-full overflow-hidden rounded-lg border-2 bg-white text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-											isOn ? "border-primary shadow-md" : "border-stroke opacity-80 hover:opacity-100 dark:border-stroke-dark",
+											"relative block w-full overflow-hidden rounded-lg border-2 bg-white text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:ring-offset-2",
+											isOn ? "border-secondary shadow-md" : "border-stroke opacity-80 hover:border-secondary-200 hover:opacity-100 dark:border-stroke-dark",
 										)}
 									>
 										{part.thumbnail ? (
@@ -211,7 +211,7 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 										<span
 											className={cn(
 												"absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2",
-												isOn ? "border-primary bg-primary text-white" : "border-gray-4 bg-white",
+												isOn ? "border-secondary-500 bg-secondary-500 text-white" : "border-gray-4 bg-white",
 											)}
 										>
 											{isOn ? <Check className="h-3 w-3" aria-hidden /> : null}
@@ -236,14 +236,14 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 										onClick={() => toggle(part)}
 										aria-pressed={isOn}
 										className={cn(
-											"flex w-full gap-3 rounded-xl border p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-											isOn ? "border-primary bg-primary-50/60 dark:bg-dark-2" : "border-stroke hover:border-primary/50 dark:border-stroke-dark",
+											"flex w-full gap-3 rounded-xl border p-3 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50",
+											isOn ? "border-secondary bg-secondary-50/60 dark:bg-dark-2" : "border-stroke hover:border-secondary-200 dark:border-stroke-dark",
 										)}
 									>
 										<span
 											className={cn(
 												"mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border-2",
-												isOn ? "border-primary bg-primary text-white" : "border-gray-4 bg-white dark:bg-dark-2",
+												isOn ? "border-secondary-500 bg-secondary-500 text-white" : "border-gray-4 bg-white dark:bg-dark-2",
 											)}
 										>
 											{isOn ? <Check className="h-3 w-3" aria-hidden /> : null}

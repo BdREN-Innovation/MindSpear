@@ -61,8 +61,9 @@ class TargetSpec:
     shared_shape: str | None = None
     #: Field that carries the type key on a generated item (None = items are untyped).
     type_field: str | None = "type"
-    #: Field that carries the question / prompt text (used to drop repeats).
-    text_field: str = "title"
+    #: Fields that carry an item's own text, joined (used to drop repeats and to list what was written).
+    #: More than one when the title alone can repeat, e.g. "Fill in the blanks" over different sentences.
+    text_fields: Sequence[str] = ("title",)
     #: Optional cleanup of a validated item before it is returned.
     normalise: Callable[[BaseModel], BaseModel] | None = None
     #: Extra hints for API consumers (limits, notes). Free-form.
@@ -88,8 +89,8 @@ class TargetSpec:
         return value if isinstance(value, str) else None
 
     def item_text(self, item: dict[str, Any] | BaseModel) -> str:
-        value = _get(item, self.text_field)
-        return value if isinstance(value, str) else ""
+        values = (_get(item, name) for name in self.text_fields)
+        return " — ".join(value for value in values if isinstance(value, str) and value)
 
 
 def _get(item: dict[str, Any] | BaseModel, name: str) -> Any:

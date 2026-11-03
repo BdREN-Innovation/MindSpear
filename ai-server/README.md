@@ -96,12 +96,14 @@ Everything about a target lives in its module under `app/generation/targets/`:
   to its `QUESTION_TYPES`. If the type has its own JSON shape (like the quiz types), add a model
   to the item `Union` with a `type: Literal["…"]` field; if it shares the target's shape, add the key
   to the `Literal` of the type field. The prompt, the schema sent to the model and the validation
-  follow from that.
+  follow from that. Then offer it in the frontend's `features/ai-generate/questionTypes.ts` and map
+  it in `mappers.ts`.
 * **Change a shape**: edit the model (validation) and the `shape` string (what the prompt shows).
   Keep the two in step; `tests/test_validation.py` is the place to pin the behaviour.
 * **Add a target**: a new module that builds a `TargetSpec` and calls `registry.register(...)`,
-  imported in `targets/__init__.py`. The frontend's `types.ts` has the UI labels; `/v1/targets`
-  serves the same list so the two can be compared.
+  imported in `targets/__init__.py`. The frontend's `questionTypes.ts` has the UI labels;
+  `/v1/targets` serves the same list so the two can be compared. If items of a type can share a
+  title, add the field that tells them apart to `text_fields` (repeats are dropped by it).
 * **Another model**: any model OpenRouter lists is only `OPENROUTER_MODEL`.
 * **Another model provider**: for a LangChain chat model, subclass `LangChainStructuredLLM`
   (`app/llm/structured.py`; `openrouter.py` is the example), which only builds the chat model; otherwise

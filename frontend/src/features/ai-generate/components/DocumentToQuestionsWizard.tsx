@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { AlertCircle, ArrowLeftRight, ArrowRight, Check, Loader2, RefreshCw } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import GeneratingLoader from "@/components/ui/loader/GeneratingLoader";
@@ -12,7 +12,8 @@ import type { LibraryFile } from "@/features/file-library/types";
 import { generateFromText } from "../aiClient";
 import { chapterOfPage, type Chapter } from "../lib/chapters";
 import { documentUnit, loadDocumentParts, loadSlideImages, withSlideImages, type DocumentPart, type LoadedDocument } from "../lib/documentPages";
-import { DEFAULT_TYPES, MAX_QUESTIONS, MAX_TEXT_CHARS, TARGET_NOUN, type GeneratedFor, type GenerationOptions, type GenerationTarget } from "../types";
+import { aiTypesFor, DEFAULT_TYPES } from "../questionTypes";
+import { MAX_QUESTIONS, MAX_TEXT_CHARS, TARGET_NOUN, type GeneratedFor, type GenerationOptions, type GenerationTarget } from "../types";
 import { GenerationOptionsForm } from "./GenerationOptionsForm";
 import { MAX_SELECTED_PARTS, PageSelectionStep } from "./PageSelectionStep";
 
@@ -127,7 +128,8 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		setProgress(null);
 		setDocLoading(true);
 		setStep("configure");
-		setOptions((o) => ({ ...o, topic: o.topic || topicFromName(chosen.name) }));
+		// The topic follows the document until the user types their own.
+		setOptions((o) => ({ ...o, topic: topicTouched && o.topic.trim() ? o.topic : topicFromName(chosen.name) }));
 		try {
 			const loaded = await loadDocumentParts(chosen, {
 				signal: controller.signal,
@@ -173,7 +175,8 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		setStep("generating");
 		try {
 			const textData = buildTextData(parts, doc.chapters);
-			const result = await generateFromText({ target, textData, ...options, topic: options.topic.trim() }, controller.signal);
+			const request = { target, textData, ...options, topic: options.topic.trim(), questionTypes: aiTypesFor(target, options.questionTypes) };
+			const result = await generateFromText(request, controller.signal);
 			if (controller.signal.aborted) return;
 			setPhase("saving");
 			await onGenerated(result as GeneratedFor<T>, { file, options });
@@ -203,14 +206,20 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 						<span
 							className={cn(
 								"flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-								i < stepIndex ? "bg-primary/20 text-primary-dark" : i === stepIndex ? "bg-primary text-white" : "bg-gray-2 text-dark-5 dark:bg-dark-2",
+								i < stepIndex
+									? "bg-secondary-50 text-secondary-600 dark:bg-secondary-900/40 dark:text-secondary-200"
+									: i === stepIndex
+										? "bg-secondary-500 text-white"
+										: "bg-gray-2 text-dark-5 dark:bg-dark-2",
 							)}
 							aria-current={i === stepIndex ? "step" : undefined}
 						>
-							{i + 1}
+							{i < stepIndex ? <Check className="h-3.5 w-3.5" aria-label="Done" /> : i + 1}
 						</span>
 						<span className={cn("hidden font-medium sm:inline", i === stepIndex ? "text-dark dark:text-white" : "text-dark-5")}>{s.label}</span>
-						{i < STEPS.length - 1 ? <span className="h-px w-6 bg-stroke dark:bg-stroke-dark sm:w-10" aria-hidden /> : null}
+						{i < STEPS.length - 1 ? (
+							<span className={cn("h-px w-6 sm:w-10", i < stepIndex ? "bg-secondary-200 dark:bg-secondary-700" : "bg-stroke dark:bg-stroke-dark")} aria-hidden />
+						) : null}
 					</li>
 				))}
 			</ol>
@@ -227,8 +236,8 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 
 			{step === "configure" && file ? (
 				<div className="flex flex-col gap-4">
-					<div className="flex items-center gap-3 rounded-xl border border-stroke bg-gray-1 p-3 dark:border-stroke-dark dark:bg-dark-2">
-						<FileThumb file={file} size="sm" className="h-10 w-10 shrink-0 rounded-lg" />
+					<div className="flex items-center gap-3 rounded-xl border border-stroke bg-white p-3 dark:border-stroke-dark dark:bg-dark-2">
+						<FileThumb file={file} size="sm" className="h-10 w-10 shrink-0" />
 						<div className="min-w-0 flex-1">
 							<p className="truncate text-sm font-semibold text-dark dark:text-white">{file.name}</p>
 							<p className="text-xs text-dark-5">
@@ -236,27 +245,28 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 								{doc ? ` · ${doc.parts.length} ${unit}${doc.parts.length === 1 ? "" : "s"}` : ""}
 							</p>
 						</div>
-						<button
-							type="button"
+						<Button
+							variant="outline"
+							size="sm"
 							onClick={() => {
 								loadController.current?.abort();
 								setStep("file");
 							}}
-							className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-primary hover:bg-primary-50 dark:hover:bg-dark-3"
+							className="shrink-0 hover:border-secondary-200 hover:text-secondary-600 dark:hover:text-secondary-200"
 						>
-							<ArrowLeft className="h-4 w-4" aria-hidden />
-							Change
-						</button>
+							<ArrowLeftRight className="h-4 w-4" aria-hidden />
+							Change file
+						</Button>
 					</div>
 
 					{docLoading ? (
 						<div className={cn("flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-stroke dark:border-stroke-dark", tall ? "h-[50vh]" : "h-64")} role="status">
-							<Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+							<Loader2 className="h-8 w-8 animate-spin text-secondary motion-reduce:animate-none" aria-hidden />
 							<p className="text-sm font-medium text-dark dark:text-white">Reading your document…</p>
 							{progress ? (
 								<div className="w-56">
 									<div className="h-1.5 overflow-hidden rounded-full bg-gray-3 dark:bg-dark-3">
-										<div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
+										<div className="h-full rounded-full bg-secondary transition-[width]" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
 									</div>
 									<p className="mt-1 text-center text-xs text-dark-5">
 										Page {progress.done} of {progress.total}
@@ -319,9 +329,9 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 											Cancel
 										</Button>
 									) : null}
-									<Button onClick={generate} disabled={!hasContext}title={hasContext ? undefined : `Select ${unit}s with text first`}>
-										<Sparkles className="h-4 w-4" aria-hidden />
+									<Button onClick={generate} disabled={!hasContext} title={hasContext ? undefined : `Select ${unit}s with text first`}>
 										{generateLabel ?? `Generate ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural}`}
+										<ArrowRight className="h-4 w-4" aria-hidden />
 									</Button>
 								</div>
 							</div>
@@ -335,7 +345,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 					<GeneratingLoader />
 					<p className="text-sm text-dark-5">
 						{phase === "writing"
-							? `Writing ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural}from ${selected.size} ${selected.size === 1 ? unit : `${unit}s`}… this can take up to a minute.`
+							? `Writing ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural} from ${selected.size} ${selected.size === 1 ? unit : `${unit}s`}… this can take up to a minute.`
 							: `Adding the ${noun.plural}…`}
 					</p>
 					{phase === "writing" ? (

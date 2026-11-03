@@ -104,6 +104,56 @@ def test_quiz_rejects_answer_keys_the_mapper_would_have_to_break():
     assert result.rejected == 5
 
 
+def test_quiz_blanks_need_a_bracketed_answer_and_drag_drop_a_wrong_word():
+    spec = registry.get("quiz")
+    items = [
+        {"type": "fill_blanks", "title": "Fill in the blanks", "sentence": "Plants make food by [photosynthesis]."},
+        {"type": "fill_blanks", "title": "No blank", "sentence": "Plants make food []."},
+        {"type": "fill_blanks", "title": "Too long", "sentence": "[word] " + "x" * 600},
+        {
+            "type": "drag_drop",
+            "title": "Drag the words",
+            "sentence": "Water [boils] at 100 °C and [freezes] at 0 °C.",
+            "distractors": ["melts", "Boils"],
+        },
+        # Its only "wrong" word is an answer: the bank would hold nothing to choose between.
+        {"type": "drag_drop", "title": "Drag again", "sentence": "Water [boils].", "distractors": [" boils"]},
+        {"type": "drag_drop", "title": "No bank", "sentence": "Water [boils]."},
+    ]
+    result = validate_items(spec, items, requested_types=["fill_blanks", "drag_drop"])
+
+    assert [item.title for item in result.items] == ["Fill in the blanks", "Drag the words"]
+    assert result.rejected == 4
+
+
+def test_quiz_blanks_with_the_same_title_are_told_apart_by_their_sentence():
+    spec = registry.get("quiz")
+    items = [
+        {"type": "fill_blanks", "title": "Fill in the blanks", "sentence": "Plants make [glucose]."},
+        {"type": "fill_blanks", "title": "Fill in the blanks", "sentence": "Leaves hold [chlorophyll]."},
+        {"type": "fill_blanks", "title": "fill in the blanks ", "sentence": " plants make [glucose]."},
+    ]
+    result = validate_items(spec, items, requested_types=["fill_blanks"])
+
+    assert [item.sentence for item in result.items] == ["Plants make [glucose].", "Leaves hold [chlorophyll]."]
+    assert result.reasons == ["repeated item"]
+
+
+def test_quest_matrix_needs_both_axes_and_points_allocation_items():
+    spec = registry.get("quest")
+    axes = {"x_axis": {"low": "Not urgent", "high": "Urgent"}, "y_axis": {"low": "Minor", "high": "Important"}}
+    items = [
+        {"title": "Where does this idea stand?", "type": "matrix_2x2", **axes},
+        {"title": "Only one axis", "type": "matrix_2x2", "x_axis": axes["x_axis"]},
+        {"title": "Share 100 points", "type": "points_allocation", "options": ["Cost", "Speed", "Quality"]},
+        {"title": "Too few to share", "type": "points_allocation", "options": ["Cost"]},
+    ]
+    result = validate_items(spec, items, requested_types=["matrix_2x2", "points_allocation"])
+
+    assert [item.title for item in result.items] == ["Where does this idea stand?", "Share 100 points"]
+    assert result.items[0].y_axis.high == "Important"
+
+
 def test_fungame_rejects_repeated_options():
     spec = registry.get("fungame")
     result = validate_items(spec, [{"text": "Q?", "options": ["Yes", "yes"], "answer": 0}], requested_types=[])

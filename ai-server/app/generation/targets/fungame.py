@@ -27,10 +27,11 @@ class FunGameQuestion(ItemModel):
 QUESTION_TYPES = (
     QuestionType(
         "single_choice",
-        "Multiple choice (one correct)",
+        "Multiple choice",
         '"single_choice": exactly four options, one correct, plausible distractors, random order.',
+        hint="One correct answer",
     ),
-    QuestionType("true_false", "True / False", '"true_false": options must be exactly ["True","False"].'),
+    QuestionType("true_false", "True or false", '"true_false": options must be exactly ["True","False"].'),
 )
 
 SPEC = registry.register(
@@ -52,6 +53,6 @@ SPEC = registry.register(
         shared_shape='{ "text": "string", "options": ["string", ...], "answer": 0 }',
         # Fun-game items carry no type key: every item is a single-answer question.
         type_field=None,
-        text_field="text",
+        text_fields=("text",),
     )
 )
