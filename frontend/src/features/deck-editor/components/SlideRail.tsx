@@ -13,7 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { Plus } from "lucide-react";
+import { Plus, Trophy } from "lucide-react";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { Slide } from "@/features/deck/types";
 import { SlideThumbnail } from "./SlideThumbnail";
@@ -32,6 +32,10 @@ export interface SlideRailProps {
 	registerButton(slideId: number, element: HTMLButtonElement | null): void;
 	/** Focus lands here after the last slide is deleted. */
 	addButtonRef?: Ref<HTMLButtonElement>;
+	/** Quiz decks: the trophy beside each slide adds / removes a Leaderboard slide right after it. */
+	onToggleLeaderboard?(slideId: number): void;
+	/** Slides whose trophy toggle is being saved. */
+	leaderboardBusy?: ReadonlySet<number>;
 }
 
 const MODIFIERS = [restrictToVerticalAxis, restrictToFirstScrollableAncestor];
@@ -54,6 +58,8 @@ export function SlideRail({
 	onAdd,
 	registerButton,
 	addButtonRef,
+	onToggleLeaderboard,
+	leaderboardBusy,
 }: SlideRailProps) {
 	// A small distance keeps a plain click a click.
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -116,6 +122,14 @@ export function SlideRail({
 					<Plus className="h-4 w-4" aria-hidden />
 					New slide
 				</button>
+				{onToggleLeaderboard && slides.length > 0 ? (
+					<p className="mt-2 flex items-start gap-1.5 text-xs text-dark-5 dark:text-dark-6">
+						<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-secondary-500 text-white" aria-hidden>
+							<Trophy className="h-2.5 w-2.5" strokeWidth={2.5} />
+						</span>
+						Tap the trophy beside a slide to show the leaderboard after it.
+					</p>
+				) : null}
 			</div>
 
 			<div className="min-h-0 flex-1 overflow-y-auto px-1 pb-4">
@@ -144,6 +158,11 @@ export function SlideRail({
 										onDelete={onDelete}
 										onNavigate={onNavigate}
 										registerButton={registerButton}
+										leaderboardAfter={
+											onToggleLeaderboard && slide.type !== "leaderboard" ? slides[index + 1]?.type === "leaderboard" : undefined
+										}
+										leaderboardBusy={leaderboardBusy?.has(slide.id)}
+										onToggleLeaderboard={onToggleLeaderboard}
 									/>
 								))}
 							</ol>

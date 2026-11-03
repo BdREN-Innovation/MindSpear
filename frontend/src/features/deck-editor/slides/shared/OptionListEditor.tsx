@@ -314,6 +314,7 @@ function OptionRow({
 		}
 	};
 	const { local, setLocal, flush } = useDebouncedValue(option.label ?? "", (value) => void save(value), debounceMs);
+	const nearLimit = local.length >= maxLength * 0.8;
 
 	useEffect(() => {
 		if (!autoFocus) return;
@@ -375,8 +376,11 @@ function OptionRow({
 						aria-label={name}
 						aria-invalid={error ? true : undefined}
 						aria-describedby={error ? errorId : undefined}
+						title={local || undefined}
 						className={cn(
-							"min-h-11 w-full rounded-lg border border-stroke bg-white py-2 pl-3 pr-16 text-sm text-dark outline-none transition placeholder:text-dark-6 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60 dark:border-dark-3 dark:bg-dark-2 dark:text-white",
+							"min-h-11 w-full rounded-lg border border-stroke bg-white py-2 pl-3 text-sm text-dark outline-none transition placeholder:text-dark-6 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-60 dark:border-dark-3 dark:bg-dark-2 dark:text-white",
+							// Room for the counter only while it shows: in a narrow panel it would hide half the text.
+							nearLimit ? "pr-16" : "pr-3",
 							error && "border-red"
 						)}
 					/>
@@ -386,7 +390,7 @@ function OptionRow({
 								Saving
 							</span>
 						) : null}
-						{local.length >= maxLength * 0.8 ? <CharCount length={local.length} max={maxLength} /> : null}
+						{nearLimit ? <CharCount length={local.length} max={maxLength} /> : null}
 					</span>
 				</div>
 				<button

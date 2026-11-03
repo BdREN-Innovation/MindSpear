@@ -1122,3 +1122,62 @@ it('locks the session row and then the run row for host actions and session end'
     $tables = $locks->map(fn (string $sql) => str_contains($sql, 'from "deck_sessions"') ? 'session' : (str_contains($sql, 'from "deck_session_slide_runs"') ? 'run' : 'other'));
     expect($tables->all())->toBe(['session', 'run', 'session', 'run']);
 });
+
+it('starts the poll it moves onto when next_slide or jump_to asks to, and leaves other slides waiting', function () {
+    $host = DeckFactory::newOwner();
+    $session = sessApiStart($host, sessApiDeck($host, [
+        ['heading'],
+        ['poll_single', ['get_ready_seconds' => 5, 'time_limit_seconds' => 20]],
+        ['poll_single', ['get_ready_seconds' => 0, 'time_limit_seconds' => 20]],
+        ['heading'],
+        ['qa_audience'],
+    ]));
+    $runs = DeckSessionSlideRun::where('deck_session_id', $session->id)->orderBy('position_snapshot')->get();
+
+    // Onto a poll with a countdown: get_ready at once, its timer queued.
+    sessApiAdvance($session, ['action' => 'next_slide', 'start' => true])->assertOk()
+        ->assertJsonPath('data.current_run.id', $runs[1]->id)
+        ->assertJsonPath('data.current_run.state', 'get_ready');
+    expect(sessApiJobs()->last()->slideRunId)->toBe($runs[1]->id);
+
+    // Onto a poll without one: straight to voting (the poll left behind is closed).
+    sessApiAdvance($session, ['action' => 'next_slide', 'start' => true])->assertOk()
+        ->assertJsonPath('data.current_run.state', 'voting');
+    expect($runs[1]->fresh()->state)->toBe('closed');
+
+    // Content and Q&A slides still wait for the host.
+    sessApiAdvance($session, ['action' => 'next_slide', 'start' => true])->assertOk()->assertJsonPath('data.current_run.state', 'waiting');
+    sessApiAdvance($session, ['action' => 'jump_to', 'target_run_id' => $runs[4]->id, 'start' => true])->assertOk()
+        ->assertJsonPath('data.current_run.state', 'waiting');
+
+    // Going back to a poll that already ran never reopens it.
+    sessApiAdvance($session, ['action' => 'jump_to', 'target_run_id' => $runs[2]->id, 'force' => true, 'start' => true])->assertOk()
+        ->assertJsonPath('data.current_run.state', 'closed');
+});
+
+it('shows a moved-onto poll without starting it when start is not asked for', function () {
+    $host = DeckFactory::newOwner();
+    $session = sessApiStart($host, sessApiDeck($host, [['heading'], ['poll_single']]));
+
+    sessApiAdvance($session, ['action' => 'next_slide'])->assertOk()->assertJsonPath('data.current_run.state', 'waiting');
+    sessApiAdvance($session, ['action' => 'next_slide', 'start' => 'yes'])->assertUnprocessable();
+});
+
+it('lists who is in the room for the host only, newest first', function () {
+    $host = DeckFactory::newOwner();
+    $session = sessApiStart($host, sessApiDeck($host, [['poll_single']]));
+    $first = DeckParticipant::factory()->create(['deck_session_id' => $session->id, 'display_name' => 'Rahim', 'joined_at' => now()->subMinutes(2)]);
+    $second = DeckParticipant::factory()->create(['deck_session_id' => $session->id, 'display_name' => 'করিম', 'emoji_avatar' => '🦊', 'joined_at' => now()->subMinute()]);
+    DeckParticipant::factory()->create(['deck_session_id' => $session->id, 'display_name' => 'Gone', 'left_at' => now()]);
+
+    test()->getJson("/api/v1/quest-sessions/{$session->id}/participants")->assertOk()
+        ->assertJsonPath('data.total', 2)
+        ->assertJsonPath('data.participants.0.participant_id', $second->id)
+        ->assertJsonPath('data.participants.0.display_name', 'করিম')
+        ->assertJsonPath('data.participants.0.emoji_avatar', '🦊')
+        ->assertJsonPath('data.participants.1.participant_id', $first->id)
+        ->assertJsonCount(2, 'data.participants');
+
+    Sanctum::actingAs(DeckFactory::newOwner());
+    test()->getJson("/api/v1/quest-sessions/{$session->id}/participants")->assertNotFound();
+});

@@ -10,6 +10,7 @@ import type {
 	QaFeedParams,
 	QaHostItem,
 	QaModerationFlags,
+	RoomParticipants,
 	SlideAggregate,
 } from "../types";
 import { deckRequest } from "./errors";
@@ -61,6 +62,8 @@ export interface SessionApi {
 	 * points_delta from the last revealed slide; `me` is null for the host. 422 limit.
 	 */
 	getLeaderboard(sessionId: Id, options?: { limit?: number; signal?: AbortSignal }): Promise<LeaderboardResponse>;
+	/** GET {session}/participants — who is in the room now (newest first, at most 200, plus the total). */
+	getParticipants(sessionId: Id, signal?: AbortSignal): Promise<RoomParticipants>;
 }
 
 export function createSessionApi(product: DeckProduct): SessionApi {
@@ -141,6 +144,12 @@ export function createSessionApi(product: DeckProduct): SessionApi {
 					signal: options.signal,
 					timeout,
 				});
+				return res.data.data;
+			}),
+
+		getParticipants: (sessionId, signal) =>
+			deckRequest(async () => {
+				const res = await axiosInstance.get<ApiEnvelope<RoomParticipants>>(`${sessionUrl(sessionId)}/participants`, { signal, timeout });
 				return res.data.data;
 			}),
 	};

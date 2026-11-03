@@ -135,19 +135,19 @@ export function FileDropzone({ accept, usage, onUploaded, multiple = false, comp
 				className={cn(
 					"relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed text-center transition",
 					compact ? "px-4 py-8" : "px-6 py-12",
-					isDragActive ? "border-primary bg-primary-50 dark:bg-dark-2" : "border-gray-4 bg-gray-1 hover:border-primary/60 dark:border-dark-3 dark:bg-dark-2/40",
+					isDragActive ? "border-secondary bg-secondary-50 dark:bg-dark-2" : "border-gray-4 bg-gray-1 hover:border-secondary-200 dark:border-dark-3 dark:bg-dark-2/40",
 				)}
 			>
 				<input {...getInputProps({ accept: extensions.map((e) => `.${e}`).join(",") })} />
 				<div className={cn("mb-3 flex items-center justify-center rounded-full bg-white shadow-sm dark:bg-dark-2", compact ? "h-12 w-12" : "h-14 w-14")}>
-					<FileUp className={cn("text-primary", compact ? "h-6 w-6" : "h-7 w-7")} aria-hidden />
+					<FileUp className={cn("text-secondary", compact ? "h-6 w-6" : "h-7 w-7")} aria-hidden />
 				</div>
 				<p className="text-base font-semibold text-dark dark:text-white">
 					{isDragActive ? "Drop to upload" : multiple ? "Drag files here" : "Drag a file here"}
 				</p>
 				<p className="mt-1 text-sm text-dark-5">
 					or{" "}
-					<button type="button" onClick={open} className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:underline">
+					<button type="button" onClick={open} className="font-semibold text-secondary-600 underline-offset-2 hover:underline focus-visible:underline dark:text-secondary-200">
 						browse your computer
 					</button>
 				</p>
@@ -177,7 +177,7 @@ export function FileDropzone({ accept, usage, onUploaded, multiple = false, comp
 									) : item.status === "error" ? (
 										<AlertCircle className="h-5 w-5 text-red" aria-label="Failed" />
 									) : (
-										<Loader2 className="h-5 w-5 animate-spin text-primary" aria-label="Uploading" />
+										<Loader2 className="h-5 w-5 animate-spin text-secondary" aria-label="Uploading" />
 									)}
 								</span>
 								<div className="min-w-0 flex-1">
@@ -191,7 +191,7 @@ export function FileDropzone({ accept, usage, onUploaded, multiple = false, comp
 									</div>
 									{item.status === "uploading" || item.status === "queued" ? (
 										<div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-3 dark:bg-dark-3">
-											<div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${item.progress}%` }} />
+											<div className="h-full rounded-full bg-secondary transition-[width]" style={{ width: `${item.progress}%` }} />
 										</div>
 									) : null}
 									{item.message ? (

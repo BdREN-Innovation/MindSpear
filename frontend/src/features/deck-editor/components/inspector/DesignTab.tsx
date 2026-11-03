@@ -34,10 +34,21 @@ export function ThemeSwatch({ theme, className }: { theme: DeckTheme; className?
 }
 
 /** Theme picker (deck-wide: decks.settings.theme). */
-export function ThemeGrid({ value, onChange, disabled }: { value: string; onChange(key: string): void; disabled?: boolean }) {
+export function ThemeGrid({
+	value,
+	onChange,
+	disabled,
+	columns = 2,
+}: {
+	value: string;
+	onChange(key: string): void;
+	disabled?: boolean;
+	/** 3 in the roomier settings modal. */
+	columns?: 2 | 3;
+}) {
 	const current = getDeckTheme(value).key;
 	return (
-		<div role="radiogroup" aria-label="Theme" className="grid grid-cols-2 gap-2">
+		<div role="radiogroup" aria-label="Theme" className={cn("grid gap-2", columns === 3 ? "grid-cols-3" : "grid-cols-2")}>
 			{DECK_THEME_KEYS.map((key) => {
 				const theme = DECK_THEMES[key];
 				const selected = key === current;
@@ -50,14 +61,14 @@ export function ThemeGrid({ value, onChange, disabled }: { value: string; onChan
 						disabled={disabled}
 						onClick={() => onChange(key)}
 						className={cn(
-							"relative flex flex-col gap-1.5 rounded-lg border-2 p-1.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-60 dark:focus-visible:ring-offset-dark",
-							selected ? "border-primary" : "border-transparent hover:border-stroke dark:hover:border-stroke-dark"
+							"relative flex flex-col gap-1.5 rounded-lg border-2 p-1.5 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:ring-offset-2 disabled:opacity-60 dark:focus-visible:ring-offset-dark",
+							selected ? "border-secondary bg-secondary-50/60 dark:bg-secondary-900/20" : "border-transparent hover:border-stroke dark:hover:border-stroke-dark"
 						)}
 					>
 						<ThemeSwatch theme={theme} />
 						<span className="flex items-center justify-between px-0.5 text-xs font-medium text-dark dark:text-white">
 							{theme.label}
-							{selected ? <Check className="h-3.5 w-3.5 text-primary-600" aria-hidden /> : null}
+							{selected ? <Check className="h-3.5 w-3.5 text-secondary-600 dark:text-secondary-200" aria-hidden /> : null}
 						</span>
 					</button>
 				);

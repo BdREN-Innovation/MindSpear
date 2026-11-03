@@ -131,6 +131,8 @@ function ReviewContent({ stored }: { stored: StoredParticipantSession }) {
 
 	const theme = useMemo(() => getDeckTheme(deckThemeKeyFrom(review)), [review]);
 	const runs = useMemo(() => review?.runs ?? [], [review]);
+	// Leaderboard slides only showed the standing at that moment; the final one is at the top.
+	const walkthroughRuns = useMemo(() => runs.filter((run) => run.type !== "leaderboard"), [runs]);
 	const questionRuns = useMemo(() => runs.filter((run) => !isContentRun(run)), [runs]);
 	const answerRuns = questionRuns.filter((run) => run.type !== "qa_audience");
 	const answeredCount = answerRuns.filter((run) => storedPayload(run.my_answer)).length;
@@ -248,7 +250,7 @@ function ReviewContent({ stored }: { stored: StoredParticipantSession }) {
 						{tab === "mine" ? (
 							<MyAnswers runs={questionRuns} review={review} stored={stored} theme={theme} product={product} />
 						) : (
-							<AllSlides runs={runs} review={review} stored={stored} theme={theme} product={product} />
+							<AllSlides runs={walkthroughRuns} review={review} stored={stored} theme={theme} product={product} />
 						)}
 					</div>
 				</div>

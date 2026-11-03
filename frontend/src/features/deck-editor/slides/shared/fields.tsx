@@ -2,6 +2,7 @@
 
 import { useId, useRef, type InputHTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { Select } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "./hooks";
 
@@ -357,6 +358,8 @@ export function SelectField<T extends string | number>({
 }: SelectFieldProps<T>) {
 	const ids = useFieldIds(id);
 	const index = options.findIndex((option) => option.value === value);
+	// The dropdown takes string values: each option's position.
+	const choices = options.map((option, i) => ({ value: String(i), label: option.label, disabled: option.disabled }));
 	return (
 		<FieldShell
 			label={label}
@@ -367,25 +370,17 @@ export function SelectField<T extends string | number>({
 			htmlFor={ids.input}
 			describedBy={ids}
 		>
-			<select
-				id={ids.input}
-				value={index < 0 ? "" : String(index)}
+			<Select
+				inputId={ids.input}
+				value={index < 0 ? null : String(index)}
+				options={choices}
 				disabled={disabled}
-				aria-invalid={firstError(error) ? true : undefined}
-				aria-describedby={describedByFor(ids, hint, error)}
-				onChange={(event) => {
-					const option = options[Number(event.target.value)];
+				invalid={!!firstError(error)}
+				onChange={(next) => {
+					const option = options[Number(next)];
 					if (option) onChange(option.value);
 				}}
-				className={cn(inputClass, "cursor-pointer pr-8", firstError(error) && invalidClass)}
-			>
-				{index < 0 ? <option value="">Choose…</option> : null}
-				{options.map((option, i) => (
-					<option key={String(option.value)} value={String(i)} disabled={option.disabled}>
-						{option.label}
-					</option>
-				))}
-			</select>
+			/>
 		</FieldShell>
 	);
 }
@@ -452,26 +447,8 @@ export function ToggleField({ label, hint, description, error, disabled, classNa
 
 /* ------------------------------------------------------------------ */
 
-export interface SegmentedFieldProps<T extends string | number> extends FieldBaseProps {
-	value: T;
-	options: ChoiceOption<T>[];
-	onChange: (value: T) => void;
-}
-
-/** A radio group drawn as segmented buttons; arrow keys move the selection. */
-export function SegmentedField<T extends string | number>({
-	label,
-	hideLabel,
-	hint,
-	error,
-	disabled,
-	className,
-	id,
-	value,
-	options,
-	onChange,
-}: SegmentedFieldProps<T>) {
-	const ids = useFieldIds(id);
+/** Roving focus for a radio group: one tab stop, arrow keys move the choice. */
+function useRadioKeys<T extends string | number>(options: ChoiceOption<T>[], value: T, onChange: (value: T) => void) {
 	const refs = useRef<(HTMLButtonElement | null)[]>([]);
 	const selectedIndex = options.findIndex((option) => option.value === value);
 	const tabStop = selectedIndex >= 0 ? selectedIndex : Math.max(0, options.findIndex((option) => !option.disabled));
@@ -489,6 +466,47 @@ export function SegmentedField<T extends string | number>({
 			}
 		}
 	};
+
+	return { refs, tabStop, onKeyDown };
+}
+
+/** The radio circle, so a chosen option reads as chosen without relying on colour. */
+function RadioDot({ on, className }: { on: boolean; className?: string }) {
+	return (
+		<span
+			aria-hidden
+			className={cn(
+				"flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 bg-white transition dark:bg-dark-2",
+				on ? "border-secondary-500" : "border-gray-5 dark:border-dark-5",
+				className
+			)}
+		>
+			{on ? <span className="h-2 w-2 rounded-full bg-secondary-500" /> : null}
+		</span>
+	);
+}
+
+export interface SegmentedFieldProps<T extends string | number> extends FieldBaseProps {
+	value: T;
+	options: ChoiceOption<T>[];
+	onChange: (value: T) => void;
+}
+
+/** A radio group drawn as segmented buttons, each with its radio circle; arrow keys move the selection. */
+export function SegmentedField<T extends string | number>({
+	label,
+	hideLabel,
+	hint,
+	error,
+	disabled,
+	className,
+	id,
+	value,
+	options,
+	onChange,
+}: SegmentedFieldProps<T>) {
+	const ids = useFieldIds(id);
+	const { refs, tabStop, onKeyDown } = useRadioKeys(options, value, onChange);
 
 	return (
 		<FieldShell label={label} hideLabel={hideLabel} hint={hint} error={error} className={className} labelId={ids.label} describedBy={ids}>
@@ -515,12 +533,84 @@ export function SegmentedField<T extends string | number>({
 							onClick={() => onChange(option.value)}
 							onKeyDown={(event) => onKeyDown(event, index)}
 							className={cn(
-								"flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50",
-								selected ? "bg-white text-dark shadow-sm dark:bg-dark-3 dark:text-white" : "text-dark-5 hover:text-dark dark:text-dark-6 dark:hover:text-white"
+								"flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-secondary/40 disabled:cursor-not-allowed disabled:opacity-50",
+								selected
+									? "bg-white font-semibold text-secondary-700 shadow-sm ring-1 ring-secondary-200 dark:bg-dark-3 dark:text-secondary-100 dark:ring-secondary-700"
+									: "text-dark-5 hover:bg-white/60 hover:text-dark dark:text-dark-6 dark:hover:bg-dark-3/60 dark:hover:text-white"
 							)}
 						>
+							<RadioDot on={selected} />
 							{Icon ? <Icon className="h-4 w-4" aria-hidden /> : null}
 							{option.label}
+						</button>
+					);
+				})}
+			</div>
+		</FieldShell>
+	);
+}
+
+export interface RadioCardOption<T extends string | number> extends ChoiceOption<T> {
+	/** One line under the label saying what the choice does. */
+	description?: string;
+}
+
+export interface RadioCardFieldProps<T extends string | number> extends FieldBaseProps {
+	value: T;
+	options: RadioCardOption<T>[];
+	onChange: (value: T) => void;
+}
+
+/** A few radio choices as cards, each explained in a line; arrow keys move the selection. */
+export function RadioCardField<T extends string | number>({
+	label,
+	hideLabel,
+	hint,
+	error,
+	disabled,
+	className,
+	id,
+	value,
+	options,
+	onChange,
+}: RadioCardFieldProps<T>) {
+	const ids = useFieldIds(id);
+	const { refs, tabStop, onKeyDown } = useRadioKeys(options, value, onChange);
+
+	return (
+		<FieldShell label={label} hideLabel={hideLabel} hint={hint} error={error} className={className} labelId={ids.label} describedBy={ids}>
+			<div role="radiogroup" aria-labelledby={ids.label} aria-describedby={describedByFor(ids, hint, error)} className="grid gap-2 sm:grid-cols-2">
+				{options.map((option, index) => {
+					const selected = option.value === value;
+					const Icon = option.icon;
+					return (
+						<button
+							key={String(option.value)}
+							ref={(node) => {
+								refs.current[index] = node;
+							}}
+							type="button"
+							role="radio"
+							aria-checked={selected}
+							tabIndex={index === tabStop ? 0 : -1}
+							disabled={disabled || option.disabled}
+							onClick={() => onChange(option.value)}
+							onKeyDown={(event) => onKeyDown(event, index)}
+							className={cn(
+								"flex items-start gap-3 rounded-xl border-2 p-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-secondary/40 disabled:cursor-not-allowed disabled:opacity-50",
+								selected
+									? "border-secondary bg-secondary-50 dark:bg-secondary-900/30"
+									: "border-stroke bg-white hover:border-secondary-200 dark:border-dark-3 dark:bg-dark-2"
+							)}
+						>
+							<RadioDot on={selected} className="mt-0.5" />
+							<span className="min-w-0 flex-1">
+								<span className={cn("flex items-center gap-1.5 text-sm font-semibold", selected ? "text-secondary-700 dark:text-secondary-100" : "text-dark dark:text-white")}>
+									{Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden /> : null}
+									{option.label}
+								</span>
+								{option.description ? <span className="mt-0.5 block text-xs text-dark-5 dark:text-dark-6">{option.description}</span> : null}
+							</span>
 						</button>
 					);
 				})}

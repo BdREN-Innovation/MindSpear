@@ -9,7 +9,7 @@ import type { StorageUsage } from "../types";
 function barColour(percent: number): string {
 	if (percent >= 90) return "bg-red";
 	if (percent >= 75) return "bg-yellow-dark";
-	return "bg-primary";
+	return "bg-secondary";
 }
 
 interface Props {
@@ -52,7 +52,7 @@ export function StorageUsageBar({ usage, loading, variant = "compact", showManag
 						{label}
 					</span>
 					{showManageLink ? (
-						<Link href="/my-files" target="_blank" className="font-semibold text-primary hover:underline">
+						<Link href="/my-files" target="_blank" className="font-semibold text-secondary-600 hover:underline dark:text-secondary-200">
 							Manage My Files
 						</Link>
 					) : usage ? (

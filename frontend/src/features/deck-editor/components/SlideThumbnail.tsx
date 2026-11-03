@@ -3,7 +3,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy, HelpCircle, Trash2 } from "lucide-react";
+import { Copy, CornerDownRight, HelpCircle, Trash2, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { Slide } from "@/features/deck/types";
@@ -22,6 +22,11 @@ export interface SlideThumbnailProps {
 	/** Arrow keys / Home / End move between thumbnails. */
 	onNavigate(slideId: number, event: KeyboardEvent<HTMLButtonElement>): void;
 	registerButton(slideId: number, element: HTMLButtonElement | null): void;
+	/** Quiz decks: whether a Leaderboard slide follows this one (the trophy toggle); undefined hides it. */
+	leaderboardAfter?: boolean;
+	/** The trophy toggle's change is being saved. */
+	leaderboardBusy?: boolean;
+	onToggleLeaderboard?(slideId: number): void;
 }
 
 /** Mounts the (possibly heavy) Presenter only once the thumbnail scrolls into view. */
@@ -50,7 +55,67 @@ function useSeen<T extends Element>() {
 	return { ref, seen };
 }
 
-function SlideThumbnailImpl({
+/**
+ * A Leaderboard slide in the rail: a slim bar tucked under the slide it follows
+ * instead of a full thumbnail, so the scores read as a pause between questions.
+ */
+function LeaderboardBar({ slide, index, total, selected, onSelect, onDelete, onNavigate, registerButton }: SlideThumbnailProps) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: slide.id });
+	const title = slide.title?.trim() || "Leaderboard";
+	const config = slide.config as { top_n?: number; show_all_participants?: boolean };
+	const shown = config.show_all_participants ? "Everyone" : `Top ${config.top_n ?? 10}`;
+
+	return (
+		<li
+			ref={setNodeRef}
+			style={{ transform: CSS.Translate.toString(transform), transition }}
+			className={cn("group relative flex items-center gap-2 py-1 pl-1 pr-2", isDragging && "z-10 opacity-80")}
+		>
+			<span className="w-7 shrink-0 text-center text-xs font-semibold text-dark-5 dark:text-dark-6" aria-hidden>
+				{index + 1}
+			</span>
+			<CornerDownRight className="-ml-1 h-4 w-4 shrink-0 text-secondary-300 dark:text-secondary-600" aria-hidden />
+			<button
+				type="button"
+				ref={(element) => registerButton(slide.id, element)}
+				{...attributes}
+				{...listeners}
+				aria-roledescription="slide"
+				aria-current={selected ? "true" : undefined}
+				aria-label={`Slide ${index + 1} of ${total}: Leaderboard${title !== "Leaderboard" ? `, ${title}` : ""}`}
+				onClick={() => onSelect(slide.id)}
+				onKeyDown={(event) => onNavigate(slide.id, event)}
+				className={cn(
+					"flex h-9 min-w-0 flex-1 cursor-pointer touch-none select-none items-center gap-2 rounded-full border-2 px-3 text-left text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark",
+					selected
+						? "border-secondary bg-secondary-50 text-secondary-700 shadow-sm dark:bg-secondary-900/40 dark:text-secondary-100"
+						: "border-secondary-100 bg-secondary-50/60 text-secondary-600 hover:border-secondary-200 dark:border-secondary-800 dark:bg-secondary-900/20 dark:text-secondary-200"
+				)}
+			>
+				<Trophy className="h-4 w-4 shrink-0" aria-hidden />
+				<span className="min-w-0 flex-1 truncate">{title}</span>
+				<span className="shrink-0 font-medium text-secondary-500 group-hover:hidden dark:text-secondary-300">{shown}</span>
+			</button>
+			<button
+				type="button"
+				tabIndex={-1}
+				aria-hidden
+				title="Remove this leaderboard"
+				onClick={() => onDelete(slide.id)}
+				className="absolute right-3.5 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-red-dark hover:bg-red-light-5 group-hover:flex"
+			>
+				<Trash2 className="h-3.5 w-3.5" />
+			</button>
+		</li>
+	);
+}
+
+function SlideThumbnailImpl(props: SlideThumbnailProps) {
+	if (props.slide.type === "leaderboard") return <LeaderboardBar {...props} />;
+	return <SlideCard {...props} />;
+}
+
+function SlideCard({
 	slide,
 	index,
 	total,
@@ -61,6 +126,9 @@ function SlideThumbnailImpl({
 	onDelete,
 	onNavigate,
 	registerButton,
+	leaderboardAfter,
+	leaderboardBusy = false,
+	onToggleLeaderboard,
 }: SlideThumbnailProps) {
 	const entry = getSlideType(slide.type);
 	const Icon = entry?.icon ?? HelpCircle;
@@ -75,9 +143,29 @@ function SlideThumbnailImpl({
 			style={{ transform: CSS.Translate.toString(transform), transition }}
 			className={cn("group relative flex gap-2 py-1.5 pl-1 pr-2", isDragging && "z-10 opacity-80")}
 		>
-			<div className="flex w-7 shrink-0 flex-col items-center gap-1 pt-1 text-xs font-semibold text-dark-5 dark:text-dark-6" aria-hidden>
-				<span className={cn(selected && "text-primary-600 dark:text-primary-light")}>{index + 1}</span>
-				<Icon className="h-3.5 w-3.5" />
+			<div className="flex w-7 shrink-0 flex-col items-center gap-1 pt-1 text-xs font-semibold text-dark-5 dark:text-dark-6">
+				<span className={cn(selected && "text-primary-600 dark:text-primary-light")} aria-hidden>
+					{index + 1}
+				</span>
+				<Icon className="h-3.5 w-3.5" aria-hidden />
+				{onToggleLeaderboard && leaderboardAfter !== undefined ? (
+					<button
+						type="button"
+						aria-pressed={leaderboardAfter}
+						aria-label={`Show the leaderboard after slide ${index + 1}`}
+						title={leaderboardAfter ? "Leaderboard after this slide (click to remove)" : "Show the leaderboard after this slide"}
+						disabled={leaderboardBusy}
+						onClick={() => onToggleLeaderboard(slide.id)}
+						className={cn(
+							"mt-1 flex h-6 w-6 items-center justify-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50 disabled:cursor-wait disabled:opacity-50",
+							leaderboardAfter
+								? "bg-secondary-500 text-white shadow-sm hover:bg-secondary-600"
+								: "text-gray-5 hover:bg-secondary-50 hover:text-secondary-500 dark:text-dark-5 dark:hover:bg-dark-3"
+						)}
+					>
+						<Trophy className="h-3.5 w-3.5" strokeWidth={leaderboardAfter ? 2.5 : 2} aria-hidden />
+					</button>
+				) : null}
 			</div>
 
 			<div className="min-w-0 flex-1">

@@ -13,6 +13,7 @@ import type { HostActions, PresenterSessionInfo } from "@/features/deck-editor/s
 import { productCopy } from "@/features/deck/productCopy";
 import { useFullscreen } from "../hooks/useFullscreen";
 import { useHostControls } from "../hooks/useHostControls";
+import { useRoomParticipants } from "../hooks/useRoomParticipants";
 import { usePresenterKeyboard } from "../hooks/usePresenterKeyboard";
 import { aggregateEntries, aggregateResponses } from "../lib/format";
 import { isActiveState, primaryActionFor, revealsOnLeave, runKindOf, stateLabel } from "../lib/runKind";
@@ -87,6 +88,13 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 	const ended = channel.sessionStatus === "ended";
 
 	const { pending, advance, end } = useHostControls({ sessionId, api, onState: setSeed, resync });
+	const room = useRoomParticipants({
+		api,
+		sessionId,
+		participantCount: channel.participantCount,
+		recentJoins: hostChannel.recentJoins,
+		enabled: !ended,
+	});
 	const busy = pending !== null;
 	const fullscreen = useFullscreen();
 
@@ -228,7 +236,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 
 	const jumpTo = useCallback(
 		async (target: ParticipantRunView, force: boolean) => {
-			const outcome = await advance({ action: "jump_to", target_run_id: target.id, ...(force ? { force: true } : {}) });
+			const outcome = await advance({ action: "jump_to", target_run_id: target.id, start: true, ...(force ? { force: true } : {}) });
 			if (outcome === "requires_force") setConfirm({ kind: "jump", target });
 		},
 		[advance]
@@ -244,7 +252,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 			setConfirm({ kind: "end" });
 			return;
 		}
-		void advance({ action: primary.action });
+		void advance({ action: primary.action, ...(primary.action === "next_slide" ? { start: true } : {}) });
 	};
 
 	const onPrevious = () => {
@@ -257,7 +265,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 	const onNext = () => {
 		if (busy || ended || isLast) return;
 		if (leavingReveals) setConfirm({ kind: "leave", target: null });
-		else void advance({ action: "next_slide" });
+		else void advance({ action: "next_slide", start: true });
 	};
 
 	const onJump = (target: ParticipantRunView) => {
@@ -353,7 +361,9 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 				{announcement}
 			</p>
 
-			{qrOpen && <QrSidebar joinCode={joinCode} participantCount={channel.participantCount} onClose={() => setQrOpen(false)} />}
+			{qrOpen && (
+				<QrSidebar joinCode={joinCode} participantCount={channel.participantCount} participants={room.participants} onClose={() => setQrOpen(false)} />
+			)}
 
 			<div className="flex min-w-0 flex-1 flex-col">
 				{bannerOpen && <JoinBanner joinCode={joinCode} onDismiss={() => setBannerOpen(false)} />}
@@ -400,6 +410,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 					slideListOpen={slideListOpen}
 					onSlideListOpenChange={setSlideListOpen}
 					participantCount={channel.participantCount}
+					participants={room.participants}
 					responses={responses}
 					answered={answered}
 					connection={channel.status}
@@ -463,7 +474,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 						setConfirm(null);
 						if (current?.kind !== "leave") return;
 						if (current.target) void jumpTo(current.target, false);
-						else void advance({ action: "next_slide" });
+						else void advance({ action: "next_slide", start: true });
 					},
 				}}
 				cancelLabel="Stay here"

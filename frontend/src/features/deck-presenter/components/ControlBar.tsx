@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
 	BarChart3,
 	CheckCheck,
@@ -22,12 +22,13 @@ import {
 	Users,
 } from "lucide-react";
 import type { DeckConnectionStatus } from "@/features/deck/live/channelState";
-import type { ParticipantRunView } from "@/features/deck/types";
+import type { ParticipantRunView, RoomParticipant } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
 import type { PendingAction } from "../hooks/useHostControls";
 import type { PrimaryAction } from "../lib/runKind";
 import { ControlButton } from "./ControlButton";
 import { OverflowMenu, type OverflowMenuItem } from "./OverflowMenu";
+import { ParticipantsPopover } from "./ParticipantsPopover";
 import { SlideListPopover } from "./SlideListPopover";
 
 // Bottom control bar (plan §6.2):
@@ -103,6 +104,8 @@ export interface ControlBarProps {
 	slideListOpen: boolean;
 	onSlideListOpenChange: (open: boolean) => void;
 	participantCount: number | null;
+	/** Newest first: the 👥 counter opens them as a list. */
+	participants?: RoomParticipant[];
 	/** Responses on the current run (answer slides), else null. */
 	responses: ResponseTally | null;
 	/** Quiz runs: answered count (shown instead of `responses`), else null. */
@@ -155,6 +158,7 @@ export function ControlBar(props: ControlBarProps) {
 		slideListOpen,
 		onSlideListOpenChange,
 		participantCount,
+		participants: roomParticipants = [],
 		responses,
 		answered = null,
 		connection,
@@ -167,6 +171,8 @@ export function ControlBar(props: ControlBarProps) {
 		onExit,
 	} = props;
 	const listTriggerRef = useRef<HTMLButtonElement>(null);
+	const peopleTriggerRef = useRef<HTMLButtonElement>(null);
+	const [peopleOpen, setPeopleOpen] = useState(false);
 	const busy = pending !== null;
 	const conn = CONNECTION[connection];
 	const primaryBusy =
@@ -369,16 +375,35 @@ export function ControlBar(props: ControlBarProps) {
 						)}
 					</span>
 				)}
-				<span
-					className={cn(COUNTER, tally !== null && HIDE_BELOW_48, HIDE_BELOW_26)}
-					title={`${participants} participants · ${conn.label}`}
-				>
-					<Users className="h-5 w-5" aria-hidden />
-					{participants}
-					<span className="sr-only"> participants</span>
-					<span className={cn("ml-1 h-2.5 w-2.5 rounded-full", conn.dot)} aria-hidden />
-					<span className="sr-only">, connection {conn.label}</span>
-				</span>
+				<div className={cn("relative", tally !== null && HIDE_BELOW_48, HIDE_BELOW_26)}>
+					<button
+						ref={peopleTriggerRef}
+						type="button"
+						onClick={() => setPeopleOpen((open) => !open)}
+						aria-expanded={peopleOpen}
+						aria-haspopup="dialog"
+						title={`${participants} participants · ${conn.label} · show who has joined`}
+						className={cn(
+							COUNTER,
+							"min-h-11 rounded-lg transition hover:bg-[var(--deck-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus,#C46620)]",
+							peopleOpen && "bg-[var(--deck-surface-muted)]"
+						)}
+					>
+						<Users className="h-5 w-5" aria-hidden />
+						{participants}
+						<span className="sr-only"> participants, show who has joined</span>
+						<span className={cn("ml-1 h-2.5 w-2.5 rounded-full", conn.dot)} aria-hidden />
+						<span className="sr-only">, connection {conn.label}</span>
+					</button>
+					{peopleOpen && (
+						<ParticipantsPopover
+							participants={roomParticipants}
+							total={participants}
+							onClose={() => setPeopleOpen(false)}
+							triggerRef={peopleTriggerRef}
+						/>
+					)}
+				</div>
 				{moderation && (
 					<ControlButton
 						icon

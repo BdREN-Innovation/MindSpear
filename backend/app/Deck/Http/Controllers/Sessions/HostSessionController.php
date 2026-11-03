@@ -7,6 +7,7 @@ use App\Deck\Http\Requests\Sessions\AdvanceSessionRequest;
 use App\Deck\Http\Resources\SessionStatePresenter;
 use App\Deck\Sessions\SessionLauncher;
 use App\Deck\Sessions\SessionStateMachine;
+use App\Models\Deck\DeckParticipant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,7 +32,7 @@ class HostSessionController extends DeckController
         return $this->createdResponse(SessionStatePresenter::host($session), 'Session started.');
     }
 
-    /** POST /quest-sessions/{session}/advance {action, target_run_id?, force?} */
+    /** POST /quest-sessions/{session}/advance {action, target_run_id?, force?, start?} */
     public function advance(AdvanceSessionRequest $request, string $session): JsonResponse
     {
         $session = $this->machine->advance(
@@ -39,9 +40,41 @@ class HostSessionController extends DeckController
             $request->action(),
             $request->targetRunId(),
             $request->force(),
+            $request->start(),
         );
 
         return $this->okResponse(SessionStatePresenter::host($session));
+    }
+
+    /** Most participants listed; the count beyond is in `total`. */
+    private const PARTICIPANT_LIST_LIMIT = 200;
+
+    /**
+     * GET /quest-sessions/{session}/participants → {participants: [{participant_id, display_name,
+     * emoji_avatar, joined_at}, ...] newest first, at most 200, total}: who is in the room now
+     * (left_at null), for the host's "who joined" list. New joins then arrive as participant.joined.
+     */
+    public function participants(Request $request, string $session): JsonResponse
+    {
+        $inRoom = DeckParticipant::query()
+            ->where('deck_session_id', $this->ownedSession($request, $session)->id)
+            ->whereNull('left_at');
+
+        return $this->okResponse([
+            'participants' => (clone $inRoom)
+                ->orderByDesc('joined_at')
+                ->orderByDesc('id')
+                ->limit(self::PARTICIPANT_LIST_LIMIT)
+                ->get(['id', 'display_name', 'emoji_avatar', 'joined_at'])
+                ->map(fn (DeckParticipant $participant) => [
+                    'participant_id' => $participant->id,
+                    'display_name' => $participant->display_name,
+                    'emoji_avatar' => $participant->emoji_avatar,
+                    'joined_at' => $participant->joined_at?->toISOString(),
+                ])
+                ->all(),
+            'total' => $inRoom->count(),
+        ]);
     }
 
     /** POST /quest-sessions/{session}/end */

@@ -284,6 +284,7 @@ A route file declares its routes once inside `DeckRoutes::authoring(fn (string $
 | GET | `{s}/by-code/{code}` | public | Same, for one product |
 | GET | `{s}/{session}/state` | host or participant | Resync snapshot; the view depends on whether `X-Participant-Token` is sent |
 | POST | `{s}/{session}/advance`, `{s}/{session}/end` | host | State-machine actions (§4.5); end the session |
+| GET | `{s}/{session}/participants` | host | Who is in the room now (newest first, at most 200, plus `total`) |
 | POST | `{s}/{session}/participants/join`, `.../participants/leave` | public, participant | Join with `{join_code, display_name, emoji_avatar}` → token; leave |
 | POST | `{s}/{session}/slide-runs/{run}/answers` | participant | Submit `{answer_payload}` → 204 |
 | GET | `{s}/{session}/slide-runs/{run}/my-answer`, `.../aggregate` | participant, host | My answer (quiz: correctness after the reveal); results |
@@ -361,7 +362,7 @@ Types live in `backend/app/Deck/Slides/Types/`, in the Quest, Quiz and Content s
 | Q&A | `waiting → open → closed` |
 | Content, leaderboard | stay `waiting` (navigation only) |
 
-Host actions go to `POST {s}/{session}/advance` as `{action, target_run_id?, force?}`: `start_voting`, `close_voting`, `next_slide`, `previous_slide`, `jump_to`; quiz only: `reveal`, `insert_leaderboard`. Leaving an active run closes (or reveals) it first; moving backwards away from an active run needs `force: true`; a closed or revealed run never reopens. Quiz runs also reveal by themselves when the time limit runs out or when every participant still in the room has answered. Every transition increments `state_version`; an illegal action answers 409 `invalid_state` with `{slide_run_id, state, state_version}` so the client can resync with `GET {s}/{session}/state`.
+Host actions go to `POST {s}/{session}/advance` as `{action, target_run_id?, force?, start?}`: `start_voting`, `close_voting`, `next_slide`, `previous_slide`, `jump_to`; quiz only: `reveal`, `insert_leaderboard`. With `start: true`, `next_slide` / `jump_to` also start the poll or quiz question they move onto (its get-ready countdown begins in the same request); the presenter always sends it, so "next" is one click. Q&A, spinner and content slides still wait. Leaving an active run closes (or reveals) it first; moving backwards away from an active run needs `force: true`; a closed or revealed run never reopens. Quiz runs also reveal by themselves when the time limit runs out or when every participant still in the room has answered. Every transition increments `state_version`; an illegal action answers 409 `invalid_state` with `{slide_run_id, state, state_version}` so the client can resync with `GET {s}/{session}/state`.
 
 **Timers and concurrency.** Countdowns and time limits are delayed `TransitionSlideRunJob`s on the default queue. A job carries the state and version it expects, so a stale job does nothing, and `syncDue()` applies an overdue transition on the next read if a job is lost. Every write locks the session row, then the run row (`FOR UPDATE`).
 

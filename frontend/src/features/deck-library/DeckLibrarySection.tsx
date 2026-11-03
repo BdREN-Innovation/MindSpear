@@ -51,13 +51,11 @@ function DeckCard({
 	onDelete(deck: DeckSummary): void;
 }) {
 	const theme = getDeckTheme(deck.settings?.theme);
+	// The whole card opens the deck: the title link stretches over it (after:inset-0), and the
+	// action row sits above that layer so its buttons keep their own clicks.
 	return (
-		<li className="flex flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:border-primary dark:border-stroke-dark dark:bg-gray-dark">
-			<Link
-				href={copy.editHref(deck.id)}
-				className="block p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-600"
-				aria-label={`Edit ${deck.title}`}
-			>
+		<li className="relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:border-primary hover:shadow-md dark:border-stroke-dark dark:bg-gray-dark">
+			<div className="p-3">
 				{deck.cover?.url ? (
 					// Covers come from My Files (any host), so a plain img keeps next/image config out of it.
 					// eslint-disable-next-line @next/next/no-img-element
@@ -65,11 +63,17 @@ function DeckCard({
 				) : (
 					<ThemeSwatch theme={theme} />
 				)}
-			</Link>
+			</div>
 			<div className="flex flex-1 flex-col gap-1 px-4 pb-3">
 				<div className="flex items-center gap-2">
-					<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-dark dark:text-white" title={deck.title}>
-						{deck.title}
+					<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-dark dark:text-white">
+						<Link
+							href={copy.editHref(deck.id)}
+							title={deck.title}
+							className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary-600"
+						>
+							{deck.title}
+						</Link>
 					</h3>
 					{deck.visibility === "public" ? (
 						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-light-7 px-2 py-0.5 text-xs font-medium text-green-dark" title="Listed in Discover">
@@ -92,7 +96,7 @@ function DeckCard({
 					Updated {formatUpdated(deck.updatedAt)}
 				</p>
 			</div>
-			<div className="grid grid-cols-2 gap-1 border-t border-stroke p-2 dark:border-stroke-dark">
+			<div className="relative z-10 grid cursor-default grid-cols-2 gap-1 border-t border-stroke bg-white p-2 dark:border-stroke-dark dark:bg-gray-dark">
 				<Link href={copy.editHref(deck.id)} className={`${actionClass} bg-primary font-semibold text-dark hover:bg-primary-dark`}>
 					<Pencil className="h-4 w-4" aria-hidden />
 					Edit

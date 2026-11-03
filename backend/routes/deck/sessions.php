@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 | Live sessions: start (under the authoring prefix), join-code lookup, state
-| resync, host transitions, end, and the quiz leaderboard. Names
+| resync, host transitions, end, who is in the room (host), and the quiz leaderboard. Names
 | deck.{product}.decks.sessions.store and deck.{product}.sessions.*.
 |
 | Host routes use Sanctum + throttle:deck-author and answer 404 for anyone
@@ -47,6 +47,7 @@ DeckRoutes::sessions(function () {
     Route::middleware(['auth:sanctum', 'throttle:deck-author'])->group(function () {
         Route::post('{session}/advance', [HostSessionController::class, 'advance'])->whereNumber('session')->name('advance');
         Route::post('{session}/end', [HostSessionController::class, 'end'])->whereNumber('session')->name('end');
+        Route::get('{session}/participants', [HostSessionController::class, 'participants'])->whereNumber('session')->name('participants');
     });
 
     Route::get('{session}/participant-state', [SessionStateController::class, 'participantState'])

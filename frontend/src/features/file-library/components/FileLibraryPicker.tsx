@@ -24,13 +24,15 @@ export interface FilePickerPanelProps {
 	hint?: string;
 	/** Disable the confirm button while the caller works on the chosen file. */
 	busy?: boolean;
+	/** Already chosen, e.g. when coming back to this step. */
+	initialSelected?: LibraryFile | null;
 }
 
 /** "Upload new" or "Choose from My Files", with storage usage on top. Usable inline or in FileLibraryPicker. */
-export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Use this file", hint, busy = false }: FilePickerPanelProps) {
+export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Use this file", hint, busy = false, initialSelected = null }: FilePickerPanelProps) {
 	const { usage, loading } = useStorageUsage();
 	const [tab, setTab] = useState<Tab>("library");
-	const [selected, setSelected] = useState<LibraryFile | null>(null);
+	const [selected, setSelected] = useState<LibraryFile | null>(initialSelected);
 	const [confirming, setConfirming] = useState(false);
 	const tabChosen = useRef(false);
 	const lockedCategory = accept === "any" ? undefined : accept;
@@ -45,7 +47,8 @@ export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Us
 		if (count === 0) setTab("upload");
 	}, [usage, accept]);
 
-	const confirm = async (file: LibraryFile | null = selected) => {
+	const confirm = async () => {
+		const file = selected;
 		if (!file) return;
 		setConfirming(true);
 		try {
@@ -94,7 +97,6 @@ export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Us
 						lockedCategory={lockedCategory}
 						selectedId={selected?.id ?? null}
 						onSelect={setSelected}
-						onActivate={(file) => confirm(file)}
 						perPage={12}
 						maxHeightClass="max-h-[45vh]"
 						emptyAction={
@@ -120,7 +122,7 @@ export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Us
 							</div>
 						</div>
 					) : (
-						<p className="text-sm text-dark-5">{tab === "upload" ? "Upload a file, then use it." : "Select a file to continue."}</p>
+						<p className="text-sm text-dark-5">{tab === "upload" ? "Upload a file, then use it." : "Tap a file to choose it. Tap it again to unselect."}</p>
 					)}
 				</div>
 				<div className="flex justify-end gap-2">
@@ -129,7 +131,7 @@ export function FilePickerPanel({ accept, onSelect, onCancel, confirmLabel = "Us
 							Cancel
 						</Button>
 					) : null}
-					<Button onClick={() => confirm()} disabled={!selected} loading={confirming || busy}>
+					<Button onClick={confirm} disabled={!selected} loading={confirming || busy}>
 						{confirmLabel}
 					</Button>
 				</div>

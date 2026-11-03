@@ -92,11 +92,12 @@ export interface DeckEditor {
 	patchSlide(slideId: number, patch: SlidePatch, options?: { immediate?: boolean }): void;
 	optionsApiFor(slide: Slide): OptionsApi;
 	mediaApiFor(slideId: number): SlideMediaApi;
-	addSlide(type: SlideTypeKey, afterPosition?: number | null): Promise<Slide | null>;
+	/** `select: false` adds it without leaving the slide being edited. */
+	addSlide(type: SlideTypeKey, afterPosition?: number | null, options?: { select?: boolean }): Promise<Slide | null>;
 	/** AI bulk insert; throws DeckApiError (the wizard shows it). */
 	addSlides(input: BulkSlidesInput): Promise<Slide[]>;
 	duplicateSlide(slideId: number): Promise<Slide | null>;
-	/** Optimistic delete; returns the slide selected next. */
+	/** Optimistic delete; returns its neighbour (selected next when the deleted slide was the selected one). */
 	deleteSlide(slideId: number): number | null;
 	moveSlide(slideId: number, toIndex: number): void;
 	setTitle(title: string): void;
@@ -623,14 +624,14 @@ export function useDeckEditor(
 			return error;
 		};
 
-		const addSlide: DeckEditor["addSlide"] = (type, afterPosition) =>
+		const addSlide: DeckEditor["addSlide"] = (type, afterPosition, { select = true } = {}) =>
 			enqueueDeck(async () => {
 				try {
 					const { slide, order } = await track(() =>
 						api.addSlide(deckId, { type, after_position: afterPosition ?? null })
 					);
 					insertSlides([slide], order);
-					setSelectedId(slide.id);
+					if (select) setSelectedId(slide.id);
 					return slide;
 				} catch (reason) {
 					structuralError(reason);
@@ -677,7 +678,7 @@ export function useDeckEditor(
 			orderRef.current = previousOrder.filter((id) => id !== slideId);
 			syncPositions();
 			const nextSelected = orderRef.current[index] ?? orderRef.current[index - 1] ?? null;
-			setSelectedId(nextSelected);
+			setSelectedId((current) => (current === slideId ? nextSelected : current));
 			bump();
 
 			void enqueueDeck(async () => {

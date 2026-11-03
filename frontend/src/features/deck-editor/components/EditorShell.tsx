@@ -97,6 +97,8 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 	const [adding, setAdding] = useState(false);
 	const [presenting, setPresenting] = useState(false);
 	const [announcement, setAnnouncement] = useState("");
+	// Slides whose "leaderboard after this slide" trophy toggle is being saved.
+	const [leaderboardBusy, setLeaderboardBusy] = useState<ReadonlySet<number>>(() => new Set());
 
 	const buttonsRef = useRef(new Map<number, HTMLButtonElement>());
 	const pendingFocusRef = useRef<number | "add" | null>(null);
@@ -105,6 +107,8 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 	const slides = useMemo(() => deck?.slides ?? [], [deck]);
 	const selectedIndex = slides.findIndex((s) => s.id === selectedId);
 	const selected: Slide | null = selectedIndex >= 0 ? slides[selectedIndex] : null;
+	const slidesRef = useRef(slides);
+	slidesRef.current = slides;
 	const theme = useMemo(() => getDeckTheme(deck?.settings.theme), [deck?.settings.theme]);
 
 	const registerButton = useCallback((slideId: number, element: HTMLButtonElement | null) => {
@@ -186,6 +190,39 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 		},
 		[moveSlide]
 	);
+
+	/**
+	 * Quiz: "show the leaderboard after this slide" is a Leaderboard slide right after it.
+	 * The trophy beside the slide adds one (without leaving the slide being edited) or removes it.
+	 */
+	const onToggleLeaderboard = useCallback(
+		async (slideId: number) => {
+			const list = slidesRef.current;
+			const index = list.findIndex((s) => s.id === slideId);
+			const slide = list[index];
+			if (!slide || slide.type === "leaderboard") return;
+			const next = list[index + 1];
+			const mark = (busy: boolean) =>
+				setLeaderboardBusy((current) => {
+					const updated = new Set(current);
+					if (busy) updated.add(slideId);
+					else updated.delete(slideId);
+					return updated;
+				});
+
+			if (next?.type === "leaderboard") {
+				deleteSlide(next.id);
+				announce(`Leaderboard after slide ${index + 1} removed.`);
+				return;
+			}
+			mark(true);
+			const added = await addSlide("leaderboard", slide.position, { select: false });
+			mark(false);
+			if (added) announce(`Leaderboard added after slide ${index + 1}.`);
+		},
+		[addSlide, deleteSlide]
+	);
+	const leaderboardAfterSelected = selected && selected.type !== "leaderboard" ? slides[selectedIndex + 1]?.type === "leaderboard" : null;
 
 	const onFocusSlide = useCallback((slideId: number) => focusSlide(slideId), [focusSlide]);
 	const onSelect = useCallback((slideId: number) => select(slideId), [select]);
@@ -296,6 +333,8 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 					onAdd={openPicker}
 					registerButton={registerButton}
 					addButtonRef={addButtonRef}
+					onToggleLeaderboard={product === "quiz" ? onToggleLeaderboard : undefined}
+					leaderboardBusy={leaderboardBusy}
 				/>
 				<CenterCanvas
 					product={product}
@@ -318,6 +357,15 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 					media={selected ? mediaApiFor(selected.id) : null}
 					onUpdateSettings={updateSettings}
 					onOpenDeckSettings={() => setSettingsOpen(true)}
+					leaderboardAfter={
+						product === "quiz" && selected && leaderboardAfterSelected !== null
+							? {
+									on: leaderboardAfterSelected,
+									busy: leaderboardBusy.has(selected.id),
+									onToggle: () => void onToggleLeaderboard(selected.id),
+								}
+							: undefined
+					}
 					collapsed={inspectorCollapsed}
 					onToggleCollapsed={toggleInspector}
 				/>

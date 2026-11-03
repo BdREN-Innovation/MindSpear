@@ -7,6 +7,7 @@ import type { Deck, DeckProduct, DeckSettingsPatch, Slide, SlidePatch } from "@/
 import type { OptionsApi, SlideMediaApi } from "../slides/types";
 import { ContentTab } from "./inspector/ContentTab";
 import { DesignTab } from "./inspector/DesignTab";
+import { ToggleField } from "../slides/shared";
 import { SettingsTab } from "./inspector/SettingsTab";
 
 type Tab = "content" | "design" | "settings";
@@ -31,6 +32,8 @@ export interface InspectorPanelProps {
 	media: SlideMediaApi | null;
 	onUpdateSettings(patch: DeckSettingsPatch): Promise<void>;
 	onOpenDeckSettings(): void;
+	/** Quiz: whether a Leaderboard slide follows the selected slide, and the switch for it. */
+	leaderboardAfter?: { on: boolean; busy: boolean; onToggle(): void };
 	/** Folded to a narrow rail, giving the canvas the room. */
 	collapsed?: boolean;
 	onToggleCollapsed?(): void;
@@ -51,6 +54,7 @@ export function InspectorPanel({
 	media,
 	onUpdateSettings,
 	onOpenDeckSettings,
+	leaderboardAfter,
 	collapsed = false,
 	onToggleCollapsed,
 }: InspectorPanelProps) {
@@ -162,7 +166,20 @@ export function InspectorPanel({
 				) : tab === "content" ? (
 					<ContentTab slide={slide} deck={deck} errors={errors} onPatch={onPatch} options={options} media={media} />
 				) : (
-					<SettingsTab slide={slide} deck={deck} product={product ?? deck.product} errors={errors} onPatch={onPatch} />
+					<div className="flex flex-col gap-6">
+						<SettingsTab slide={slide} deck={deck} product={product ?? deck.product} errors={errors} onPatch={onPatch} />
+						{leaderboardAfter ? (
+							<div className="border-t border-stroke pt-4 dark:border-stroke-dark">
+								<ToggleField
+									label="Show leaderboard after this slide"
+									description="Adds a Leaderboard slide right after this one, so players see the scores so far. Same as the trophy beside the slide."
+									checked={leaderboardAfter.on}
+									disabled={leaderboardAfter.busy}
+									onChange={leaderboardAfter.onToggle}
+								/>
+							</div>
+						) : null}
+					</div>
 				)}
 			</div>
 		</aside>

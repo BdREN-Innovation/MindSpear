@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Globe, Lock } from "lucide-react";
 import { Modal } from "@/components/ui";
 import { isDeckApiError } from "@/features/deck/api/errors";
 import { getDeckTheme } from "@/features/deck/theme";
 import type { DeckProduct, DeckQaSort, DeckSettings, DeckSettingsPatch, DeckVisibility } from "@/features/deck/types";
-import { SegmentedField, SelectField, ToggleField, type ChoiceOption } from "../slides/shared";
+import { RadioCardField, SegmentedField, SelectField, ToggleField, type ChoiceOption, type RadioCardOption } from "../slides/shared";
 import { ThemeGrid } from "./inspector/DesignTab";
 import { GET_READY_CHOICES, timeLimitOptions } from "./inspector/SettingsTab";
 import { productCopy } from "@/features/deck/productCopy";
@@ -35,9 +36,14 @@ const QA_SORTS: ChoiceOption<DeckQaSort>[] = [
 
 const GET_READY_OPTIONS: ChoiceOption<number>[] = [{ value: 0, label: "Off" }, ...GET_READY_CHOICES];
 
-const VISIBILITIES: ChoiceOption<DeckVisibility>[] = [
-	{ value: "private", label: "Only me" },
-	{ value: "public", label: "Public in Discover" },
+const visibilities = (noun: string): RadioCardOption<DeckVisibility>[] => [
+	{ value: "private", label: "Only me", icon: Lock, description: `Only you can see and present this ${noun}.` },
+	{
+		value: "public",
+		label: "Public in Discover",
+		icon: Globe,
+		description: "Anyone signed in can find it in Discover, preview it and copy it to their own library.",
+	},
 ];
 
 export function DeckSettingsModal({
@@ -109,7 +115,7 @@ export function DeckSettingsModal({
 			title={`${copy.Noun} settings`}
 			open={open}
 			onClose={saving ? undefined : onClose}
-			size="md"
+			width={{ xs: "95%", sm: "90%", md: "90%", lg: 980, xl: 1040, xxl: 1080 }}
 			footer={
 				<div className="flex justify-end gap-2">
 					<button
@@ -132,57 +138,78 @@ export function DeckSettingsModal({
 			}
 		>
 			<form
-				className="flex flex-col gap-6 py-2"
+				// Two columns on wide screens (settings | theme), so it fits without scrolling.
+				className="grid gap-x-8 gap-y-5 py-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]"
 				onSubmit={(event) => {
 					event.preventDefault();
 					void save();
 				}}
 			>
-				<fieldset className="flex flex-col gap-3">
-					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Sharing</legend>
-					<SegmentedField<DeckVisibility>
-						label={`Who can find this ${copy.noun}`}
-						hint={
-							sharing === "public"
-								? `Anyone signed in can find it in Discover, preview it and copy it to their own library. Your sessions and results stay private, and copies never change your ${copy.noun}.`
-								: `Only you can see and present it.`
-						}
-						value={sharing}
-						options={VISIBILITIES}
-						error={errors.visibility}
-						onChange={setSharing}
-					/>
-				</fieldset>
+				<div className="flex flex-col gap-5">
+					<fieldset className="flex flex-col gap-2">
+						<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Sharing</legend>
+						<RadioCardField<DeckVisibility>
+							label={`Who can find this ${copy.noun}`}
+							hideLabel
+							hint={sharing === "public" ? `Your sessions and results stay private, and copies never change your ${copy.noun}.` : undefined}
+							value={sharing}
+							options={visibilities(copy.noun)}
+							error={errors.visibility}
+							onChange={setSharing}
+						/>
+					</fieldset>
 
-				<fieldset className="flex flex-col gap-4">
-					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Defaults for new slides</legend>
-					<SelectField<number>
-						label="Default time limit"
-						hint="Applies to question slides you add from now on. Existing slides keep their own setting."
-						value={draft.default_time_limit ?? 0}
-						options={timeLimitOptions(draft.default_time_limit)}
-						error={errors.default_time_limit}
-						onChange={(value) => set("default_time_limit", value === 0 ? null : value)}
-					/>
-					<SelectField<number>
-						label="Get-ready countdown"
-						hint={
-							quiz
-								? "A short countdown before answering opens on new question slides."
-								: "A short countdown before voting opens on new question slides."
-						}
-						value={draft.get_ready_seconds}
-						options={getReadyOptions}
-						error={errors.get_ready_seconds}
-						onChange={(value) => set("get_ready_seconds", value)}
-					/>
-				</fieldset>
+					<fieldset className="flex flex-col gap-2">
+						<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Defaults for new slides</legend>
+						<div className="grid gap-3 sm:grid-cols-2">
+							<SelectField<number>
+								label="Time limit"
+								value={draft.default_time_limit ?? 0}
+								options={timeLimitOptions(draft.default_time_limit)}
+								error={errors.default_time_limit}
+								onChange={(value) => set("default_time_limit", value === 0 ? null : value)}
+							/>
+							<SelectField<number>
+								label="Get-ready countdown"
+								value={draft.get_ready_seconds}
+								options={getReadyOptions}
+								error={errors.get_ready_seconds}
+								onChange={(value) => set("get_ready_seconds", value)}
+							/>
+						</div>
+						<p className="text-xs text-dark-5 dark:text-dark-6">
+							For question slides you add from now on (the countdown runs before {quiz ? "answering" : "voting"} opens). Existing slides keep
+							their own.
+						</p>
+					</fieldset>
 
-				<fieldset className="flex flex-col gap-3">
+					<fieldset className="flex flex-col gap-3">
+						<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Presenting</legend>
+						<ToggleField
+							label="Show the QR code sidebar"
+							description="The join code and QR code sit next to every slide."
+							checked={draft.show_qr_sidebar}
+							error={errors.show_qr_sidebar}
+							onChange={(on) => set("show_qr_sidebar", on)}
+						/>
+						{quiz ? null : (
+							<SegmentedField<DeckQaSort>
+								label="Default Q&A order"
+								hint="How audience questions are sorted on new Q&A slides."
+								value={draft.default_qa_sort}
+								options={QA_SORTS}
+								error={errors.default_qa_sort}
+								onChange={(value) => set("default_qa_sort", value)}
+							/>
+						)}
+					</fieldset>
+				</div>
+
+				<fieldset className="flex flex-col gap-2">
 					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">
 						Theme <span className="font-normal text-dark-5">· {getDeckTheme(draft.theme).label}</span>
 					</legend>
-					<ThemeGrid value={draft.theme} onChange={(key) => set("theme", key)} disabled={saving} />
+					<ThemeGrid value={draft.theme} onChange={(key) => set("theme", key)} disabled={saving} columns={3} />
 					{errors.theme ? (
 						<p role="alert" className="text-xs font-medium text-[#B42318]">
 							{errors.theme[0]}
@@ -190,29 +217,8 @@ export function DeckSettingsModal({
 					) : null}
 				</fieldset>
 
-				<fieldset className="flex flex-col gap-4">
-					<legend className="mb-1 text-sm font-semibold text-dark dark:text-white">Presenting</legend>
-					<ToggleField
-						label="Show the QR code sidebar"
-						description="The presenter screen shows the join code and QR code next to every slide."
-						checked={draft.show_qr_sidebar}
-						error={errors.show_qr_sidebar}
-						onChange={(on) => set("show_qr_sidebar", on)}
-					/>
-					{quiz ? null : (
-						<SegmentedField<DeckQaSort>
-							label="Default Q&A order"
-							hint="How audience questions are sorted on new Q&A slides."
-							value={draft.default_qa_sort}
-							options={QA_SORTS}
-							error={errors.default_qa_sort}
-							onChange={(value) => set("default_qa_sort", value)}
-						/>
-					)}
-				</fieldset>
-
 				{formError ? (
-					<p role="alert" className="rounded-lg border border-red-light-3 bg-red-light-5 px-3 py-2 text-sm text-[#B42318]">
+					<p role="alert" className="rounded-lg border border-red-light-3 bg-red-light-5 px-3 py-2 text-sm text-[#B42318] lg:col-span-2">
 						{formError}
 					</p>
 				) : null}

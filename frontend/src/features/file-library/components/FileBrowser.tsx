@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Check, FolderOpen, LayoutGrid, List, Loader2, Search, SearchX, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Pagination } from "@/components/ui";
+import { Pagination, Select } from "@/components/ui";
 import { useLibraryFiles } from "../hooks/useLibraryFiles";
 import { useFileActions } from "../hooks/useFileActions";
 import { formatBytes, formatDate, typeStyle } from "../lib/format";
@@ -20,9 +20,8 @@ interface Props {
 	/** Only show this category and hide the filter. */
 	lockedCategory?: FileCategory;
 	selectedId?: number | null;
-	onSelect?: (file: LibraryFile) => void;
-	/** Double-click / Enter on a file in select mode. */
-	onActivate?: (file: LibraryFile) => void;
+	/** Select mode: a file was chosen, or null when the chosen one was clicked again. */
+	onSelect?: (file: LibraryFile | null) => void;
 	/** Shown in the empty state when there are no files at all. */
 	emptyAction?: ReactNode;
 	toolbarExtra?: ReactNode;
@@ -53,7 +52,6 @@ export function FileBrowser({
 	lockedCategory,
 	selectedId,
 	onSelect,
-	onActivate,
 	emptyAction,
 	toolbarExtra,
 	perPage = 24,
@@ -66,15 +64,14 @@ export function FileBrowser({
 	const actions = useFileActions();
 	const selectable = mode === "select";
 
+	// A click (or Enter / Space) picks a file, and on the picked one takes it back, so a double click
+	// never jumps ahead: moving on is always the picker's own button.
+	const toggle = (file: LibraryFile) => onSelect?.(selectedId === file.id ? null : file);
+
 	const handleKey = (event: React.KeyboardEvent, file: LibraryFile) => {
-		if (!selectable) return;
-		if (event.key === "Enter") {
-			onSelect?.(file);
-			onActivate?.(file);
-		} else if (event.key === " ") {
-			event.preventDefault();
-			onSelect?.(file);
-		}
+		if (!selectable || (event.key !== "Enter" && event.key !== " ")) return;
+		event.preventDefault();
+		toggle(file);
 	};
 
 	const empty = !list.loading && !list.error && list.files.length === 0;
@@ -91,7 +88,7 @@ export function FileBrowser({
 						onChange={(e) => list.setSearch(e.target.value)}
 						placeholder="Search by name"
 						aria-label="Search files"
-						className="h-10 w-full rounded-lg border border-stroke bg-white pl-9 pr-9 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
+						className="h-10 w-full rounded-lg border border-stroke bg-white pl-9 pr-9 text-sm outline-none transition focus:border-secondary focus:ring-2 focus:ring-secondary/20 dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
 					/>
 					{list.search ? (
 						<button
@@ -123,7 +120,7 @@ export function FileBrowser({
 								onClick={() => setCategoryFilter(value)}
 								className={cn(
 									"h-full rounded-md px-3 text-sm font-medium transition",
-									categoryFilter === value ? "bg-primary text-white shadow-sm" : "text-dark-4 hover:text-dark dark:text-dark-6 dark:hover:text-white",
+									categoryFilter === value ? "bg-primary text-dark shadow-sm" : "text-dark-4 hover:text-dark dark:text-dark-6 dark:hover:text-white",
 								)}
 							>
 								{label}
@@ -132,18 +129,7 @@ export function FileBrowser({
 					</div>
 				) : null}
 
-				<select
-					value={list.sort}
-					onChange={(e) => list.setSort(e.target.value as FileSort)}
-					aria-label="Sort files"
-					className="h-10 rounded-lg border border-stroke bg-white px-3 text-sm outline-none focus:border-primary dark:border-stroke-dark dark:bg-dark-2 dark:text-white"
-				>
-					{SORTS.map((s) => (
-						<option key={s.value} value={s.value}>
-							{s.label}
-						</option>
-					))}
-				</select>
+				<Select<FileSort> value={list.sort} options={SORTS} onChange={list.setSort} aria-label="Sort files" className="w-44" />
 
 				{mode === "manage" ? (
 					<div className="flex h-10 items-center rounded-lg border border-stroke bg-white p-1 dark:border-stroke-dark dark:bg-dark-2">
@@ -198,7 +184,7 @@ export function FileBrowser({
 							</>
 						) : (
 							<>
-								<FolderOpen className="mb-3 h-10 w-10 text-primary" aria-hidden />
+								<FolderOpen className="mb-3 h-10 w-10 text-secondary" aria-hidden />
 								<p className="font-semibold text-dark dark:text-white">
 									{category === "image" ? "No images yet" : category === "document" ? "No documents yet" : category === "video" ? "No videos yet" : "No files yet"}
 								</p>
@@ -221,20 +207,19 @@ export function FileBrowser({
 									role={selectable ? "option" : undefined}
 									aria-selected={selectable ? selected : undefined}
 									tabIndex={selectable ? 0 : undefined}
-									onClick={selectable ? () => onSelect?.(file) : undefined}
-									onDoubleClick={selectable ? () => onActivate?.(file) : undefined}
+									onClick={selectable ? () => toggle(file) : undefined}
 									onKeyDown={(e) => handleKey(e, file)}
 									className={cn(
-										"group relative overflow-hidden rounded-xl border bg-white transition dark:bg-gray-dark",
-										selectable && "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+										"group relative select-none overflow-hidden rounded-xl border bg-white transition dark:bg-gray-dark",
+										selectable && "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50",
 										selected
-											? "border-primary ring-2 ring-primary/30"
-											: "border-stroke hover:border-primary/50 hover:shadow-md dark:border-stroke-dark",
+											? "border-secondary ring-2 ring-secondary/25"
+											: "border-stroke hover:border-secondary-200 hover:shadow-md dark:border-stroke-dark",
 									)}
 								>
 									<FileThumb file={file} className="aspect-[4/3] w-full" />
 									{selected ? (
-										<span className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white shadow">
+										<span className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-secondary-500 text-white shadow">
 											<Check className="h-4 w-4" aria-hidden />
 										</span>
 									) : null}

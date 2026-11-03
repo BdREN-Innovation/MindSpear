@@ -151,10 +151,14 @@ class SessionStateMachine
     /**
      * Apply a host action. Returns the (locked, updated) session.
      *
+     * $start (next_slide, jump_to): when the slide moved onto is a poll or quiz question that
+     * has not run yet, start it in the same step, so its get-ready countdown begins at once
+     * (Q&A, spinner and content slides still wait for start_voting / navigation).
+     *
      * @throws DeckException 409 invalid_state for an illegal transition or a session that is not live,
      *                       404 when jump_to names a run of another session
      */
-    public function advance(DeckSession $session, string $action, ?int $targetRunId = null, bool $force = false): DeckSession
+    public function advance(DeckSession $session, string $action, ?int $targetRunId = null, bool $force = false, bool $start = false): DeckSession
     {
         if (! in_array($action, self::ACTIONS, true)) {
             throw new InvalidArgumentException("Unknown session action [{$action}].");
@@ -166,7 +170,7 @@ class SessionStateMachine
         $caughtUp = $this->catchUp($session);
 
         try {
-            return DB::transaction(function () use ($session, $action, $targetRunId, $force, $caughtUp) {
+            return DB::transaction(function () use ($session, $action, $targetRunId, $force, $start, $caughtUp) {
                 $s = $this->lockSession($session);
 
                 if (! $s->isLive()) {
@@ -190,6 +194,10 @@ class SessionStateMachine
                     self::ACTION_JUMP_TO => $this->jumpTo($s, $current, $targetRunId, $force, $now),
                     self::ACTION_INSERT_LEADERBOARD => $this->insertLeaderboard($s, $current, $now),
                 };
+
+                if ($start && in_array($action, [self::ACTION_NEXT_SLIDE, self::ACTION_JUMP_TO], true)) {
+                    $this->startArrivedQuestion($s, $now);
+                }
 
                 return $s;
             });
@@ -431,6 +439,16 @@ class SessionStateMachine
         }
 
         $this->openVoting($s, $run, $now);
+    }
+
+    /** Starts the run just moved onto when it is a poll or quiz question still waiting. */
+    private function startArrivedQuestion(DeckSession $s, CarbonInterface $now): void
+    {
+        $run = $this->lockCurrentRun($s);
+
+        if ($run->state === DeckSessionSlideRun::STATE_WAITING && in_array($this->kindOf($run), [self::KIND_POLL, self::KIND_QUIZ], true)) {
+            $this->startVoting($s, $run, $now);
+        }
     }
 
     private function closeVoting(DeckSession $s, DeckSessionSlideRun $run, CarbonInterface $now): void

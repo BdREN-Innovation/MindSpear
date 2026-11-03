@@ -1860,6 +1860,22 @@ export interface AdvanceInput {
 	target_run_id?: number | null;
 	/** Send after the "go back" confirmation (moving backwards away from an active run). */
 	force?: boolean;
+	/** next_slide / jump_to: start the poll or quiz question moved onto (its get-ready countdown begins at once). */
+	start?: boolean;
+}
+
+/** GET {session}/participants (host): someone in the room now. */
+export interface RoomParticipant {
+	participant_id: number;
+	display_name: string | null;
+	emoji_avatar: string | null;
+	joined_at: IsoDateTime | null;
+}
+
+/** Newest first, at most 200; `total` counts everyone in the room. */
+export interface RoomParticipants {
+	participants: RoomParticipant[];
+	total: number;
 }
 
 /** GET .../slide-runs/{run}/aggregate[?page=N] */

@@ -79,7 +79,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 	const [selected, setSelected] = useState<Set<number>>(new Set());
 	const [options, setOptions] = useState<GenerationOptions>({
 		topic: "",
-		questionCount: 10,
+		questionCount: 1,
 		questionTypes: DEFAULT_TYPES[target],
 		difficulty: "Medium",
 		audienceLevel: "Generic",
@@ -117,6 +117,11 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 
 	const openFile = async (chosen: LibraryFile) => {
 		if (chosen.category !== "document") return;
+		// The same file again (back from step 1): keep what was read and picked.
+		if (chosen.id === file?.id && doc && !docLoading) {
+			setStep("configure");
+			return;
+		}
 		loadController.current?.abort();
 		const controller = new AbortController();
 		loadController.current = controller;
@@ -192,7 +197,18 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		setStep("configure");
 	};
 
+	/** Back to the file list; the chosen file stays chosen there. */
+	const backToFiles = () => {
+		loadController.current?.abort();
+		setStep("file");
+	};
+
 	const stepIndex = STEPS.findIndex((s) => s.key === step);
+	// Steps one can jump to from the progress bar ("Generate" only starts from its button).
+	const goTo: Partial<Record<Step, () => void>> = {
+		file: step === "configure" ? backToFiles : undefined,
+		configure: step === "file" && file ? () => void openFile(file) : undefined,
+	};
 	// Something with text must be selected before the AI can write anything.
 	const hasContext = !!doc && doc.parts.some((p) => selected.has(p.id) && p.wordCount > 0);
 	const tall = layout === "modal";
@@ -201,27 +217,53 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		<div className="flex flex-col gap-4">
 			{/* Steps */}
 			<ol className="flex items-center gap-2 text-xs sm:text-sm" aria-label="Progress">
-				{STEPS.map((s, i) => (
-					<li key={s.key} className="flex items-center gap-2">
-						<span
-							className={cn(
-								"flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-								i < stepIndex
-									? "bg-secondary-50 text-secondary-600 dark:bg-secondary-900/40 dark:text-secondary-200"
-									: i === stepIndex
-										? "bg-secondary-500 text-white"
-										: "bg-gray-2 text-dark-5 dark:bg-dark-2",
+				{STEPS.map((s, i) => {
+					const go = goTo[s.key];
+					const content = (
+						<>
+							<span
+								className={cn(
+									"flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+									i < stepIndex
+										? "bg-secondary-50 text-secondary-600 dark:bg-secondary-900/40 dark:text-secondary-200"
+										: i === stepIndex
+											? "bg-secondary-500 text-white"
+											: "bg-gray-2 text-dark-5 dark:bg-dark-2",
+								)}
+							>
+								{i < stepIndex ? <Check className="h-3.5 w-3.5" aria-label="Done" /> : i + 1}
+							</span>
+							<span
+								className={cn(
+									"hidden font-medium sm:inline",
+									i === stepIndex ? "text-dark dark:text-white" : "text-dark-5",
+									go && "underline-offset-4 group-hover:text-secondary-600 group-hover:underline dark:group-hover:text-secondary-200",
+								)}
+							>
+								{s.label}
+							</span>
+						</>
+					);
+					return (
+						<li key={s.key} className="flex items-center gap-2" aria-current={i === stepIndex ? "step" : undefined}>
+							{go ? (
+								<button
+									type="button"
+									onClick={go}
+									title={`Go to “${s.label}”`}
+									className="group flex items-center gap-2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary/50 focus-visible:ring-offset-2"
+								>
+									{content}
+								</button>
+							) : (
+								<span className="flex items-center gap-2">{content}</span>
 							)}
-							aria-current={i === stepIndex ? "step" : undefined}
-						>
-							{i < stepIndex ? <Check className="h-3.5 w-3.5" aria-label="Done" /> : i + 1}
-						</span>
-						<span className={cn("hidden font-medium sm:inline", i === stepIndex ? "text-dark dark:text-white" : "text-dark-5")}>{s.label}</span>
-						{i < STEPS.length - 1 ? (
-							<span className={cn("h-px w-6 sm:w-10", i < stepIndex ? "bg-secondary-200 dark:bg-secondary-700" : "bg-stroke dark:bg-stroke-dark")} aria-hidden />
-						) : null}
-					</li>
-				))}
+							{i < STEPS.length - 1 ? (
+								<span className={cn("h-px w-6 sm:w-10", i < stepIndex ? "bg-secondary-200 dark:bg-secondary-700" : "bg-stroke dark:bg-stroke-dark")} aria-hidden />
+							) : null}
+						</li>
+					);
+				})}
 			</ol>
 
 			{step === "file" ? (
@@ -230,6 +272,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 					onSelect={openFile}
 					onCancel={onCancel}
 					confirmLabel="Continue"
+					initialSelected={file}
 					hint="Pick a PDF, Word (.docx), PowerPoint (.pptx) or text file. New uploads are saved in My Files for next time."
 				/>
 			) : null}
@@ -248,11 +291,8 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 						<Button
 							variant="outline"
 							size="sm"
-							onClick={() => {
-								loadController.current?.abort();
-								setStep("file");
-							}}
-							className="shrink-0 hover:border-secondary-200 hover:text-secondary-600 dark:hover:text-secondary-200"
+							onClick={backToFiles}
+							className="shrink-0 border-secondary-200 bg-secondary-50 font-semibold text-secondary-600 hover:bg-secondary-100 dark:border-secondary-700 dark:bg-secondary-900/40 dark:text-secondary-200 dark:hover:bg-secondary-900/60"
 						>
 							<ArrowLeftRight className="h-4 w-4" aria-hidden />
 							Change file
@@ -283,7 +323,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 									<RefreshCw className="h-4 w-4" aria-hidden />
 									Try again
 								</Button>
-								<Button variant="outline" size="sm" onClick={() => setStep("file")}>
+								<Button variant="outline" size="sm" onClick={backToFiles}>
 									Choose another file
 								</Button>
 							</div>
