@@ -115,43 +115,64 @@ services:
     restart: unless-stopped
     command: php artisan queue:work redis --queue=default,fungames --sleep=0.2 --tries=3 --max-time=3600
 
-  # The production build (frontend/Dockerfile, "run" stage): no hot reload, so code changes
-  # need `docker compose up -d --build frontend`. For `next dev` with hot reload, build
-  # Dockerfile.dev instead and mount the source (./frontend:/app, /app/node_modules, /app/.next).
-  frontend:
+  # Renders PPTX slides for the page picker with LibreOffice (only this image has it). Its own
+  # worker because a conversion takes seconds and would hold up live broadcasts on "queue".
+  documents-queue:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      target: run
-      # NEXT_PUBLIC_* and the proxy rewrites are fixed at build time (setting them on the running
-      # container does nothing): rebuild after changing one. The browser calls Laravel (/api/v1,
-      # /broadcasting/auth, /storage) and the AI server (/ai-api) on this app's own origin, and
-      # next.config.ts forwards them over the docker network, so the site works at any address
-      # (localhost, 0.0.0.0, the LAN IP) without CORS. The Reverb key is the public one every
-      # browser receives; an empty Reverb host means the page's own host (port 8080 is published).
+      context: ./backend
       args:
-        NEXT_PUBLIC_API_BASE_URL: /api/v1
-        BACKEND_PROXY_URL: http://backend:8000
-        NEXT_PUBLIC_AI_API_URL: /ai-api
-        AI_PROXY_URL: http://ai-server:8001
-        NEXT_PUBLIC_APP_URL: http://localhost:2000
-        NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
-        NEXT_PUBLIC_REVERB_HOST: ""
-        NEXT_PUBLIC_REVERB_PORT: 8080
-        NEXT_PUBLIC_REVERB_SCHEME: http
-    env_file: ./frontend/.env
-    environment:
-      # Server-side (SSR / route handler) calls reach Laravel over the docker network.
-      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
-    ports:
-      # The production server listens on 3000 inside the container.
-      - "2000:3000"
+        WITH_LIBREOFFICE: "1"
+    env_file: ./backend/.env.docker
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
     networks:
       - mindspear
     depends_on:
-      - backend
-      - reverb
-      - ai-server
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan queue:work redis --queue=documents --tries=1 --timeout=180 --max-time=3600
+
+  # The production build (frontend/Dockerfile, "run" stage): no hot reload, so code changes
+  # need `docker compose up -d --build frontend`. For `next dev` with hot reload, build
+  # Dockerfile.dev instead and mount the source (./frontend:/app, /app/node_modules, /app/.next).
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     target: run
+  #     # NEXT_PUBLIC_* and the proxy rewrites are fixed at build time (setting them on the running
+  #     # container does nothing): rebuild after changing one. The browser calls Laravel (/api/v1,
+  #     # /broadcasting/auth, /storage) and the AI server (/ai-api) on this app's own origin, and
+  #     # next.config.ts forwards them over the docker network, so the site works at any address
+  #     # (localhost, 0.0.0.0, the LAN IP) without CORS. The Reverb key is the public one every
+  #     # browser receives; an empty Reverb host means the page's own host (port 8080 is published).
+  #     args:
+  #       NEXT_PUBLIC_API_BASE_URL: /api/v1
+  #       BACKEND_PROXY_URL: http://backend:8000
+  #       NEXT_PUBLIC_AI_API_URL: /ai-api
+  #       AI_PROXY_URL: http://ai-server:8001
+  #       NEXT_PUBLIC_APP_URL: http://localhost:2000
+  #       NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
+  #       NEXT_PUBLIC_REVERB_HOST: ""
+  #       NEXT_PUBLIC_REVERB_PORT: 8080
+  #       NEXT_PUBLIC_REVERB_SCHEME: http
+  #   env_file: ./frontend/.env
+  #   environment:
+  #     # Server-side (SSR / route handler) calls reach Laravel over the docker network.
+  #     INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+  #   ports:
+  #     # The production server listens on 3000 inside the container.
+  #     - "2000:3000"
+  #   networks:
+  #     - mindspear
+  #   depends_on:
+  #     - backend
+  #     - reverb
+  #     - ai-server
 
 
   frontend-dev:

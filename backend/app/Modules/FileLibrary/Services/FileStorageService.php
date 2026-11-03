@@ -47,6 +47,7 @@ class FileStorageService
         private readonly QuotaService $quota,
         private readonly TextExtractionService $extractor,
         private readonly ImageProcessor $images,
+        private readonly SlidePreviewService $slides,
     ) {}
 
     /**
@@ -115,6 +116,7 @@ class FileStorageService
         if (TextExtractionService::supports($extension)) {
             $this->extractText($file, $prepared['path']);
         }
+        $this->slides->request($file);
 
         return ['file' => $file->refresh(), 'deduplicated' => false];
     }
@@ -142,7 +144,7 @@ class FileStorageService
         $size = $prepared['size'];
         $checksum = hash_file('sha256', $prepared['path']);
         $stored = $this->write($user, $prepared['path'], $category, $extension);
-        $old = ['disk' => $file->disk, 'disk_path' => $file->disk_path];
+        $old = ['disk' => $file->disk, 'disk_path' => $file->disk_path, 'preview' => $this->slides->path($file)];
 
         try {
             $this->quota->withReservation($user, $size - (int) $file->size, function () use ($file, $upload, $stored, $extension, $category, $mime, $size, $checksum, $prepared, $name, $user) {
@@ -175,10 +177,12 @@ class FileStorageService
         // Another row may use the same bytes (a copy of someone's public deck, see adopt()).
         if ($old['disk_path'] && ! $this->bytesShared($old['disk_path'], $file->id)) {
             Storage::disk($old['disk'] ?: $this->disk())->delete($old['disk_path']);
+            $this->slides->delete($old['disk'] ?: $this->disk(), $old['preview']);
         }
         if (TextExtractionService::supports($extension)) {
             $this->extractText($file, $prepared['path']);
         }
+        $this->slides->request($file);
 
         return $file->refresh();
     }
@@ -320,6 +324,23 @@ class FileStorageService
             $file->forceFill(['extraction_status' => 'failed'])->save();
 
             return null;
+        } finally {
+            if ($temp) {
+                @unlink($temp);
+            }
+        }
+    }
+
+    /** Renders a PPTX's slides (run by GenerateSlidePreview). Failures are recorded, never thrown. */
+    public function renderSlidePreview(File $file): void
+    {
+        $temp = null;
+        try {
+            [$localPath, $temp] = $this->localCopy($file);
+            $this->slides->convert($file, $localPath);
+        } catch (Throwable $e) {
+            Log::warning('Slide preview failed', ['file_id' => $file->id, 'error' => $e->getMessage()]);
+            $this->slides->markFailed($file);
         } finally {
             if ($temp) {
                 @unlink($temp);

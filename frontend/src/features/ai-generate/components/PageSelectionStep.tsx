@@ -2,27 +2,15 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Check, LayoutGrid } from "lucide-react";
+import { BookOpen, Check, LayoutGrid, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Chapter } from "../lib/chapters";
-import type { DocumentPart, LoadedDocument } from "../lib/documentPages";
+import { documentUnit, type DocumentPart, type LoadedDocument } from "../lib/documentPages";
+import { parsePageSelection } from "../lib/pageRange";
 import { MAX_TEXT_CHARS } from "../types";
 import { ChapterList } from "./ChapterList";
 
 export const MAX_SELECTED_PARTS = 30;
-
-/** "1-5, 8" → [1,2,3,4,5,8] (only ids that exist). */
-function parseRange(input: string, ids: number[]): number[] {
-	const valid = new Set(ids);
-	const out = new Set<number>();
-	for (const chunk of input.split(",")) {
-		const [a, b] = chunk.split("-").map((s) => parseInt(s.trim(), 10));
-		if (Number.isNaN(a)) continue;
-		const end = Number.isNaN(b) ? a : b;
-		for (let i = Math.min(a, end); i <= Math.max(a, end); i++) if (valid.has(i)) out.add(i);
-	}
-	return [...out].sort((x, y) => x - y);
-}
 
 interface Props {
 	doc: LoadedDocument;
@@ -30,16 +18,18 @@ interface Props {
 	onChange: (next: Set<number>) => void;
 	/** A chapter was ticked (e.g. to suggest it as the topic). */
 	onChapterSelected?: (chapter: Chapter) => void;
+	/** PPTX: where the slide images stand (they arrive after the text). */
+	slideImages?: "loading" | "ready" | "unavailable" | null;
 	className?: string;
 }
 
-export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, className }: Props) {
+export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, slideImages = null, className }: Props) {
 	const [range, setRange] = useState("");
 	const [notice, setNotice] = useState<string | null>(null);
 	const hasChapters = doc.chapters.length > 0;
 	const [mode, setMode] = useState<"chapters" | "pages">(hasChapters ? "chapters" : "pages");
 	const ids = doc.parts.map((p) => p.id);
-	const unit = doc.kind === "pdf" ? "page" : doc.parts[0]?.label.startsWith("Slide") ? "slide" : doc.parts[0]?.label.startsWith("Page") ? "page" : "section";
+	const unit = documentUnit(doc);
 	const chosen = doc.parts.filter((p) => selected.has(p.id));
 	const words = chosen.reduce((sum, p) => sum + p.wordCount, 0);
 	const chars = chosen.reduce((sum, p) => sum + p.text.length, 0);
@@ -52,6 +42,22 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 			setNotice(null);
 		}
 		onChange(new Set(next));
+	};
+
+	const applyRange = () => {
+		const numbers = doc.parts.map((p) => p.number);
+		const { numbers: picked, unmatched } = parsePageSelection(range, numbers);
+		const available = `This document has ${unit}s ${Math.min(...numbers)}–${Math.max(...numbers)}.`;
+		if (picked.length === 0) {
+			setNotice(range.trim() ? `No ${unit} matches “${range.trim()}”. ${available}` : `Type ${unit} numbers first, for example 1-5, 8.`);
+			return;
+		}
+		const wanted = new Set(picked);
+		set(doc.parts.filter((p) => wanted.has(p.number)).map((p) => p.id));
+		setMode("pages"); // Show what was picked.
+		if (unmatched.length > 0 && picked.length <= MAX_SELECTED_PARTS) {
+			setNotice(`Skipped “${unmatched.join(", ")}”. ${available}`);
+		}
 	};
 
 	const toggleChapter = (chapter: Chapter, select: boolean) => {
@@ -132,7 +138,7 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 					<form
 						onSubmit={(e) => {
 							e.preventDefault();
-							set(parseRange(range, ids));
+							applyRange();
 						}}
 						className="flex items-center gap-1"
 					>
@@ -156,7 +162,18 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 				</div>
 			</div>
 
-			{notice ? <p className="rounded-lg bg-yellow-light-4 px-3 py-2 text-xs text-yellow-dark-2">{notice}</p> : null}
+			{notice ? (
+				<p role="status" className="rounded-lg bg-yellow-light-4 px-3 py-2 text-xs text-yellow-dark-2">
+					{notice}
+				</p>
+			) : null}
+			{slideImages === "loading" ? (
+				<p role="status" className="flex items-center gap-2 text-xs text-dark-5">
+					<Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+					Preparing the slide images… you can already pick slides.
+				</p>
+			) : null}
+			{slideImages === "unavailable" ? <p className="text-xs text-dark-5">Slide images aren&apos;t available for this file right now. You can still pick slides by their text.</p> : null}
 			{chars > MAX_TEXT_CHARS ? (
 				<p className="rounded-lg bg-yellow-light-4 px-3 py-2 text-xs text-yellow-dark-2">
 					That&apos;s a lot of text — it will be shortened evenly across the selected {unit}s to about {Math.round(MAX_TEXT_CHARS / 1000)}k characters. Select fewer {unit}s for more detailed questions.
@@ -166,8 +183,8 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 			<div className="min-h-0 flex-1 overflow-y-auto pr-1">
 				{mode === "chapters" && hasChapters ? (
 					<ChapterList chapters={doc.chapters} parts={doc.parts} selected={selected} unit={unit} maxParts={MAX_SELECTED_PARTS} onToggle={toggleChapter} />
-				) : doc.kind === "pdf" ? (
-					<ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+				) : doc.kind !== "text" ? (
+					<ul className={cn("grid gap-3", doc.kind === "slides" ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4")}>
 						{doc.parts.map((part) => {
 							const isOn = selected.has(part.id);
 							return (
@@ -181,8 +198,16 @@ export function PageSelectionStep({ doc, selected, onChange, onChapterSelected, 
 											isOn ? "border-primary shadow-md" : "border-stroke opacity-80 hover:opacity-100 dark:border-stroke-dark",
 										)}
 									>
-										{part.thumbnail ? <img src={part.thumbnail} alt="" className="block w-full" /> : <div className="aspect-[3/4] bg-gray-2" />}
-										<span className="absolute left-1.5 top-1.5 rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-semibold text-dark shadow-sm">{part.id}</span>
+										{part.thumbnail ? (
+											<img src={part.thumbnail} alt="" className="block w-full" />
+										) : doc.kind === "slides" ? (
+											<span className="block aspect-video overflow-hidden bg-gray-1 p-2 pr-8 text-xs text-dark-5">
+												<span className="line-clamp-4">{part.text}</span>
+											</span>
+										) : (
+											<div className="aspect-[3/4] bg-gray-2" />
+										)}
+										<span className={cn("absolute left-1.5 z-10 rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-semibold text-dark shadow-sm", doc.kind === "slides" ? "bottom-1.5" : "top-1.5")}>{part.number}</span>
 										<span
 											className={cn(
 												"absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2",

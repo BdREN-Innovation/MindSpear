@@ -7,6 +7,7 @@ import type {
 	LibraryErrorCode,
 	LibraryFile,
 	ListFilesParams,
+	SlidePreviewStatus,
 	StorageUsage,
 	UploadResult,
 } from "../types";
@@ -87,6 +88,22 @@ export const libraryApi = {
 	/** The file's bytes (works for private documents, and avoids CORS for pdfjs). */
 	async getContent(id: number, signal?: AbortSignal): Promise<ArrayBuffer> {
 		const res = await axiosInstance.get<ArrayBuffer>(`/library/files/${id}/content`, {
+			responseType: "arraybuffer",
+			timeout: 120_000,
+			signal,
+		});
+		return res.data;
+	},
+
+	/** Whether a PPTX's slides can be shown yet (asks the server to render them if nothing is under way). */
+	async slidePreviewStatus(id: number, signal?: AbortSignal): Promise<SlidePreviewStatus> {
+		const res = await axiosInstance.get<Envelope<{ status: SlidePreviewStatus }>>(`/library/files/${id}/slide-preview`, { signal });
+		return res.data.data.status;
+	},
+
+	/** The slides of a PPTX as a PDF, for pdfjs. */
+	async slidePreviewContent(id: number, signal?: AbortSignal): Promise<ArrayBuffer> {
+		const res = await axiosInstance.get<ArrayBuffer>(`/library/files/${id}/slide-preview/content`, {
 			responseType: "arraybuffer",
 			timeout: 120_000,
 			signal,

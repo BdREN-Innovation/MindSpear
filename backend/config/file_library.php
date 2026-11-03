@@ -49,4 +49,8 @@ return [
     // Words per "section" when a document has no page or heading breaks.
     'section_words' => 600,
 
+    // LibreOffice, used to show PPTX slides in the page picker (only the documents-queue image has it).
+    'soffice_binary' => env('FILE_LIBRARY_SOFFICE_BINARY', 'soffice'),
+    'slide_preview_timeout' => (int) env('FILE_LIBRARY_SLIDE_PREVIEW_TIMEOUT', 120),
+
 ];

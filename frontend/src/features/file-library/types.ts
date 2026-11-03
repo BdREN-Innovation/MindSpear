@@ -83,6 +83,8 @@ export interface OutlineEntry {
 	page: number;
 }
 
+export type SlidePreviewStatus = "ready" | "processing" | "failed";
+
 export interface DocumentPages {
 	/** "pdf": read the bytes in the browser with pdfjs. "text": pages were extracted on the server. */
 	kind: "pdf" | "text";

@@ -15,4 +15,6 @@ Route::middleware('auth:sanctum')->name('library.')->group(function () {
     Route::post('files/{file}/use', [LibraryController::class, 'markUsed'])->whereNumber('file')->name('files.use');
     Route::get('files/{file}/pages', [LibraryController::class, 'pages'])->whereNumber('file')->name('files.pages');
     Route::get('files/{file}/content', [LibraryController::class, 'content'])->whereNumber('file')->name('files.content');
+    Route::get('files/{file}/slide-preview', [LibraryController::class, 'slidePreview'])->whereNumber('file')->name('files.slide-preview');
+    Route::get('files/{file}/slide-preview/content', [LibraryController::class, 'slidePreviewContent'])->whereNumber('file')->name('files.slide-preview.content');
 });

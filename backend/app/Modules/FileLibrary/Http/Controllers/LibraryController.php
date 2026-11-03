@@ -11,6 +11,7 @@ use App\Modules\FileLibrary\Http\Resources\FilePresenter;
 use App\Modules\FileLibrary\Services\FileReferenceService;
 use App\Modules\FileLibrary\Services\FileStorageService;
 use App\Modules\FileLibrary\Services\QuotaService;
+use App\Modules\FileLibrary\Services\SlidePreviewService;
 use App\Modules\FileLibrary\Services\TextExtractionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class LibraryController extends ApiBaseController
         private readonly FileStorageService $storage,
         private readonly QuotaService $quota,
         private readonly FileReferenceService $references,
+        private readonly SlidePreviewService $slides,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -172,6 +174,32 @@ class LibraryController extends ApiBaseController
         return $request->boolean('download')
             ? $disk->download($owned->disk_path, $downloadName, $headers)
             : $disk->response($owned->disk_path, $downloadName, $headers);
+    }
+
+    /** Whether a PPTX's slides can be shown yet: ready, processing or failed. Asks for them if nothing is under way. */
+    public function slidePreview(Request $request, int $file): JsonResponse
+    {
+        $owned = $this->ownedFile($request, $file);
+        if (! SlidePreviewService::supports($owned)) {
+            throw FileLibraryException::invalidFile('Only PowerPoint files have a slide preview.');
+        }
+
+        return $this->okResponse(['status' => $this->slides->status($owned)]);
+    }
+
+    /** The slides of a PPTX as a PDF, for pdfjs. */
+    public function slidePreviewContent(Request $request, int $file): StreamedResponse
+    {
+        $owned = $this->ownedFile($request, $file);
+        if (! SlidePreviewService::supports($owned) || ! $this->slides->exists($owned)) {
+            throw FileLibraryException::notFound('The slide preview isn\'t ready.');
+        }
+
+        return Storage::disk($this->slides->disk($owned))->response($this->slides->path($owned), 'slides.pdf', [
+            'Content-Type' => 'application/pdf',
+            'Cache-Control' => 'private, max-age=300',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     private function ownedFile(Request $request, int $id): File

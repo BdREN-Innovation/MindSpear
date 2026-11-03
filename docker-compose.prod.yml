@@ -106,6 +106,17 @@ services:
     <<: [*backend, *after-backend]
     command: ["php", "artisan", "queue:work", "redis", "--queue=default,fungames", "--sleep=0.2", "--tries=3", "--max-time=3600"]
 
+  # Renders PPTX slides for the page picker with LibreOffice (only this image has it). Its own
+  # worker because a conversion takes seconds and would hold up live broadcasts on "queue".
+  documents-queue:
+    <<: [*backend, *after-backend]
+    image: mindspear-prod-documents
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+      target: documents
+    command: ["php", "artisan", "queue:work", "redis", "--queue=documents", "--tries=1", "--timeout=180", "--max-time=3600"]
+
   # Fun Games: locks questions, opens the next one and ends games on the server clock.
   # Exits hourly (--max-runtime) and is restarted fresh.
   fungames-ticker:

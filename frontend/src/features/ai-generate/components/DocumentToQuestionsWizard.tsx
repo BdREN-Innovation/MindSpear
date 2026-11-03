@@ -11,7 +11,7 @@ import { formatBytes, typeStyle } from "@/features/file-library/lib/format";
 import type { LibraryFile } from "@/features/file-library/types";
 import { generateFromText } from "../aiClient";
 import { chapterOfPage, type Chapter } from "../lib/chapters";
-import { loadDocumentParts, type DocumentPart, type LoadedDocument } from "../lib/documentPages";
+import { documentUnit, loadDocumentParts, loadSlideImages, withSlideImages, type DocumentPart, type LoadedDocument } from "../lib/documentPages";
 import { DEFAULT_TYPES, MAX_QUESTIONS, MAX_TEXT_CHARS, TARGET_NOUN, type GeneratedFor, type GenerationOptions, type GenerationTarget } from "../types";
 import { GenerationOptionsForm } from "./GenerationOptionsForm";
 import { MAX_SELECTED_PARTS, PageSelectionStep } from "./PageSelectionStep";
@@ -74,6 +74,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 	const [docLoading, setDocLoading] = useState(false);
 	const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 	const [docError, setDocError] = useState<string | null>(null);
+	const [slideImages, setSlideImages] = useState<"loading" | "ready" | "unavailable" | null>(null);
 	const [selected, setSelected] = useState<Set<number>>(new Set());
 	const [options, setOptions] = useState<GenerationOptions>({
 		topic: "",
@@ -90,6 +91,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 	const loadController = useRef<AbortController | null>(null);
 	const generateController = useRef<AbortController | null>(null);
 	const noun = TARGET_NOUN[target];
+	const unit = doc ? documentUnit(doc) : "page";
 
 	useEffect(
 		() => () => {
@@ -99,6 +101,19 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		[],
 	);
 
+	/** Slide images take a while to render, so they arrive after the slides can already be picked. */
+	const showSlideImages = async (chosen: LibraryFile, signal: AbortSignal) => {
+		setSlideImages("loading");
+		try {
+			const images = await loadSlideImages(chosen, signal);
+			if (signal.aborted) return;
+			if (images) setDoc((current) => current && withSlideImages(current, images));
+			setSlideImages(images ? "ready" : "unavailable");
+		} catch {
+			if (!signal.aborted) setSlideImages("unavailable");
+		}
+	};
+
 	const openFile = async (chosen: LibraryFile) => {
 		if (chosen.category !== "document") return;
 		loadController.current?.abort();
@@ -106,6 +121,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		loadController.current = controller;
 		setFile(chosen);
 		setDoc(null);
+		setSlideImages(null);
 		setDocError(null);
 		setError(null);
 		setProgress(null);
@@ -122,6 +138,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 			// With chapters, let the user pick one; otherwise start with every page that has text.
 			const withText = loaded.parts.filter((p) => p.wordCount > 0).map((p) => p.id);
 			setSelected(new Set(loaded.chapters.length === 0 && withText.length <= MAX_SELECTED_PARTS ? withText : []));
+			if (loaded.kind === "slides") void showSlideImages(chosen, controller.signal);
 		} catch (reason) {
 			if (!controller.signal.aborted) setDocError((reason as Error).message);
 		} finally {
@@ -134,9 +151,9 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 		const parts = doc.parts.filter((p) => selected.has(p.id));
 		const problem =
 			parts.length === 0
-				? "Select at least one page."
+				? `Select at least one ${unit}.`
 				: parts.every((p) => p.wordCount === 0)
-					? "The selected pages have no text. Choose pages with text."
+					? `The selected ${unit}s have no text. Choose ${unit}s with text.`
 					: !options.topic.trim()
 						? "Enter a topic."
 						: options.questionTypes.length === 0
@@ -216,7 +233,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 							<p className="truncate text-sm font-semibold text-dark dark:text-white">{file.name}</p>
 							<p className="text-xs text-dark-5">
 								{typeStyle(file).label} · {formatBytes(file.size)}
-								{doc ? ` · ${doc.parts.length} ${doc.kind === "pdf" ? "pages" : "parts"}` : ""}
+								{doc ? ` · ${doc.parts.length} ${unit}${doc.parts.length === 1 ? "" : "s"}` : ""}
 							</p>
 						</div>
 						<button
@@ -267,6 +284,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 								doc={doc}
 								selected={selected}
 								onChange={setSelected}
+								slideImages={slideImages}
 								onChapterSelected={(chapter) => {
 									if (!topicTouched) setOptions((o) => ({ ...o, topic: chapter.title.slice(0, 200) }));
 								}}
@@ -291,8 +309,8 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 								{!hasContext ? (
 									<p className="mt-3 text-right text-xs text-dark-5" aria-live="polite">
 										{selected.size === 0
-											? `Select ${doc.chapters.length ? "a chapter or " : ""}pages to generate from.`
-											: "The selected pages have no text. Choose pages with text."}
+											? `Select ${doc.chapters.length ? "a chapter or " : ""}${unit}s to generate from.`
+											: `The selected ${unit}s have no text. Choose ${unit}s with text.`}
 									</p>
 								) : null}
 								<div className="mt-3 flex justify-end gap-2">
@@ -301,7 +319,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 											Cancel
 										</Button>
 									) : null}
-									<Button onClick={generate} disabled={!hasContext} title={hasContext ? undefined : "Select pages with text first"}>
+									<Button onClick={generate} disabled={!hasContext}title={hasContext ? undefined : `Select ${unit}s with text first`}>
 										<Sparkles className="h-4 w-4" aria-hidden />
 										{generateLabel ?? `Generate ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural}`}
 									</Button>
@@ -317,7 +335,7 @@ export function DocumentToQuestionsWizard<T extends GenerationTarget>({
 					<GeneratingLoader />
 					<p className="text-sm text-dark-5">
 						{phase === "writing"
-							? `Writing ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural} from ${selected.size} ${selected.size === 1 ? "page" : "pages"}… this can take up to a minute.`
+							? `Writing ${options.questionCount} ${options.questionCount === 1 ? noun.singular : noun.plural}from ${selected.size} ${selected.size === 1 ? unit : `${unit}s`}… this can take up to a minute.`
 							: `Adding the ${noun.plural}…`}
 					</p>
 					{phase === "writing" ? (

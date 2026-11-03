@@ -1,6 +1,7 @@
 # Production images for the Laravel API. Used by docker-compose.prod.yml:
 #   --target app  php-fpm, also runs Reverb, the queue workers and the Fun Games ticker
 #   --target web  nginx: serves public/ and uploaded files, passes PHP to the app container
+#   --target documents  app + LibreOffice: the documents-queue worker that renders PPTX slides
 
 # --- Admin panel styles (the Filament theme is built with Vite) ---
 FROM node:20-slim AS assets
@@ -52,6 +53,15 @@ USER www-data
 EXPOSE 9000 8080
 ENTRYPOINT ["mindspear-entrypoint"]
 CMD ["php-fpm"]
+
+# --- Document worker: LibreOffice is large, so only this image has it. Noto covers Bangla;
+# Liberation and Carlito stand in for Arial, Times and Calibri with the same metrics. ---
+FROM app AS documents
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice-impress fonts-noto-core fonts-liberation fonts-crosextra-carlito \
+ && rm -rf /var/lib/apt/lists/*
+USER www-data
 
 # --- Web server ---
 FROM nginx:1.27-alpine AS web

@@ -314,7 +314,7 @@ A route file declares its routes once inside `DeckRoutes::authoring(fn (string $
 
 #### Module routes
 - **Fun Games** (`/api/v1/fun-games`): host routes under `/fun-games/host` (Sanctum) — `games` CRUD plus `duplicate` and `publish`; `/fun-games/host/library-quizzes` (+ `preview`), `/fun-games/host/games/from-library`, `/fun-games/host/games/{game}/import`, `/fun-games/host/imports/{import}/undo`; question CRUD and reorder; sessions (create, `start`, `end`, `leaderboard`, `participants`). Player routes: `GET|POST /fun-games/join/{joinCode}` (name + email → token) and `/fun-games/sessions/{session}/{state|current|answers|results/me|leaderboard}` with `X-Participant-Token`.
-- **My Files** (`/api/v1/library`, Sanctum): `/library/usage`, `/library/files` (list, upload), `/library/files/{file}` (show, rename, delete), `/library/files/{file}/use`, `/library/files/{file}/pages`, `/library/files/{file}/content`.
+- **My Files** (`/api/v1/library`, Sanctum): `/library/usage`, `/library/files` (list, upload), `/library/files/{file}` (show, rename, delete), `/library/files/{file}/use`, `/library/files/{file}/pages`, `/library/files/{file}/content`, `/library/files/{file}/slide-preview` (ready / processing / failed) and `/library/files/{file}/slide-preview/content` (the slides as a PDF).
 
 ### 4.4 The Deck Engine (Quizzes & Quests)
 
@@ -423,6 +423,7 @@ Two mailables in `backend/app/Mail/`: `VerifyEmailMail` (`backend/resources/view
 - Every upload is a `files` row owned by the user and counts toward their quota (`QuotaService`): default `FILE_LIBRARY_DEFAULT_QUOTA_MB` (100), per-user override `users.storage_quota_bytes` (editable in the Filament `UserResource`), plus a daily upload cap so delete-and-reupload loops cannot fill the disk.
 - Allowed: images (jpg, jpeg, png, gif, webp; large images are downscaled by `ImageProcessor`), documents (pdf, docx, pptx, txt) and mp4 video. SVG is refused on purpose.
 - `TextExtractionService` splits DOCX, PPTX and TXT into pages / slides / sections (`file_text_contents`) for AI generation; PDFs are read in the browser with pdf.js instead.
+- `SlidePreviewService` renders a PPTX to a PDF with LibreOffice so the page picker can show the real slides (pdf.js draws the thumbnails). `GenerateSlidePreview` runs on the `documents` queue, requested on upload or on first view. The PDF is a derived copy named after the file's checksum (`private/library/{user}/previews/`) and doesn't count toward the quota. LibreOffice runs with a throwaway profile that blocks active content, so a deck can't make the server fetch a URL or read a local file through a linked image. This is display only: the AI gets the extracted text, never the images.
 - `FileReferenceService` reports where a file is still used: decks by file id, the banks and Fun Games by URL.
 - Decks attach files by id through the authoring media routes (§4.3); the legacy `/files` endpoints also store into the library.
 
@@ -820,6 +821,7 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 | `backend` | `migrate --force`, seed when empty, `storage:link`, `artisan serve` on 8000 |
 | `reverb` | `reverb:start` on 8080 |
 | `queue` | `queue:work` on the default queue, then the `fungames` queue: slide timers, trailing aggregate and Q&A upvote broadcasts, Fun Games scoring. Without it, timers only advance through the read-time fallback, the trailing (final) result broadcasts are never sent, and Fun Games scoring waits for the ticker's fallback. |
+| `documents-queue` | `queue:work` on the `documents` queue: renders PPTX slides for the page picker. The only image with LibreOffice (about 530 MB larger), and its own worker because a conversion would hold up live broadcasts on `queue`. Without it, PPTX slides show as text cards and everything else works. |
 | `fungames-ticker` | `fun-games:tick --loop` |
 | `frontend`, `frontend-dev` | Production build on 2000; `next dev` with hot reload on 3001 |
 | `ai-server` | FastAPI on 8001 (needs `ai-server/.env`) |

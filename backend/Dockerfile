@@ -29,6 +29,16 @@ RUN mkdir -p storage/framework/sessions \
 # Generate optimized autoload files and discover packages
 RUN composer dump-autoload --optimize
 
+# Only the documents-queue service builds with this (docker-compose.yml): LibreOffice is large,
+# and renders PPTX slides for the page picker. Noto covers Bangla; Liberation and Carlito stand
+# in for Arial, Times and Calibri with the same metrics, so slides keep their layout.
+ARG WITH_LIBREOFFICE=0
+RUN if [ "$WITH_LIBREOFFICE" = "1" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends \
+        libreoffice-impress fonts-noto-core fonts-liberation fonts-crosextra-carlito \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 EXPOSE 8000 8080
 
 CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
