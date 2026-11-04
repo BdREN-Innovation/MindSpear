@@ -1,5 +1,5 @@
-import { Trophy } from "lucide-react";
 import { defineSlideType } from "../types";
+import { Podium } from "./PodiumIcon";
 import { LeaderboardEditor } from "./Editor";
 import { LeaderboardParticipant } from "./Participant";
 import { LeaderboardPresenter } from "./Presenter";
@@ -11,7 +11,7 @@ export const entry = defineSlideType({
 	category: "interactive",
 	label: "Leaderboard",
 	description: "Show the top players and their points so far.",
-	icon: Trophy,
+	icon: Podium,
 	Editor: LeaderboardEditor,
 	Presenter: LeaderboardPresenter,
 	Participant: LeaderboardParticipant,

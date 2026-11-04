@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     llm_structured_method: StructuredMethod = "function_calling"
     llm_strict_schema: bool = False
 
+    # Tracing (Langfuse): on when both keys are set.
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
     # Generation.
     generation_max_attempts: int = Field(default=2, ge=1, le=5)
     generation_max_topups: int = Field(default=1, ge=0, le=3)
@@ -57,7 +62,7 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
-    @field_validator("laravel_api_url", "openrouter_base_url", "openai_base_url", mode="before")
+    @field_validator("laravel_api_url", "openrouter_base_url", "openai_base_url", "langfuse_base_url", mode="before")
     @classmethod
     def _strip_trailing_slash(cls, value: object) -> object:
         return value.rstrip("/") if isinstance(value, str) else value

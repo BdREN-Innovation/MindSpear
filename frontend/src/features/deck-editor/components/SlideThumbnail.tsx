@@ -3,7 +3,8 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Copy, CornerDownRight, HelpCircle, Trash2, Trophy } from "lucide-react";
+import { Copy, CornerDownRight, HelpCircle, Trash2 } from "lucide-react";
+import { Podium } from "../slides/leaderboard/PodiumIcon";
 import { cn } from "@/lib/utils";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { Slide } from "@/features/deck/types";
@@ -22,9 +23,9 @@ export interface SlideThumbnailProps {
 	/** Arrow keys / Home / End move between thumbnails. */
 	onNavigate(slideId: number, event: KeyboardEvent<HTMLButtonElement>): void;
 	registerButton(slideId: number, element: HTMLButtonElement | null): void;
-	/** Quiz decks: whether a Leaderboard slide follows this one (the trophy toggle); undefined hides it. */
+	/** Quiz decks: whether a Leaderboard slide follows this one (the podium toggle); undefined hides it. */
 	leaderboardAfter?: boolean;
-	/** The trophy toggle's change is being saved. */
+	/** The podium toggle's change is being saved. */
 	leaderboardBusy?: boolean;
 	onToggleLeaderboard?(slideId: number): void;
 }
@@ -92,7 +93,7 @@ function LeaderboardBar({ slide, index, total, selected, onSelect, onDelete, onN
 						: "border-secondary-100 bg-secondary-50/60 text-secondary-600 hover:border-secondary-200 dark:border-secondary-800 dark:bg-secondary-900/20 dark:text-secondary-200"
 				)}
 			>
-				<Trophy className="h-4 w-4 shrink-0" aria-hidden />
+				<Podium className="h-4 w-4 shrink-0" aria-hidden />
 				<span className="min-w-0 flex-1 truncate">{title}</span>
 				<span className="shrink-0 font-medium text-secondary-500 group-hover:hidden dark:text-secondary-300">{shown}</span>
 			</button>
@@ -163,7 +164,7 @@ function SlideCard({
 								: "text-gray-5 hover:bg-secondary-50 hover:text-secondary-500 dark:text-dark-5 dark:hover:bg-dark-3"
 						)}
 					>
-						<Trophy className="h-3.5 w-3.5" strokeWidth={leaderboardAfter ? 2.5 : 2} aria-hidden />
+						<Podium className="h-3.5 w-3.5" strokeWidth={leaderboardAfter ? 2.5 : 2} aria-hidden />
 					</button>
 				) : null}
 			</div>

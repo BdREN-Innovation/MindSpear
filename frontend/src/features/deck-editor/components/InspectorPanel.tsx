@@ -172,7 +172,7 @@ export function InspectorPanel({
 							<div className="border-t border-stroke pt-4 dark:border-stroke-dark">
 								<ToggleField
 									label="Show leaderboard after this slide"
-									description="Adds a Leaderboard slide right after this one, so players see the scores so far. Same as the trophy beside the slide."
+									description="Adds a Leaderboard slide right after this one, so players see the scores so far. Same as the podium beside the slide."
 									checked={leaderboardAfter.on}
 									disabled={leaderboardAfter.busy}
 									onChange={leaderboardAfter.onToggle}

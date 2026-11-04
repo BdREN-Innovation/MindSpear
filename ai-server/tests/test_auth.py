@@ -68,3 +68,15 @@ def test_rate_limiter_window_slides():
     limiter.hit("b")  # another caller is unaffected
     now[0] = 60
     limiter.hit("a")  # the first call has left the window
+
+
+async def test_verifier_keeps_the_laravel_user_id_for_traces(monkeypatch):
+    class ProfileTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            return httpx.Response(200, json={"data": {"profile": {"id": 42, "email": "x@example.test"}}})
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: RealAsyncClient(transport=ProfileTransport()))
+    verifier = TokenVerifier(api_url="http://laravel.test/api/v1", cache_seconds=60, timeout=1, clock=lambda: 0.0)
+
+    assert (await verifier.verify("tok")).id == "42"
+    assert (await verifier.verify("tok")).id == "42"  # from the cache

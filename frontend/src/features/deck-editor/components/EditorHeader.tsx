@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Check, CircleDot, Globe, Loader2, Lock, MonitorPlay, Play, Settings2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, CircleDot, Globe, Loader2, Lock, MonitorPlay, Pencil, Play, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DECK_LIMITS, type DeckProduct, type DeckVisibility } from "@/features/deck/types";
 import { productCopy } from "@/features/deck/productCopy";
@@ -81,18 +81,25 @@ export function EditorHeader({
 			</Link>
 
 			<div className="flex min-w-0 flex-1 items-center gap-3">
-				<input
-					value={title}
-					maxLength={DECK_LIMITS.maxDeckTitle}
-					onChange={(event) => onTitleChange(event.target.value)}
-					onBlur={onTitleCommit}
-					onKeyDown={(event) => {
-						if (event.key === "Enter") event.currentTarget.blur();
-					}}
-					aria-label={`${copy.Noun} title`}
-					placeholder={`Untitled ${copy.noun}`}
-					className="min-h-11 w-full min-w-0 max-w-md truncate rounded-lg border border-transparent bg-transparent px-2 text-base font-semibold text-dark outline-none transition hover:border-stroke focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30 dark:text-white dark:hover:border-stroke-dark"
-				/>
+				{/* A visible box and a pencil, so the title reads as something to click and rename. */}
+				<label className="group relative flex min-w-0 max-w-md flex-1 items-center" title={`Rename this ${copy.noun}`}>
+					<input
+						value={title}
+						maxLength={DECK_LIMITS.maxDeckTitle}
+						onChange={(event) => onTitleChange(event.target.value)}
+						onBlur={onTitleCommit}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") event.currentTarget.blur();
+						}}
+						aria-label={`${copy.Noun} title`}
+						placeholder={`Untitled ${copy.noun}`}
+						className="min-h-11 w-full min-w-0 truncate rounded-lg border border-dashed border-gray-4 bg-gray-1 pl-3 pr-9 text-base font-semibold text-dark outline-none transition hover:border-solid hover:border-secondary-200 hover:bg-white focus-visible:border-solid focus-visible:border-secondary focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-secondary/20 dark:border-dark-4 dark:bg-dark-2 dark:text-white"
+					/>
+					<Pencil
+						className="pointer-events-none absolute right-3 h-4 w-4 text-dark-5 transition group-hover:text-secondary-600 group-focus-within:opacity-0"
+						aria-hidden
+					/>
+				</label>
 				<SaveIndicator status={saveStatus} onRetry={onRetrySave} />
 			</div>
 

@@ -13,7 +13,8 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import { Plus, Trophy } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Podium } from "../slides/leaderboard/PodiumIcon";
 import type { DeckTheme } from "@/features/deck/theme";
 import type { Slide } from "@/features/deck/types";
 import { SlideThumbnail } from "./SlideThumbnail";
@@ -32,9 +33,9 @@ export interface SlideRailProps {
 	registerButton(slideId: number, element: HTMLButtonElement | null): void;
 	/** Focus lands here after the last slide is deleted. */
 	addButtonRef?: Ref<HTMLButtonElement>;
-	/** Quiz decks: the trophy beside each slide adds / removes a Leaderboard slide right after it. */
+	/** Quiz decks: the podium beside each slide adds / removes a Leaderboard slide right after it. */
 	onToggleLeaderboard?(slideId: number): void;
-	/** Slides whose trophy toggle is being saved. */
+	/** Slides whose podium toggle is being saved. */
 	leaderboardBusy?: ReadonlySet<number>;
 }
 
@@ -106,33 +107,24 @@ export function SlideRail({
 			aria-label="Slides"
 			className="flex h-full w-60 shrink-0 flex-col border-r border-stroke bg-white dark:border-stroke-dark dark:bg-gray-dark"
 		>
-			<div className="flex items-center justify-between gap-2 border-b border-stroke p-3 dark:border-stroke-dark">
+			<div className="flex items-center justify-between gap-2 border-b border-stroke py-2 pl-3 pr-2 dark:border-stroke-dark">
 				<h2 className="text-sm font-semibold text-dark dark:text-white">
 					Slides <span className="font-normal text-dark-5 dark:text-dark-6">({slides.length})</span>
 				</h2>
-			</div>
-			<div className="p-3 pb-1">
 				<button
 					ref={addButtonRef}
 					type="button"
 					onClick={onAdd}
 					aria-keyshortcuts="N"
-					className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-semibold text-dark transition hover:bg-primary-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark"
+					title="New slide (N)"
+					className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-semibold text-dark transition hover:bg-primary-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark"
 				>
 					<Plus className="h-4 w-4" aria-hidden />
 					New slide
 				</button>
-				{onToggleLeaderboard && slides.length > 0 ? (
-					<p className="mt-2 flex items-start gap-1.5 text-xs text-dark-5 dark:text-dark-6">
-						<span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-secondary-500 text-white" aria-hidden>
-							<Trophy className="h-2.5 w-2.5" strokeWidth={2.5} />
-						</span>
-						Tap the trophy beside a slide to show the leaderboard after it.
-					</p>
-				) : null}
 			</div>
 
-			<div className="min-h-0 flex-1 overflow-y-auto px-1 pb-4">
+			<div className="min-h-0 flex-1 overflow-y-auto px-1 pb-4 pt-1">
 				{slides.length === 0 ? (
 					<p className="px-3 py-6 text-center text-sm text-dark-5 dark:text-dark-6">No slides yet.</p>
 				) : (
@@ -170,6 +162,13 @@ export function SlideRail({
 					</DndContext>
 				)}
 			</div>
+
+			{onToggleLeaderboard && slides.length > 0 ? (
+				<p className="flex items-center gap-1.5 border-t border-stroke px-3 py-2 text-xs text-dark-5 dark:border-stroke-dark dark:text-dark-6">
+					<Podium className="h-3.5 w-3.5 shrink-0" aria-hidden />
+					Click it beside a slide to add a leaderboard.
+				</p>
+			) : null}
 		</nav>
 	);
 }

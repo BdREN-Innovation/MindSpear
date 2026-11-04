@@ -97,7 +97,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 	const [adding, setAdding] = useState(false);
 	const [presenting, setPresenting] = useState(false);
 	const [announcement, setAnnouncement] = useState("");
-	// Slides whose "leaderboard after this slide" trophy toggle is being saved.
+	// Slides whose "leaderboard after this slide" podium toggle is being saved.
 	const [leaderboardBusy, setLeaderboardBusy] = useState<ReadonlySet<number>>(() => new Set());
 
 	const buttonsRef = useRef(new Map<number, HTMLButtonElement>());
@@ -193,7 +193,7 @@ export function EditorShell({ deckId, product = "quest", initialSlideId = null }
 
 	/**
 	 * Quiz: "show the leaderboard after this slide" is a Leaderboard slide right after it.
-	 * The trophy beside the slide adds one (without leaving the slide being edited) or removes it.
+	 * The podium beside the slide adds one (without leaving the slide being edited) or removes it.
 	 */
 	const onToggleLeaderboard = useCallback(
 		async (slideId: number) => {

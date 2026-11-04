@@ -14,15 +14,19 @@ from app.generation.schemas.response import (
     TargetInfo,
     TargetsResponse,
 )
+from app.tracing import Tracer
 
 
 class GenerationService:
-    def __init__(self, graph: GenerationGraph, registry: TargetRegistry, settings: Settings) -> None:
+    def __init__(
+        self, graph: GenerationGraph, registry: TargetRegistry, settings: Settings, tracer: Tracer | None = None
+    ) -> None:
         self._graph = graph
         self._registry = registry
         self._settings = settings
+        self._tracer = tracer or Tracer(settings)
 
-    async def generate(self, request: GenerateRequest) -> GenerateResponse:
+    async def generate(self, request: GenerateRequest, user_id: str | None = None) -> GenerateResponse:
         s = self._settings
         try:
             request = request.limited(
@@ -31,7 +35,18 @@ class GenerationService:
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
 
-        state = await self._graph.compiled.ainvoke({"request": request})
+        config = self._tracer.run_config(
+            f"generate {request.target}",
+            user_id=user_id,
+            tags=[request.target, *request.question_types],
+            metadata={
+                "question_count": request.question_count,
+                "difficulty": request.difficulty,
+                "audience_level": request.audience_level,
+                "text_chars": len(request.text_data),
+            },
+        )
+        state = await self._graph.compiled.ainvoke({"request": request}, config=config)
         items = state["items"][: request.question_count]
         if not items:
             raise NoUsableOutputError(

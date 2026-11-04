@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
-import { CalendarClock, Copy, Globe, Layers, Loader2, Lock, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Copy, Globe, Layers, Lock, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui";
 import { authoringApiFor } from "@/features/deck/api/authoringApi";
 import { isDeckApiError, toDeckApiError } from "@/features/deck/api/errors";
@@ -12,6 +11,7 @@ import { productCopy, type DeckProductCopy } from "@/features/deck/productCopy";
 import { getDeckTheme } from "@/features/deck/theme";
 import type { DeckListMeta, DeckProduct, DeckSummary } from "@/features/deck/types";
 import { ThemeSwatch } from "@/features/deck-editor/components/inspector/DesignTab";
+import { NewDeckDialog } from "./NewDeckCard";
 
 // My Library > Quiz / Quest: the user's decks of one product, newest first,
 // with edit, present, duplicate and delete.
@@ -143,14 +143,13 @@ function DeckCard({
 export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 	const copy = productCopy(product);
 	const api = authoringApiFor(product);
-	const router = useRouter();
 	const [decks, setDecks] = useState<DeckSummary[]>([]);
 	const [meta, setMeta] = useState<DeckListMeta | null>(null);
 	const [page, setPage] = useState(1);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [busyId, setBusyId] = useState<number | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [newOpen, setNewOpen] = useState(false);
 	const [toDelete, setToDelete] = useState<DeckSummary | null>(null);
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const headingId = `${product}-library-heading`;
@@ -179,17 +178,6 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 		void load(page, controller.signal);
 		return () => controller.abort();
 	}, [page, load]);
-
-	const createDeck = async () => {
-		setCreating(true);
-		try {
-			const deck = await api.createDeck();
-			router.push(copy.editHref(deck.id));
-		} catch (reason) {
-			toast.error((reason as Error)?.message || `The ${copy.noun} could not be created.`);
-			setCreating(false);
-		}
-	};
 
 	const duplicate = async (deck: DeckSummary) => {
 		setBusyId(deck.id);
@@ -240,13 +228,14 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 				</div>
 				<button
 					type="button"
-					onClick={createDeck}
-					disabled={creating}
+					onClick={() => setNewOpen(true)}
+					aria-haspopup="dialog"
 					className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-dark transition hover:bg-primary-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-60"
 				>
-					{creating ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />}
+					<Plus className="h-4 w-4" aria-hidden />
 					New {copy.noun}
 				</button>
+				<NewDeckDialog product={product} open={newOpen} onClose={() => setNewOpen(false)} />
 			</div>
 
 			{error ? (

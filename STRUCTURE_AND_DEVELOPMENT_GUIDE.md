@@ -113,6 +113,8 @@ FastAPI, Pydantic, LangGraph and LangChain OpenRouter, managed with `uv`; tests 
 | Reverb | 8080 |
 | AI server | 8001 |
 | PostgreSQL / Redis | 5432 / 6379 |
+| Grafana (`monitoring/docker-compose.yml`, 127.0.0.1 only) | 3200 (container port 3000) |
+| Prometheus (`monitoring/docker-compose.yml`, 127.0.0.1 only) | 9090 |
 
 Outside Docker, `npm run dev` uses Next's default port 3000 unless `PORT` is set (`frontend/package.json` no longer pins one); `LOCAL_DEV_COMMANDS.md` describes running the services by hand.
 
@@ -126,7 +128,10 @@ mindspear/
 ├── frontend/                           # Next.js 15: host app + participant PWA (/play)
 ├── ai-server/                          # FastAPI: AI generation of questions and slides
 ├── docker-compose.yml                  # Local stack (§12)
-├── .env.prod.example                   # Production settings template
+├── docker-compose.prod.yml             # Production stack for dev.mindspear.app (behind the host's nginx)
+├── deploy/nginx/                       # The host nginx site for docker-compose.prod.yml (and /grafana/)
+├── monitoring/                         # Prometheus + Grafana, a separate compose project (§12)
+├── load-tests/                         # k6 load test conventions; results go to monitoring/ (§12)
 ├── READMEv2.md                         # Production deployment (single domain, Nginx, systemd)
 ├── LOCAL_DEV_COMMANDS.md               # Running the services without Docker
 ├── PRODUCT.md                          # Product context: users, formats, principles
@@ -770,7 +775,8 @@ Exceptions to the envelope:
 | Legacy `/files` endpoints | Still routed (uploads go into My Files) but the frontend only uses `/library`. | Low |
 | Quest task bank | Has API routes but no frontend UI; neither bank is connected to decks. | Medium — see §13. |
 | `INTERNAL_API_BASE_URL` | Set for the frontend in `docker-compose.yml` but not read by any code. | Low |
-| Missing prod compose file | `.env.prod.example` refers to a docker-compose.prod.yml that is not in the repository. | Low |
+| No host network panel | `monitoring/`'s node-exporter is not in the host's network namespace, so it reports no network interfaces (`--no-collector.netdev`); per-container traffic comes from cAdvisor. | Low — move it to `network_mode: host` if server NIC traffic is needed. |
+| cAdvisor version floor | Docker 29 stores images with containerd's snapshotter; cAdvisor before v0.55 then finds no containers and the container panels stay empty. | Low — keep `gcr.io/cadvisor/cadvisor` at v0.55.1 or newer. |
 | Root metadata | `frontend/src/app/layout.tsx` still describes the app as a "Quiz, Quest and Survey Platform". | Low — cosmetic. |
 | Historical plans | `QUEST_REDESIGN_PLAN.md` / `QUIZ_REDESIGN_PLAN.md` still describe `/v2` routes, flags and v1 cut-over steps. | Low — the code wins. |
 
@@ -827,6 +833,23 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 | `frontend`, `frontend-dev` | Production build on 2000; `next dev` with hot reload on 3001 |
 | `ai-server` | FastAPI on 8001 (needs `ai-server/.env`) |
 
+### Monitoring (`monitoring/`)
+A separate compose project (`mindspear-monitoring`), started after the app and independent of it:
+`docker compose -f monitoring/docker-compose.yml up -d`. Full guide: `monitoring/README.md`.
+
+| Service | Collects |
+|---------|----------|
+| `prometheus` | Stores everything (15 s scrapes, 15 days / 5 GB); receives k6 results by remote write |
+| `grafana` | Dashboards on 3200 (prod: `https://dev.mindspear.app/grafana/`), provisioned from `monitoring/grafana/` |
+| `cadvisor` | Per-container CPU, memory, network, restarts, out-of-memory kills, labelled with the compose project and service |
+| `node-exporter` | Host CPU, memory, load, disk |
+| `postgres-exporter`, `redis-exporter` | Database statistics; Redis also gives the Laravel queue lengths (`redis_key_size` of `mindspear_database_queues:<queue>`, recorded as `mindspear:queue_depth:jobs`) |
+
+- **Networks**: scraping runs on a private `monitoring` network; only the two database exporters join the app's network (`APP_NETWORK`: `mindspear_mindspear` in dev, `mindspear-prod_mindspear` in prod).
+- **Settings**: `monitoring/.env` (template `monitoring/.env.example`). Every value has a dev default, so dev needs no `.env`; prod sets the Grafana sub-path, the admin password and the database credentials.
+- **Targets** are files in `monitoring/prometheus/targets/` (file-based discovery: no restart); dashboards are JSON in `monitoring/grafana/dashboards/<folder>/` (read-only in the UI). Home dashboard: **MindSpear overview**.
+- **Load tests** (`load-tests/README.md`): k6 runs in a `grafana/k6` container, pushes to `http://127.0.0.1:9090/api/v1/write` tagged with a `testid`, and shows in the Grafana folder **load-tests**. No scripts are committed yet.
+
 ### Config files to know
 | File | Purpose |
 |------|---------|
@@ -840,6 +863,10 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 | `frontend/tailwind.config.ts` | Tailwind theme (palette from `frontend/src/config/theme.ts`) |
 | `frontend/tsconfig.json` | Strict TypeScript, `@/*` path alias |
 | `ai-server/app/config.py` | AI server settings (env) |
+| `docker-compose.prod.yml`, `deploy/nginx/dev.mindspear.app.conf` | Production stack, and the host nginx site that routes the domain to it (including `/grafana/`) |
+| `monitoring/docker-compose.yml`, `monitoring/.env.example` | Monitoring stack and its settings |
+| `monitoring/prometheus/prometheus.yml`, `monitoring/prometheus/targets/`, `monitoring/prometheus/rules/` | Scrape jobs, scrape targets, recording rules |
+| `monitoring/grafana/provisioning/`, `monitoring/grafana/dashboards/` | Grafana datasource and dashboards as code |
 
 ---
 
@@ -855,6 +882,10 @@ There are **no feature-flag variables**: quizzes, quests and Fun Games are avail
 | **Role-based API access** | Not built | Roles only gate Filament; API routes check ownership, never roles (§11). |
 | **Payment / billing backend** | Frontend only | `/plans` and `/billing` are static views; no payment or subscription API. |
 | **CI/CD** | Not configured | No pipeline configuration in the repository. |
+| **Alerting** | Not configured | Monitoring has no alert rules or receivers. Slots: `monitoring/prometheus/rules/` + the commented `alertmanager` service, or `monitoring/grafana/provisioning/alerting/`. |
+| **Application metrics** | Not built | No `/metrics` in Laravel or FastAPI and no nginx / php-fpm exporters; monitoring sees containers, the host and the databases. New targets go in `monitoring/prometheus/targets/apps/`. |
+| **Logs in Grafana** | Not built | No Loki; logs are read with `docker compose logs`. |
+| **Load test scripts** | Layout only | `load-tests/README.md` sets the conventions and the pipeline to Grafana works; no k6 scripts yet. |
 | **Frontend tests** | None | Backend: Pest; AI server: pytest. |
 | **Push notifications** | Not implemented | The participant service worker does not handle push. |
 | **Internationalisation** | Not implemented | English only. |
@@ -896,6 +927,12 @@ A small, complete example to copy: `backend/app/Deck/Slides/Types/Quiz/TrueFalse
 ### Adding Frontend State
 
 The Redux store holds only `auth`. Prefer state in feature hooks. If something truly app-wide is needed, add its reducer to `rootReducer` in `frontend/src/stores/store.ts`, and add its key to `persistConfig.whitelist` only if it must survive reloads.
+
+### Adding a Monitoring Target or Dashboard
+
+- **Target**: the exporter or `/metrics` endpoint must be reachable on the `monitoring` network. Add `monitoring/prometheus/targets/apps/<name>.yml` (`- targets: ["<host>:<port>"]` with `labels: {job: <name>}`); Prometheus picks it up within a minute, no restart. Check it at http://localhost:9090/targets.
+- **Dashboard**: commit its JSON as `monitoring/grafana/dashboards/<folder>/<name>.json` with the datasource uid `prometheus`. Community dashboards from grafana.com: add the id to `monitoring/scripts/fetch-dashboards.sh` and run it. Details in `monitoring/README.md`.
+- **Recording or alert rule**: a file in `monitoring/prometheus/rules/`, checked with `promtool`, then `curl -X POST http://127.0.0.1:9090/-/reload`.
 
 ### Adding a Filament Resource
 

@@ -67,6 +67,15 @@ build_prompt → call_llm → validate ─┬─ nothing usable, attempts left �
 * A top-up asks only for the missing number and lists the titles already written.
 * `GENERATION_MAX_ATTEMPTS` and `GENERATION_MAX_TOPUPS` bound the number of model calls.
 
+## Tracing (Langfuse)
+
+Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` (both keys = on; the startup log says
+`Langfuse tracing: on`). Each `/v1/generate` request is one trace named `generate {target}`, tagged with the
+target and question types and carrying the Laravel user id, with the graph nodes (`build_prompt`, `call_llm`,
+`validate`) and every model call (prompt, answer, tokens, latency) underneath. `app/tracing.py` builds the
+Langfuse callback that rides on the graph's run config. Langfuse gets its own tracer provider, so FastAPI's
+built-in request spans (health checks included) are not sent. Traces contain the selected document text.
+
 ## Layout
 
 ```

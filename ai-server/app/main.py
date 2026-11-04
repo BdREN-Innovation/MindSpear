@@ -21,6 +21,7 @@ from app.llm.base import StructuredLLM
 from app.llm.factory import build_llm
 from app.security.auth import NoAuth, TokenVerifier
 from app.security.rate_limit import RateLimiter
+from app.tracing import Tracer
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ def create_app(settings: Settings | None = None, llm: StructuredLLM | None = Non
         policy = GenerationPolicy(
             max_attempts=settings.generation_max_attempts, max_topups=settings.generation_max_topups
         )
-        app.state.generation = GenerationService(GenerationGraph(model, registry, policy), registry, settings)
+        tracer = Tracer(settings)
+        app.state.generation = GenerationService(GenerationGraph(model, registry, policy), registry, settings, tracer)
         app.state.verifier = (
             NoAuth()
             if settings.auth_disabled
@@ -66,7 +68,9 @@ def create_app(settings: Settings | None = None, llm: StructuredLLM | None = Non
             model.model_name,
             registry.keys(),
         )
+        log.info("Langfuse tracing: %s", "on" if tracer.enabled else "off (no LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY)")
         yield
+        tracer.shutdown()
 
     app = FastAPI(
         title=settings.app_name,

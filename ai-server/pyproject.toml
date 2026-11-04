@@ -15,6 +15,8 @@ dependencies = [
     "langchain-openrouter>=0.2.9,<0.3",
     "openrouter>=0.11,<1",
     "openai>=1.60,<4",
+    "langfuse>=3,<4",
+    "langchain>=1,<2",
 ]
 
 [dependency-groups]

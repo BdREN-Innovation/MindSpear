@@ -18,9 +18,9 @@ import {
 	RotateCw,
 	Square,
 	SkipForward,
-	Trophy,
 	Users,
 } from "lucide-react";
+import { Podium } from "@/features/deck-editor/slides/leaderboard/PodiumIcon";
 import type { DeckConnectionStatus } from "@/features/deck/live/channelState";
 import type { ParticipantRunView, RoomParticipant } from "@/features/deck/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ import { SlideListPopover } from "./SlideListPopover";
 
 // Bottom control bar (plan §6.2):
 //   [exit] [≡ slides] ‹ 3 / 12 ›   [ primary action ]   📊 12 · 👥 42 ● · Q&A · 🏆 · QR · ⛶ · End
-// (🏆 = quiz only: insert a leaderboard slide after the current one and show it.)
+// (podium = quiz only: insert a leaderboard slide after the current one and show it.)
 // Every action button is disabled while one request is in flight, so a
 // double click can never advance twice.
 //
@@ -187,7 +187,7 @@ export function ControlBar(props: ControlBarProps) {
 					{
 						key: "leaderboard",
 						label: "Show leaderboard",
-						icon: <Trophy className="h-5 w-5" />,
+						icon: <Podium className="h-5 w-5" />,
 						onSelect: insertLeaderboard.onInsert,
 						disabled: busy || insertLeaderboard.disabled,
 					},
@@ -433,7 +433,7 @@ export function ControlBar(props: ControlBarProps) {
 						{pending === "insert_leaderboard" ? (
 							<Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" aria-hidden />
 						) : (
-							<Trophy className="h-5 w-5" aria-hidden />
+							<Podium className="h-5 w-5" aria-hidden />
 						)}
 					</ControlButton>
 				)}

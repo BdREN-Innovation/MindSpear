@@ -14,6 +14,6 @@ def targets(generation: Generation) -> TargetsResponse:
 
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate(body: GenerateRequest, _user: CurrentUser, generation: Generation) -> GenerateResponse:
+async def generate(body: GenerateRequest, user: CurrentUser, generation: Generation) -> GenerateResponse:
     """Writes questions / tasks / slides of `target` from `textData`. Needs the user's Laravel bearer token."""
-    return await generation.generate(body)
+    return await generation.generate(body, user_id=user.id)
