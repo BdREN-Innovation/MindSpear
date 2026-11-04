@@ -1,0 +1,4 @@
+# Grafana-managed alerting (contact points, notification policies, alert rules) is provisioned
+# from this folder. None yet; see monitoring/README.md, "Alerting". Prometheus rules in
+# prometheus/rules/ plus an Alertmanager are the other option.
+apiVersion: 1

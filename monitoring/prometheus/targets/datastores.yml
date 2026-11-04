@@ -1,0 +1,7 @@
+# PostgreSQL and Redis, through their exporters. Scraped by the "datastores" job in prometheus.yml.
+- targets: ["postgres-exporter:9187"]
+  labels:
+    job: postgres
+- targets: ["redis-exporter:9121"]
+  labels:
+    job: redis

@@ -1,0 +1,14 @@
+# Dashboards are JSON files in git (grafana/dashboards/); each subfolder becomes a Grafana
+# folder. The UI cannot change or delete them: edit the JSON (or export from the UI and
+# commit it), and Grafana picks the change up within updateIntervalSeconds.
+apiVersion: 1
+
+providers:
+  - name: mindspear
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

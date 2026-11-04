@@ -85,9 +85,9 @@ db_dumps/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
-# /ai-server/
+
 # Playwright MCP browser session output
 .playwright-mcp/
 /backend_js/
-monitoring/
+# monitoring/
 load-tests/

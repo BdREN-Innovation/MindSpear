@@ -1,0 +1,7 @@
+# Containers and the host. Scraped by the "infra" job in prometheus.yml.
+- targets: ["cadvisor:8080"]
+  labels:
+    job: cadvisor
+- targets: ["node-exporter:9100"]
+  labels:
+    job: node
