@@ -131,7 +131,7 @@ mindspear/
 ├── docker-compose.prod.yml             # Production stack for dev.mindspear.app (behind the host's nginx)
 ├── deploy/nginx/                       # The host nginx site for docker-compose.prod.yml (and /grafana/)
 ├── monitoring/                         # Prometheus + Grafana, a separate compose project (§12)
-├── load-tests/                         # k6 load test conventions; results go to monitoring/ (§12)
+├── load-tests/                         # k6 load tests (smoke, API, live quiz); results go to monitoring/ (§12)
 ├── READMEv2.md                         # Production deployment (single domain, Nginx, systemd)
 ├── LOCAL_DEV_COMMANDS.md               # Running the services without Docker
 ├── PRODUCT.md                          # Product context: users, formats, principles
@@ -848,7 +848,7 @@ A separate compose project (`mindspear-monitoring`), started after the app and i
 - **Networks**: scraping runs on a private `monitoring` network; only the two database exporters join the app's network (`APP_NETWORK`: `mindspear_mindspear` in dev, `mindspear-prod_mindspear` in prod).
 - **Settings**: `monitoring/.env` (template `monitoring/.env.example`). Every value has a dev default, so dev needs no `.env`; prod sets the Grafana sub-path, the admin password and the database credentials.
 - **Targets** are files in `monitoring/prometheus/targets/` (file-based discovery: no restart); dashboards are JSON in `monitoring/grafana/dashboards/<folder>/` (read-only in the UI). Home dashboard: **MindSpear overview**.
-- **Load tests** (`load-tests/README.md`): k6 runs in a `grafana/k6` container, pushes to `http://127.0.0.1:9090/api/v1/write` tagged with a `testid`, and shows in the Grafana folder **load-tests**. No scripts are committed yet.
+- **Load tests** (`load-tests/README.md`): `load-tests/run.sh <script>` runs a k6 script in a `grafana/k6` container and pushes the results to Prometheus tagged with a `testid`; they show in the Grafana folder **load-tests**. Scripts: `smoke/health.js` (is the stack up), `api/dashboard.js` (signed-in reads at a steady rate) and `live/quiz-session.js` (a host runs a quiz while `PARTICIPANTS` phones join by code, hold a Reverb websocket and react to its events the way the participant app does; it creates and deletes its own quiz). Settings and the load-test account go in `load-tests/.env`, or `load-tests/.env.server` for dev.mindspear.app (`ENV_FILE=.env.server`). One test machine is one IP: the per-IP limits allow about 700 participants, and one Reverb process about 1,000 connections (no event-loop extension installed); see `load-tests/README.md`. Every script has thresholds, so a failed run exits non-zero.
 
 ### Config files to know
 | File | Purpose |
@@ -885,7 +885,6 @@ A separate compose project (`mindspear-monitoring`), started after the app and i
 | **Alerting** | Not configured | Monitoring has no alert rules or receivers. Slots: `monitoring/prometheus/rules/` + the commented `alertmanager` service, or `monitoring/grafana/provisioning/alerting/`. |
 | **Application metrics** | Not built | No `/metrics` in Laravel or FastAPI and no nginx / php-fpm exporters; monitoring sees containers, the host and the databases. New targets go in `monitoring/prometheus/targets/apps/`. |
 | **Logs in Grafana** | Not built | No Loki; logs are read with `docker compose logs`. |
-| **Load test scripts** | Layout only | `load-tests/README.md` sets the conventions and the pipeline to Grafana works; no k6 scripts yet. |
 | **Frontend tests** | None | Backend: Pest; AI server: pytest. |
 | **Push notifications** | Not implemented | The participant service worker does not handle push. |
 | **Internationalisation** | Not implemented | English only. |

@@ -90,4 +90,7 @@ __pycache__/
 .playwright-mcp/
 /backend_js/
 # monitoring/
-load-tests/
+# load-tests/
+# k6 end-of-run summaries (load-tests/run.sh), and the server settings template (tracked)
+load-tests/results/
+!load-tests/.env.server.example
