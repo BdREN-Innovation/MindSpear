@@ -130,7 +130,8 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 						? `Choose at least one kind of ${noun.singular}.`
 						: `Tap a type to add or remove it · ${chosenTypes} of ${types.length} chosen`}
 				</p>
-				<div className="flex flex-wrap gap-2">
+				{/* Equal columns, so the chips line up; an odd last chip takes the whole row. */}
+				<div className="grid grid-cols-2 gap-2">
 					{types.map(({ value: type, label, icon: Icon, hint }) => {
 						const on = value.questionTypes.includes(type);
 						return (
@@ -140,7 +141,7 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 								onClick={() => toggleType(type)}
 								aria-pressed={on}
 								title={hint}
-								className={cn(chipBase, "inline-flex h-9 items-center gap-2 rounded-lg pl-2 pr-3 text-xs", on ? chipOn : chipOff)}
+								className={cn(chipBase, "inline-flex h-9 min-w-0 items-center gap-2 rounded-lg pl-2 pr-3 text-left text-xs [&:last-child:nth-child(odd)]:col-span-2", on ? chipOn : chipOff)}
 							>
 								<span
 									className={cn(
@@ -152,7 +153,7 @@ export function GenerationOptionsForm({ target, value, onChange }: Props) {
 									{on ? <Check className="h-2.5 w-2.5" strokeWidth={4} /> : null}
 								</span>
 								<Icon className={cn("h-3.5 w-3.5 shrink-0", on ? "text-secondary-500 dark:text-secondary-300" : "text-dark-5")} aria-hidden />
-								{label}
+								<span className="truncate">{label}</span>
 							</button>
 						);
 					})}

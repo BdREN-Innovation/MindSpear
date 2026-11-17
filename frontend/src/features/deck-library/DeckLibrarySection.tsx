@@ -76,7 +76,7 @@ function DeckCard({
 						</Link>
 					</h3>
 					{deck.visibility === "public" ? (
-						<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-light-7 px-2 py-0.5 text-xs font-medium text-green-dark" title="Listed in Discover">
+						<span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium text-green-dark" title="Listed in Discover">
 							<Globe className="h-3.5 w-3.5" aria-hidden />
 							Public
 						</span>
