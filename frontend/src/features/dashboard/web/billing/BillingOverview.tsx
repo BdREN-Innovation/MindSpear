@@ -1,6 +1,9 @@
 
 import { BillingOverviewType as BillingOverviewType, Subscription } from '@/types/billing';
 import { Users, Presentation, HardDrive, Calendar, DollarSign, File } from 'lucide-react';
+import Link from 'next/link';
+import { useStorageUsage } from '@/features/file-library/hooks/useStorageUsage';
+import { formatBytes } from '@/features/file-library/lib/format';
 
 interface BillingOverviewProps {
 	data: BillingOverviewType;
@@ -8,6 +11,7 @@ interface BillingOverviewProps {
 }
 
 const BillingOverview = ({ data, subscription }: BillingOverviewProps) => {
+	const { usage: storage } = useStorageUsage();
 	const formatDate = (date: Date) => {
 		return date.toLocaleDateString('en-US', {
 			year: 'numeric',
@@ -88,8 +92,13 @@ const BillingOverview = ({ data, subscription }: BillingOverviewProps) => {
 							<HardDrive className="w-5 h-5 text-orange-600" />
 						</div>
 						<div>
-							<p className="text-2xl font-bold text-gray-900">{data.usage.storage} GB</p>
-							<p className="text-gray-600 text-sm">Storage Used</p>
+							<p className="text-2xl font-bold text-gray-900">
+								{storage ? formatBytes(storage.used) : `${data.usage.storage} GB`}
+							</p>
+							<p className="text-gray-600 text-sm">
+								{storage ? `of ${formatBytes(storage.limit)} · ` : ''}
+								<Link href="/my-files" className="text-primary hover:underline">My Files</Link>
+							</p>
 						</div>
 					</div>
 				</div>

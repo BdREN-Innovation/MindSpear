@@ -12,6 +12,10 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import type { RootState, AppDispatch } from "@/stores/store";
+import ResendVerificationEmail from "./ResendVerificationEmail";
+
+// The /login 403 carries no error code, only this message.
+const UNVERIFIED_MESSAGE = "User is not verified";
 
 const formSchema = z.object({
 	email: z.string().email("Enter a valid email"),
@@ -26,6 +30,7 @@ export default function SigninWithPassword() {
 	const { loading, error } = useSelector((state: RootState) => state.auth);
 
 	const [showPassword, setShowPassword] = useState(false);
+	const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
 
 	const {
 		register,
@@ -42,7 +47,12 @@ export default function SigninWithPassword() {
 	}, [dispatch]);
 
 	const onSubmit = async (data: FormSchema) => {
+		setUnverifiedEmail(null);
 		const result = await dispatch(loginUser(data));
+
+		if (loginUser.rejected.match(result) && result.payload === UNVERIFIED_MESSAGE) {
+			setUnverifiedEmail(data.email);
+		}
 
 		if (loginUser.fulfilled.match(result)) {
 			reset();
@@ -102,7 +112,16 @@ export default function SigninWithPassword() {
 				</Link>
 			</div>
 
-			{error && <p className="text-red-500 mb-4">{error}</p>}
+			{unverifiedEmail ? (
+				<div className="mb-4 rounded-lg bg-gray-100 p-4 dark:bg-gray-800">
+					<p className="mb-3">
+						Your email isn&apos;t verified yet. Open the link we sent to <strong>{unverifiedEmail}</strong>, or request a new one.
+					</p>
+					<ResendVerificationEmail key={unverifiedEmail} email={unverifiedEmail} />
+				</div>
+			) : (
+				error && <p className="text-red-500 mb-4">{error}</p>
+			)}
 
 			<div className="mb-4.5">
 				<button

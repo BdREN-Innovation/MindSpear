@@ -5,9 +5,7 @@ namespace App\Http\Controllers\api\v1\Quest;
 use App\Http\Controllers\api\v1\ApiBaseController;
 use App\Http\Requests\Quest\QuestTaskBank\StoreRequest;
 use App\Http\Requests\Quest\QuestTaskBank\UpdateRequest;
-use App\Http\Requests\Quest\QuestTaskBank\UseInQuestRequest;
 use App\Models\Quest\BankTask;
-use App\Models\Quest\QuestTask;
 use App\Models\Quest\QuestTaskBankCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -166,34 +164,6 @@ class QuestTaskBankController extends ApiBaseController
             DB::rollBack();
             Log::error('Error restoring bank task: ' . $e->getMessage());
             return $this->serverErrorResponse([], __('Failed to restore bank task.'));
-        }
-    }
-
-    public function useInQuest(UseInQuestRequest $request, int $id): JsonResponse
-    {
-        DB::beginTransaction();
-        try {
-            $bank = BankTask::find($id);
-            if (! $bank) {
-                return $this->notFoundResponse([], __('Bank task not found.'));
-            }
-            $data = $request->validated();
-            $attached = QuestTask::create([
-                'quest_id' => $data['quest_id'],
-                'owner_id' => $bank->owner_id,
-                'title' => $bank->title,
-                'description' => $bank->description,
-                'task_type' => $bank->task_type,
-                'serial_number' => $data['serial_number'] ?? null,
-                'task_data' => $bank->task_data,
-                'is_required' => $bank->is_required,
-            ]);
-            DB::commit();
-            return $this->createdResponse(['task' => $attached], __('Task added to quest from bank.'));
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error using bank task in quest: ' . $e->getMessage());
-            return $this->serverErrorResponse([], __('Failed to add task to quest.'));
         }
     }
 }

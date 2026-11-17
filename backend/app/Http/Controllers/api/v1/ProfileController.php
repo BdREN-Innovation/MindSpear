@@ -23,8 +23,7 @@ class ProfileController extends ApiBaseController
                 return $this->unauthorizedResponse([], __('Unauthorized access.'));
             }
 
-            // Return the user's profile
-            return $this->okResponse(['profile' => $request->user()], __('Profile retrieved successfully.'));
+            return $this->okResponse(['profile' => $request->user()->toArray()], __('Profile retrieved successfully.'));
         } catch (Throwable $e) {
             // Log the error for debugging purposes
             Log::error('Failed to retrieve profile', [

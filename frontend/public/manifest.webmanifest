@@ -1,0 +1,21 @@
+{
+	"id": "/play",
+	"name": "MindSpear",
+	"short_name": "MindSpear",
+	"description": "Join live MindSpear sessions: vote, answer and ask questions from your phone.",
+	"lang": "en",
+	"dir": "ltr",
+	"start_url": "/play",
+	"scope": "/play",
+	"display": "standalone",
+	"orientation": "portrait",
+	"theme_color": "#F79945",
+	"background_color": "#FFFFFF",
+	"categories": ["education", "productivity"],
+	"icons": [
+		{ "src": "/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+		{ "src": "/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+		{ "src": "/pwa/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+		{ "src": "/pwa/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+	]
+}

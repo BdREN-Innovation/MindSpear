@@ -1,5 +1,5 @@
 @component('mail::message')
-# Password Reset Request
+# E-mail Verification Request
 
 You requested to verify Your Email Address. Click the button below to verify Your Email Address:
 

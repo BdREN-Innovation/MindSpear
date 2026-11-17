@@ -1,0 +1,4 @@
+# Plugin apps to enable at start-up. None: every panel in grafana/dashboards/ uses the
+# plugins built into Grafana.
+apiVersion: 1
+apps: []

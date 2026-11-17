@@ -161,9 +161,6 @@ export default function PublicQuestionBank() {
 	const [error, setError] = useState<string | null>(null);
 	const [searchTerm, setSearchTerm] = useState<string>("");
 	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>("");
-	const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(
-		null,
-	);
 	const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
 	const [categories, setCategories] = useState<Category[]>([]);
 	const [currentPage, setCurrentPage] = useState<number>(1);
@@ -176,8 +173,6 @@ export default function PublicQuestionBank() {
 	const [selectedCategoryForAdd, setSelectedCategoryForAdd] =
 		useState<SelectOption | null>(null);
 	const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
-	const [selectedQuestionDetail, setSelectedQuestionDetail] =
-		useState<Question | null>(null);
 	const [detailedQuestion, setDetailedQuestion] = useState<any>(null);
 	const [detailLoading, setDetailLoading] = useState<boolean>(false);
 
@@ -196,11 +191,6 @@ export default function PublicQuestionBank() {
 		} catch (err) {
 			console.error("Error fetching categories:", err);
 		}
-	}, []);
-
-	// Fetch public questions on component mount
-	useEffect(() => {
-		fetchPublicQuestions();
 	}, []);
 
 	// Fetch categories on component mount
@@ -246,7 +236,7 @@ export default function PublicQuestionBank() {
 		}
 	}, []);
 
-	// Fetch public questions when debounced search term, category filter, or page changes
+	// Fetch public questions on mount and when the debounced search term, category filter, or page changes
 	useEffect(() => {
 		fetchPublicQuestions();
 	}, [debouncedSearchTerm, categoryFilter, currentPage, perPage]);
@@ -335,9 +325,6 @@ export default function PublicQuestionBank() {
 		async (questionId: number) => {
 			try {
 				setDetailLoading(true);
-				setSelectedQuestionDetail(
-					questions.find((q) => q.id === questionId) || null,
-				);
 
 				const response = await axiosInstance.get(
 					`/quiz/question-bank/show/${questionId}`,
@@ -366,7 +353,7 @@ export default function PublicQuestionBank() {
 				setDetailLoading(false);
 			}
 		},
-		[questions],
+		[],
 	);
 
 	const fetchPublicQuestions = async () => {

@@ -280,7 +280,7 @@ interface RegisterPayload {
 }
 
 export const registerUser = createAsyncThunk<
-	{ token: string; user: AuthState["user"]; emailSent: boolean },
+	{ user: AuthState["user"]; emailSent: boolean },
 	RegisterPayload,
 	{ rejectValue: string }
 >("auth/registerUser", async (userData, { rejectWithValue }) => {
@@ -289,7 +289,7 @@ export const registerUser = createAsyncThunk<
 		//console.log("register response:", response);
 
 		const rawUser = response.data?.data?.user;
-		const emailSent = response.data?.data?.emailSent;
+		const emailSent = response.data?.data?.email_sent;
 
 		if (rawUser) {
 			const user = {
@@ -301,11 +301,6 @@ export const registerUser = createAsyncThunk<
 					}`.trim(),
 				email: rawUser.email,
 			};
-			const tempToken = rawUser.email_verification_token;
-
-			if (tempToken) {
-				localStorage.setItem("email_verification_token", tempToken);
-			}
 
 			// Cookie set (SSR এর জন্য)
 			// await fetch("/api/auth/set-cookie", {
@@ -314,7 +309,7 @@ export const registerUser = createAsyncThunk<
 			// 	body: JSON.stringify({ token }),
 			// });
 
-			return { token: tempToken || "", user, emailSent };
+			return { user, emailSent };
 		} else {
 			return rejectWithValue("Registration failed");
 		}
@@ -498,7 +493,7 @@ const authSlice = createSlice({
 			})
 			.addCase(registerUser.fulfilled, (state, action) => {
 				state.loading = false;
-				state.token = action.payload.token;
+				state.token = null;
 				state.user = action.payload.user;
 				state.isAuthenticated = false; // Not authenticated until email verification
 				state.error = null;

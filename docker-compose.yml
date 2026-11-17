@@ -1,0 +1,246 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mindspear
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - mindspear
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d mindspear"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - mindspear
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env.docker
+    environment:
+      # Several workers so long uploads don't block other requests
+      PHP_CLI_SERVER_WORKERS: 4
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "php artisan config:clear &&
+             until php -r \"new PDO('pgsql:host=postgres;port=5432;dbname=mindspear', 'myuser', 'mypassword');\" 2>/dev/null; do echo 'Waiting for postgres...'; sleep 2; done &&
+             php artisan migrate --force &&
+             (php artisan tinker --execute='exit(App\\Models\\User::count() === 0 ? 0 : 1);' && php artisan db:seed --force || echo 'Seed skipped (DB already has users)') &&
+             php artisan storage:link --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+
+  reverb:
+    build: ./backend
+    env_file: ./backend/.env.docker
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+
+  # Fun Games: locks questions, opens the next one and ends games on the server clock.
+  # Exits hourly (--max-runtime) and is restarted fresh.
+  fungames-ticker:
+    build: ./backend
+    env_file: ./backend/.env.docker
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan fun-games:tick --loop --max-runtime=3600
+
+  # The default queue: queued live broadcasts (LiveBroadcastEvent), live
+  # aggregate snapshots and the trailing deck aggregate / Q&A upvote
+  # broadcasts. Without it those jobs are never sent. --sleep=0.2: an idle
+  # worker polls every 0.2 s instead of 3 s, so the last chart update of a
+  # burst is not held back by up to 3 s. Also scores finished Fun Games (the
+  # "fungames" queue), listed second so live updates go first. If scoring is
+  # held up, the ticker scores a game itself about 10 s after it ends.
+  queue:
+    build: ./backend
+    env_file: ./backend/.env.docker
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan queue:work redis --queue=default,fungames --sleep=0.2 --tries=3 --max-time=3600
+
+  # Renders PPTX slides for the page picker with LibreOffice (only this image has it). Its own
+  # worker because a conversion takes seconds and would hold up live broadcasts on "queue".
+  documents-queue:
+    build:
+      context: ./backend
+      args:
+        WITH_LIBREOFFICE: "1"
+    env_file: ./backend/.env.docker
+    volumes:
+      - ./backend:/app
+      # artisan serve's request workers read /app/.env, not container env vars
+      - ./backend/.env.docker:/app/.env
+      - /app/vendor
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    command: php artisan queue:work redis --queue=documents --tries=1 --timeout=180 --max-time=3600
+
+  # The production build (frontend/Dockerfile, "run" stage): no hot reload, so code changes
+  # need `docker compose up -d --build frontend`. For `next dev` with hot reload, build
+  # Dockerfile.dev instead and mount the source (./frontend:/app, /app/node_modules, /app/.next).
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     target: run
+  #     # NEXT_PUBLIC_* and the proxy rewrites are fixed at build time (setting them on the running
+  #     # container does nothing): rebuild after changing one. The browser calls Laravel (/api/v1,
+  #     # /broadcasting/auth, /storage) and the AI server (/ai-api) on this app's own origin, and
+  #     # next.config.ts forwards them over the docker network, so the site works at any address
+  #     # (localhost, 0.0.0.0, the LAN IP) without CORS. The Reverb key is the public one every
+  #     # browser receives; an empty Reverb host means the page's own host (port 8080 is published).
+  #     args:
+  #       NEXT_PUBLIC_API_BASE_URL: /api/v1
+  #       BACKEND_PROXY_URL: http://backend:8000
+  #       NEXT_PUBLIC_AI_API_URL: /ai-api
+  #       AI_PROXY_URL: http://ai-server:8001
+  #       NEXT_PUBLIC_APP_URL: http://localhost:2000
+  #       NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
+  #       NEXT_PUBLIC_REVERB_HOST: ""
+  #       NEXT_PUBLIC_REVERB_PORT: 8080
+  #       NEXT_PUBLIC_REVERB_SCHEME: http
+  #   env_file: ./frontend/.env
+  #   environment:
+  #     # Server-side (SSR / route handler) calls reach Laravel over the docker network.
+  #     INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+  #   ports:
+  #     # The production server listens on 3000 inside the container.
+  #     - "2000:3000"
+  #   networks:
+  #     - mindspear
+  #   depends_on:
+  #     - backend
+  #     - reverb
+  #     - ai-server
+
+
+  frontend-dev:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    env_file: ./frontend/.env
+    environment:
+      # `next dev` listens on $PORT (package.json no longer pins -p).
+      PORT: 3001
+      # `next dev` reads NEXT_PUBLIC_* at runtime (unlike the production build), so they go
+      # here rather than in build args. The browser is outside the docker network, so they
+      # use the host-published ports. The Reverb key is the public one every browser receives.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_APP_URL: http://localhost:3001
+      NEXT_PUBLIC_REVERB_APP_KEY: 54a1c6abc1b3734cb245735e9a43fd30
+      NEXT_PUBLIC_REVERB_HOST: localhost
+      NEXT_PUBLIC_REVERB_PORT: 8080
+      NEXT_PUBLIC_REVERB_SCHEME: http
+      # The browser calls the AI server through this app (/ai-api → AI_PROXY_URL below), so no CORS.
+      NEXT_PUBLIC_AI_API_URL: /ai-api
+      # Server-side (SSR / route handler) calls reach Laravel over the docker network.
+      INTERNAL_API_BASE_URL: http://backend:8000/api/v1
+      # /ai-api/* is rewritten to the AI server over the docker network (next.config.ts).
+      AI_PROXY_URL: http://ai-server:8001
+      # Hot reload: file events from the bind mount reach the container natively on Linux.
+      # On Docker Desktop (macOS/Windows) uncomment to fall back to polling.
+      # WATCHPACK_POLLING: "true"
+      # CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "3001:3001"
+    volumes:
+      # Hot reload: run the live source from the host instead of the copy baked into the image.
+      - ./frontend:/app
+      # Keep the image's node_modules and a container-only .next build cache
+      # (the host's would shadow them through the bind mount above).
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - mindspear
+    depends_on:
+      - backend
+      - reverb
+      - ai-server
+
+  # AI question generation (ai-server/, FastAPI + LangGraph). Verifies the user's token
+  # against Laravel, then writes quiz / quest / fun-game items with the model on OpenRouter.
+  # Needs OPENROUTER_API_KEY in ai-server/.env (copy ai-server/.env.example).
+  ai-server:
+    build: ./ai-server
+    env_file: ./ai-server/.env
+    environment:
+      LARAVEL_API_URL: http://backend:8000/api/v1
+      # The frontend proxies /ai-api, so the browser never calls this origin directly;
+      # add http://localhost:2000 here only if NEXT_PUBLIC_AI_API_URL is set to http://localhost:8001.
+      CORS_ORIGINS: ""
+    ports:
+      - "8001:8001"
+    networks:
+      - mindspear
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+networks:
+  mindspear:
+    driver: bridge
+
+volumes:
+  pgdata:

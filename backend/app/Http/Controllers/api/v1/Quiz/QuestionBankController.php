@@ -5,10 +5,8 @@ namespace App\Http\Controllers\api\v1\Quiz;
 use App\Http\Controllers\api\v1\ApiBaseController;
 use App\Http\Requests\Quiz\QuestionBank\StoreRequest;
 use App\Http\Requests\Quiz\QuestionBank\UpdateRequest;
-use App\Http\Requests\Quiz\QuestionBank\UseInQuizRequest;
 use App\Http\Requests\Quiz\QuestionBank\DuplicateCheckRequest;
 use App\Models\Quiz\BankQuestion;
-use App\Models\Quiz\Question;
 use App\Models\Quiz\QuestionBankCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -211,41 +209,6 @@ class QuestionBankController extends ApiBaseController
             DB::rollBack();
             Log::error('Error restoring bank question: ' . $e->getMessage());
             return $this->serverErrorResponse([], __('Failed to restore bank question.'));
-        }
-    }
-
-    // Copy a bank question into a quiz as a frozen Question
-    public function useInQuiz(UseInQuizRequest $request, int $id): JsonResponse
-    {
-        DB::beginTransaction();
-        try {
-            $bank = BankQuestion::find($id);
-            if (! $bank) {
-                return $this->notFoundResponse([], __('Bank question not found.'));
-            }
-
-            $data = $request->validated();
-            $frozen = Question::create([
-                'quiz_id' => $data['quiz_id'],
-                'q_bank_category_id' => $bank->q_bank_category_id,
-                'owner_id' => $bank->owner_id,
-                'serial_number' => $data['serial_number'] ?? null,
-                'question_text' => $bank->question_text,
-                'question_type' => $bank->question_type,
-                'time_limit_seconds' => $bank->time_limit_seconds,
-                'points' => $bank->points,
-                'is_ai_generated' => $bank->is_ai_generated,
-                'source_content_url' => $bank->getRawOriginal('source_content_url'),
-                'visibility' => 'private',
-                'options' => $bank->options,
-            ]);
-
-            DB::commit();
-            return $this->createdResponse(['question' => $frozen], __('Question added to quiz from bank.'));
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error using bank question in quiz: ' . $e->getMessage());
-            return $this->serverErrorResponse([], __('Failed to add question to quiz.'));
         }
     }
 }

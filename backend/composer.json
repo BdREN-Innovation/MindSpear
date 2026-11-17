@@ -17,6 +17,7 @@
         "laravel/socialite": "^5.23",
         "laravel/tinker": "^2.10.1",
         "maatwebsite/excel": "^3.1",
+        "predis/predis": "^3.6",
         "socialiteproviders/microsoft": "^4.7",
         "spatie/laravel-permission": "^6.17"
     },

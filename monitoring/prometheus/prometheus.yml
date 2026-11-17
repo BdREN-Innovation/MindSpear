@@ -1,0 +1,52 @@
+# Prometheus for the MindSpear stack (monitoring/docker-compose.yml).
+#
+# Scrape targets live in targets/*.yml (file_sd): Prometheus watches those files, so adding an
+# exporter is a new entry or file there, with no reload. Recording and alert rules live in
+# rules/*.yml. After editing THIS file: curl -X POST http://127.0.0.1:9090/-/reload
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: mindspear
+    # "dev" or "prod", from MONITORING_ENV (Prometheus 3 expands ${...} in external labels).
+    env: ${MONITORING_ENV}
+
+rule_files:
+  - rules/*.yml
+
+# Alertmanager slot: uncomment with the alertmanager service in docker-compose.yml and add
+# alert rules under rules/.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # cAdvisor (containers) and node-exporter (host). Each target sets its own job label.
+  - job_name: infra
+    file_sd_configs:
+      - files: ["targets/infra.yml"]
+    metric_relabel_configs:
+      # cAdvisor also reports the cgroup tree itself (id="/", "/system.slice", ...): not containers.
+      - source_labels: [__name__, name]
+        regex: "container_.*;"
+        action: drop
+
+  # postgres-exporter and redis-exporter.
+  - job_name: datastores
+    file_sd_configs:
+      - files: ["targets/datastores.yml"]
+
+  # Application exporters, when they exist (php-fpm, nginx, Laravel or FastAPI /metrics):
+  # one file each under targets/apps/.
+  - job_name: apps
+    file_sd_configs:
+      - files: ["targets/apps/*.yml"]
+
+# k6 needs no scrape config: it pushes its results to http://127.0.0.1:9090/api/v1/write
+# (--web.enable-remote-write-receiver) and they land as k6_* series (load-tests/README.md).

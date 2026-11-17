@@ -2,27 +2,25 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Deck\Deck;
+use App\Models\Deck\DeckParticipant;
+use App\Models\Deck\DeckSession;
 use App\Models\Institution;
-use App\Models\Quest\Quest;
-use App\Models\Quiz\Quiz;
-use App\Models\Survey\Survey;
-use App\Models\Survey\SurveyResponse;
 use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
-use Filament\Widgets\StatsOverviewWidget\Card;
+use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class StatsOverview extends BaseWidget
 {
-    protected function getCards(): array
+    protected function getStats(): array
     {
         return [
-            Card::make('Users', (string) User::count()),
-            Card::make('Institutions', (string) Institution::count()),
-            Card::make('Surveys', (string) Survey::count()),
-            Card::make('Quizzes', (string) Quiz::count()),
-            Card::make('Quests', (string) Quest::count()),
-            Card::make('Survey Responses', (string) SurveyResponse::count()),
+            Stat::make('Users', User::count()),
+            Stat::make('Institutions', Institution::count()),
+            Stat::make('Quizzes', Deck::query()->quiz()->count()),
+            Stat::make('Quests', Deck::query()->quest()->count()),
+            Stat::make('Sessions hosted', DeckSession::count()),
+            Stat::make('Session participants', DeckParticipant::count()),
         ];
     }
 }
-

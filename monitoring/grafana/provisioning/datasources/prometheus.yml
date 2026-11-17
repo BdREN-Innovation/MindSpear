@@ -1,0 +1,15 @@
+# The one datasource. Dashboards reference it by uid "prometheus", so community dashboards
+# are committed with ${DS_PROMETHEUS} replaced by that uid (scripts/fetch-dashboards.sh).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST

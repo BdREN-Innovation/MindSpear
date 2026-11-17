@@ -7,7 +7,6 @@ import type { RootState } from "@/stores/store";
 import Image from "next/image";
 import HowItWorks from "@/components/Dashboard/HomePages/HowItWorks";
 import HpmePagesFooter from "@/components/Dashboard/HomePages/HpmePagesFooter";
-import Link from "next/link";
 
 export default function HomePage() {
 	const [hydrated, setHydrated] = useState(false);
@@ -78,11 +77,14 @@ export default function HomePage() {
 									)}
 								</div>
 								<div>
-									<Link href={"/join"}
+									{/* A full page load: the participant app (/play) is its own PWA with its own manifest and service worker. */}
+									{/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+									<a
+										href="/play"
 										className="flex px-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-secondary p-4 font-medium text-white transition hover:bg-opacity-90"
 									>
 										Join a Live
-									</Link>
+									</a>
 								</div>
 							</div>
 						</div>

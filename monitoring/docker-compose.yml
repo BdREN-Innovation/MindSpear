@@ -1,0 +1,231 @@
+# Monitoring for the app in docker-compose.yml (dev) or docker-compose.prod.yml (prod):
+# Prometheus stores the metrics, Grafana shows them, and the exporters below collect them.
+#
+#   docker compose -f monitoring/docker-compose.yml up -d     # the app stack must be up first
+#
+# Its own project, so it can be started, stopped and upgraded without touching the app. It
+# joins the app's network (APP_NETWORK) only so the database exporters reach postgres and redis;
+# scraping happens on the private "monitoring" network. Settings: monitoring/.env (template:
+# monitoring/.env.example). Every value has a default that fits docker-compose.yml, so on a
+# developer machine no .env is needed. Published, on 127.0.0.1 by default: Grafana on 3200 and
+# Prometheus on 9090 (k6 pushes results there; it has no login, so never publish it wider).
+# The exporters publish nothing. See monitoring/README.md.
+name: mindspear-monitoring
+
+services:
+  # Stores every metric: a scrape every 15 s, PROM_RETENTION / PROM_RETENTION_SIZE of history.
+  # --web.enable-remote-write-receiver: k6 pushes its results here (load-tests/README.md).
+  # --web.enable-lifecycle: `curl -X POST http://127.0.0.1:9090/-/reload` after editing prometheus.yml.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROM_RETENTION:-15d}
+      - --storage.tsdb.retention.size=${PROM_RETENTION_SIZE:-5GB}
+      - --web.enable-remote-write-receiver
+      - --web.enable-lifecycle
+    environment:
+      # The env= external label (prometheus.yml; Prometheus 3 expands ${...} there), so data it
+      # sends elsewhere, such as to an Alertmanager, says which server it came from.
+      MONITORING_ENV: ${MONITORING_ENV:-dev}
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROM_BIND:-127.0.0.1}:${PROM_PORT:-9090}:9090"
+    networks:
+      - monitoring
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Dashboards. The datasource and every dashboard are provisioned from grafana/ (files in git;
+  # the UI cannot change them). The admin password from the env applies on the FIRST start only;
+  # later, change it in the UI or with `grafana cli admin reset-admin-password`.
+  grafana:
+    image: grafana/grafana:12.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Prod serves it at https://dev.mindspear.app/grafana/ (see monitoring/.env.example).
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-localhost}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3200/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: ${GRAFANA_SERVE_FROM_SUB_PATH:-false}
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:-false}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mindspear/overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_BIND:-127.0.0.1}:${GRAFANA_PORT:-3200}:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Per-container CPU, memory, network and restarts: `docker stats`, kept over time, for every
+  # container on this host (dev and prod projects alike). privileged and the read-only host
+  # mounts are what it needs to read cgroup v2 and Docker's metadata. The flags keep its CPU
+  # use and the number of series low: fewer housekeeping passes, no per-CPU / per-process /
+  # disk-usage metrics, and only the compose project and service labels.
+  # v0.55 or newer: Docker 29 stores images with containerd's snapshotter, and older cAdvisor
+  # versions then fail to find the containers ("failed to identify the read-write layer ID")
+  # and report none of them.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=10s
+      - --max_housekeeping_interval=15s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service
+      - --disable_metrics=percpu,sched,tcp,udp,disk,hugetlb,referenced_memory,cpu_topology,resctrl,advtcp,memory_numa,process
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - monitoring
+    restart: unless-stopped
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # The host: CPU, memory, load and disk. pid: host and the /host mount make it read the host's
+  # /proc and /sys. It is not in the host's network namespace, so it reports no network
+  # interfaces (--no-collector.netdev); per-container traffic comes from cAdvisor.
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.udev.data=/host/run/udev/data
+      # $$ is compose's escape for a literal $ in these regexes.
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|run/user|var/lib/docker/.+|var/lib/containers/.+)($$|/)
+      - --collector.filesystem.fs-types-exclude=^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs|tmpfs)$$
+      - --no-collector.netdev
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - monitoring
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9100/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # PostgreSQL: connections, transactions, cache hit ratio, locks. Reaches "postgres" over the
+  # app network. Defaults are docker-compose.yml's credentials; prod uses backend/.env.prod's,
+  # or a read-only pg_monitor role (monitoring/README.md).
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_URI: ${POSTGRES_HOST:-postgres}:5432/${POSTGRES_EXPORTER_DB:-mindspear}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_EXPORTER_USER:-myuser}
+      DATA_SOURCE_PASS: ${POSTGRES_EXPORTER_PASSWORD:-mypassword}
+    networks:
+      - monitoring
+      - app
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9187/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Redis: memory, clients, commands. Also the Laravel queue depths, as
+  # redis_key_size{key="<prefix>queues:<name>"} for the default, fungames and documents queues.
+  # The prefix is Laravel's REDIS_PREFIX ("mindspear_database_" for APP_NAME=MindSpear);
+  # monitoring/README.md says how to confirm it.
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.74.0-alpine
+    environment:
+      REDIS_ADDR: redis://${REDIS_HOST:-redis}:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # Exact keys: a length read each scrape, no SCAN.
+      REDIS_EXPORTER_CHECK_SINGLE_KEYS: ${REDIS_QUEUE_KEYS:-db0=mindspear_database_queues:default,db0=mindspear_database_queues:fungames,db0=mindspear_database_queues:documents}
+      # Patterns (SCAN) for the delayed and reserved sets, which exist only while they hold jobs.
+      REDIS_EXPORTER_CHECK_KEYS: ${REDIS_QUEUE_KEY_PATTERNS:-db0=mindspear_database_queues:*:delayed,db0=mindspear_database_queues:*:reserved}
+    networks:
+      - monitoring
+      - app
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9121/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Alerting slot (not set up yet). To add it: uncomment this, add alertmanager/alertmanager.yml
+  # with a receiver, uncomment "alerting:" in prometheus/prometheus.yml and add alert rules
+  # under prometheus/rules/.
+  # alertmanager:
+  #   image: prom/alertmanager:v0.28.1
+  #   volumes:
+  #     - ./alertmanager:/etc/alertmanager:ro
+  #   networks:
+  #     - monitoring
+  #   restart: unless-stopped
+
+networks:
+  # Scrape traffic only; nothing on it is published.
+  monitoring:
+    driver: bridge
+  # The app's network, created by the app's compose project: mindspear_mindspear (dev) or
+  # mindspear-prod_mindspear (prod). So the app stack must be up before this one starts, and
+  # this one must be stopped before the app's `docker compose down` removes the network.
+  app:
+    external: true
+    name: ${APP_NETWORK:-mindspear_mindspear}
+
+volumes:
+  # Prometheus's time-series database: PROM_RETENTION of history.
+  prometheus-data:
+  # Grafana's own database: users, sessions, preferences (the dashboards are files in git).
+  grafana-data:

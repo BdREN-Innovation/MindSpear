@@ -11,7 +11,8 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantClasses: Record<ButtonVariant, string> = {
-	primary: "bg-primary text-white hover:bg-primary-dark focus-visible:ring-primary",
+	// Dark text: white on this orange is too faint to read (about 2:1 contrast).
+	primary: "bg-primary text-dark hover:bg-primary-dark focus-visible:ring-primary",
 	secondary:
 		"bg-secondary text-white hover:bg-secondary-dark focus-visible:ring-secondary",
 	danger: "bg-red text-white hover:bg-red-dark focus-visible:ring-red",

@@ -1,0 +1,19 @@
+# Recording rules: pre-computed series the dashboards read. Alert rules go in this folder too
+# (a new file per concern) once Alertmanager is added.
+groups:
+  - name: mindspear-containers
+    interval: 30s
+    rules:
+      # CPU of each container as a percentage of one core, by compose project and service.
+      - record: mindspear:container_cpu_percent:rate2m
+        expr: >-
+          sum by (name, container_label_com_docker_compose_project, container_label_com_docker_compose_service)
+            (rate(container_cpu_usage_seconds_total{name!=""}[2m])) * 100
+
+  - name: mindspear-queues
+    interval: 30s
+    rules:
+      # Jobs waiting on each Laravel queue: redis_key_size of "<prefix>queues:<name>" with the
+      # queue name pulled out as a label.
+      - record: mindspear:queue_depth:jobs
+        expr: label_replace(redis_key_size{key=~".*queues:[a-z]+$"}, "queue", "$1", "key", ".*queues:([a-z]+)$")

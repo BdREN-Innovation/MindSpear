@@ -4,10 +4,6 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 
-use App\Models\Quest\QuestOrigin;
-use App\Models\Survey\Survey;
-use App\Models\Survey\SurveyQuestionAnswer;
-use App\Models\Survey\SurveyResponse;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -52,6 +48,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         'remember_token',
         'provider',
         'provider_id',
+        'storage_quota_bytes',
     ];
 
     /**
@@ -62,6 +59,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verification_token',
     ];
 
     /**
@@ -74,6 +72,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'storage_quota_bytes' => 'integer',
         ];
     }
 
@@ -120,36 +119,12 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         return $this->belongsTo(Institution::class);
     }
 
-    public function questOrigins()
+    /**
+     * Files in the user's library (My Files).
+     */
+    public function files()
     {
-        return $this->hasMany(QuestOrigin::class, 'origin_id');
-    }
-
-    public function createdSurveys()
-    {
-        return $this->hasMany(Survey::class, 'creator_id');
-    }
-
-    public function surveyResponses()
-    {
-        return $this->hasMany(SurveyResponse::class, 'respondent_id');
-    }
-
-    public function anonymousResponses()
-    {
-        return $this->surveyResponses()->where('is_anonymous', true);
-    }
-
-    public function surveyAnswers()
-    {
-        return $this->hasManyThrough(
-            SurveyQuestionAnswer::class,
-            SurveyResponse::class,
-            'respondent_id', // Foreign key on SurveyResponse table
-            'response_id',   // Foreign key on SurveyQuestionAnswer table
-            'id',            // Local key on User table
-            'id'             // Local key on SurveyResponse table
-        );
+        return $this->hasMany(File::class);
     }
 
     public function canAccessPanel(Panel $panel): bool

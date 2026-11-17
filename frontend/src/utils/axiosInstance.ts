@@ -34,37 +34,6 @@ const axiosInstance: AxiosInstance = axios.create({
 	timeout: apiConfig.timeoutMs,
 });
 
-const liveParticipantModuleForUrl = (url?: string): "quest" | "quiz" | null => {
-	if (!url) return null;
-	if (/\/quest-attempts\/[^/]+\/(answer|status)/.test(url)) return "quest";
-	if (/\/quiz-attempts\/[^/]+\/(answer|status)/.test(url)) return "quiz";
-	return null;
-};
-
-const isAnonymousLiveRequest = (url?: string): boolean => {
-	if (!url) return false;
-
-	return (
-		/\/quest-attempts\/[^/]+\/(answer|status)/.test(url) ||
-		/\/quiz-attempts\/[^/]+\/(answer|status)/.test(url) ||
-		/\/quest-sessions\/[^/]+\/state/.test(url) ||
-		/\/quiz-sessions\/[^/]+\/state/.test(url)
-	);
-};
-
-const getParticipantTokenForCurrentSession = (
-	module: "quest" | "quiz"
-): string | null => {
-	if (typeof window === "undefined") return null;
-
-	const sessionId = new URLSearchParams(window.location.search).get("sid");
-	if (!sessionId) return null;
-
-	return window.sessionStorage.getItem(
-		`mindspear:live:${module}:${sessionId}:participant_token`
-	);
-};
-
 // Request interceptor with proper typing
 axiosInstance.interceptors.request.use(
 	(config: InternalAxiosRequestConfig) => {
@@ -77,22 +46,6 @@ axiosInstance.interceptors.request.use(
 					customConfig.headers || new AxiosHeaders();
 				customConfig.headers.set("Authorization", `Bearer ${token}`);
 			}
-
-			const participantModule = liveParticipantModuleForUrl(
-				customConfig.url
-			);
-			const participantToken = participantModule
-				? getParticipantTokenForCurrentSession(participantModule)
-				: null;
-			if (participantToken) {
-				customConfig.headers =
-					customConfig.headers || new AxiosHeaders();
-				customConfig.headers.set(
-					"X-Participant-Token",
-					participantToken
-				);
-			}
-
 		}
 		return customConfig;
 	},
@@ -101,25 +54,43 @@ axiosInstance.interceptors.request.use(
 	}
 );
 
+// Callers of these APIs turn every failure into UI (DeckApiError, library
+// notices), so the generic console logging below is only noise there (in
+// development every console.error also showed as an "Issue" in the Next.js overlay).
+const QUIET_URL = /(?:^|\/)(?:quizzes|quests|quiz-sessions|quest-sessions|library)(?:[/?#]|$)/;
+
+/** Failures the caller expects and handles: cancelled requests, quiet APIs, 4xx with an API error code. */
+const isExpectedFailure = (error: unknown): boolean => {
+	if (axios.isCancel(error)) return true;
+	if (!axios.isAxiosError(error)) return false;
+	if (QUIET_URL.test(error.config?.url ?? "")) return true;
+	const status = error.response?.status ?? 0;
+	if (status < 400 || status >= 500) return false;
+	const body = error.response?.data as { code?: unknown; data?: { code?: unknown } | null } | undefined;
+	const code = body?.data?.code ?? body?.code;
+	return typeof code === "string" && code !== "";
+};
+
 // ##### Response interceptor with proper typing and error handling #####
 axiosInstance.interceptors.response.use(
 	(response: AxiosResponse<ApiResponse>) => {
 		return response;
 	},
 	(error) => {
+		if (error.response?.status === 401 && typeof window !== "undefined") {
+			localStorage.removeItem("auth_token");
+			window.location.href = "/";
+		}
+
+		if (isExpectedFailure(error)) return Promise.reject(error);
+
 		if (error.response) {
 			switch (error.response.status) {
 				case 400:
 					console.error("Bad request:", error.response.data);
 					break;
 				case 401:
-					if (
-						typeof window !== "undefined" &&
-						!isAnonymousLiveRequest(error.config?.url)
-					) {
-						localStorage.removeItem("auth_token");
-						window.location.href = "/";
-					}
+					// Redirected to sign-in above.
 					break;
 				case 403:
 					console.error("Forbidden access:", error.response.data);

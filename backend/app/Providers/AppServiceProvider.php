@@ -2,15 +2,16 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Str;
 use App\Observers\PersonalAccessTokenObserver;
 use Laravel\Sanctum\PersonalAccessToken;
 use App\Observers\ActivityLoggerObserver;
 use App\Models\User;
 use App\Models\Institution;
-use App\Models\Survey\Survey;
-use App\Models\Quiz\Quiz;
-use App\Models\Quest\Quest;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,7 +28,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Load migrations from default path
+        // Legacy Quiz / Quest / Survey tables are kept (question banks, old data); their
+        // migrations stay so `migrate` keeps a fresh database in step with production.
         $this->loadMigrationsFrom([
             database_path('migrations'),
             database_path('migrations/Quiz'),
@@ -41,8 +43,13 @@ class AppServiceProvider extends ServiceProvider
         // Observe core models for activity logs
         User::observe(ActivityLoggerObserver::class);
         Institution::observe(ActivityLoggerObserver::class);
-        Survey::observe(ActivityLoggerObserver::class);
-        Quiz::observe(ActivityLoggerObserver::class);
-        Quest::observe(ActivityLoggerObserver::class);
+
+        // Per address, so nobody can flood an inbox or the mail quota through this public route.
+        RateLimiter::for('resend-verification', function (Request $request) {
+            $email = $request->input('email');
+            $email = is_string($email) ? Str::lower(trim($email)) : '';
+
+            return Limit::perHour(5)->by('resend-verification:' . $email);
+        });
     }
 }

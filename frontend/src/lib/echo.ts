@@ -6,8 +6,29 @@ import { env } from "@/config/env";
 
 type EchoConnectionState = "initialized" | "connected" | "disconnected" | "unavailable";
 
+// One shared Echo/Pusher connection for the whole tab. It is never torn down
+// when the login changes (e.g. login / logout in another tab): public
+// subscribers — the participant play screen above all — would lose their
+// channels without noticing. Private channels instead read the CURRENT token
+// each time they are authorised (headersProvider), so a subscription made
+// after a login change uses the new token; existing subscriptions stay as
+// the server authorised them.
+
 let echoInstance: Echo<"reverb"> | null = null;
-let echoAuthToken: string | null = null;
+
+function readAuthToken(): string | null {
+	try {
+		return window.localStorage.getItem("auth_token");
+	} catch {
+		return null;
+	}
+}
+
+/** Headers for /broadcasting/auth, read at request time. */
+function authHeaders(): Record<string, string> {
+	const token = readAuthToken();
+	return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 const browserWindow = () =>
 	typeof window === "undefined" ? null : (window as Window & { Pusher?: typeof Pusher });
@@ -35,9 +56,7 @@ export function getEcho(): Echo<"reverb"> {
 		throw new Error("Echo can only be initialized in the browser.");
 	}
 
-	const authToken = window.localStorage.getItem("auth_token");
-	if (echoInstance && echoAuthToken === authToken) return echoInstance;
-	if (echoInstance) destroyEcho();
+	if (echoInstance) return echoInstance;
 
 	const win = browserWindow();
 	if (win) win.Pusher = Pusher;
@@ -63,20 +82,25 @@ export function getEcho(): Echo<"reverb"> {
 		enabledTransports: ["ws", "wss"],
 		disableStats: true,
 		authEndpoint: getBroadcastAuthEndpoint(),
-		auth: {
-			headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+		auth: { headers: {} },
+		// Pusher prefers channelAuthorization over `auth`; headersProvider runs
+		// on every private-channel authorisation, so it always sends the
+		// token that is current then.
+		channelAuthorization: {
+			transport: "ajax",
+			endpoint: getBroadcastAuthEndpoint(),
+			headersProvider: authHeaders,
 		},
 	});
-	echoAuthToken = authToken;
 
 	return echoInstance;
 }
 
+/** Closes the shared connection (every holder loses its channels — tests / full teardown only). */
 export function destroyEcho(): void {
 	if (!echoInstance) return;
 	echoInstance.disconnect();
 	echoInstance = null;
-	echoAuthToken = null;
 }
 
 export function bindEchoConnection(
