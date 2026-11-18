@@ -94,3 +94,6 @@ __pycache__/
 # k6 end-of-run summaries (load-tests/run.sh), and the server settings template (tracked)
 load-tests/results/
 !load-tests/.env.server.example
+
+# The BDREN SSO server is its own repository (it holds its own .env and client secrets).
+/sso/

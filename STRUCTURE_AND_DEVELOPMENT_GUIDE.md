@@ -166,7 +166,8 @@ backend/
 │   │   └── Support/                    # OptionLimits, ProfanityFilter
 │   ├── Modules/
 │   │   ├── FileLibrary/                # My Files (§4.10)
-│   │   └── FunGame/                    # Fun Games (§4.11)
+│   │   ├── FunGame/                    # Fun Games (§4.11)
+│   │   └── Sso/                        # BDREN single sign-on + entitlements (SSO_INTEGRATION.md)
 │   ├── Events/Live/                    # LiveBroadcastEvent (decks), ImmediateLiveBroadcastEvent (Fun Games)
 │   ├── Jobs/Deck/                      # TransitionSlideRunJob (slide timers), BroadcastDeckAggregate (debounced results)
 │   ├── Filament/                       # Pages/, Resources/, Widgets/ (§4.13)
@@ -259,6 +260,7 @@ Everything is under `/api/v1`, registered from four places:
 | `backend/routes/deck/*.php` | `DeckServiceProvider::loadRouteFiles()` — every file in the folder, sorted by name | `/api/v1` + per-product prefixes (`DeckRoutes`) |
 | `backend/app/Modules/FunGame/routes.php` | `FunGameServiceProvider` | `/api/v1/fun-games` |
 | `backend/app/Modules/FileLibrary/routes.php` | `FileLibraryServiceProvider` | `/api/v1/library` |
+| `backend/app/Modules/Sso/routes.php` | `SsoServiceProvider` | `/api/v1/sso` |
 
 Private channel authorisation is `POST /broadcasting/auth` (`api` + `auth:sanctum` middleware, set in `backend/bootstrap/app.php`).
 

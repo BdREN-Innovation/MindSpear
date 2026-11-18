@@ -33,6 +33,10 @@ services:
     environment:
       # Several workers so long uploads don't block other requests
       PHP_CLI_SERVER_WORKERS: 4
+    # BDREN SSO in local dev: lets SSO_CONNECT_URL=http://host.docker.internal:8080 reach the
+    # SSO stack's nginx on this machine (see SSO_INTEGRATION.md). Harmless when SSO is off.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:

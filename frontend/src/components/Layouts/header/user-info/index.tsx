@@ -16,6 +16,7 @@ import { persistor } from "@/stores/store";
 import { useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 import { clearAuth, logoutUser } from "@/features/auth/store/authSlice";
+import { ssoLogoutUrl } from "@/features/sso/session";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/stores/store";
 import { BadgePercent } from "lucide-react";
@@ -61,10 +62,18 @@ export function UserInfo() {
 	// console.log('Initials and user:', initials, user);
 
 	const handleLogout = async () => {
-		dispatch(logoutUser());
+		// Signed in with BDREN SSO: also end the BDREN session (asked before the token is revoked).
+		const ssoLogout = await ssoLogoutUrl();
+		const loggedOut = dispatch(logoutUser());
 		dispatch(clearAuth());
 		persistor.purge();
 		localStorage.removeItem("persist:root");
+		if (ssoLogout) {
+			// Leaving the app: let the token revocation finish first.
+			await loggedOut;
+			window.location.assign(ssoLogout);
+			return;
+		}
 		router.push("/");
 	};
 

@@ -417,6 +417,14 @@ const authSlice = createSlice({
 		clearError: (state) => {
 			state.error = null;
 		},
+		/** A login finished elsewhere (e.g. features/sso): the token is already in localStorage. */
+		setCredentials: (state, action: { payload: { token: string; user: AuthState["user"] } }) => {
+			state.token = action.payload.token;
+			state.user = action.payload.user;
+			state.isAuthenticated = true;
+			state.loading = false;
+			state.error = null;
+		},
 		updateUser: (state, action) => {
 			if (state.user) {
 				// Properly merge the updates to ensure immutability
@@ -520,5 +528,5 @@ const authSlice = createSlice({
 	},
 });
 
-export const { logout, clearAuth, clearError, updateUser } = authSlice.actions;
+export const { logout, clearAuth, clearError, updateUser, setCredentials } = authSlice.actions;
 export default authSlice.reducer;

@@ -9,6 +9,7 @@ import { AxiosError } from "axios";
 import "react-toastify/dist/ReactToastify.css";
 import { useDispatch } from "react-redux";
 import { updateProfilePicture } from "@/features/auth/store/authSlice";
+import SsoAccountPanel from "@/features/sso/components/SsoAccountPanel";
 import type { AppDispatch } from "@/stores/store";
 import { FiUser, FiMail, FiPhone, FiBriefcase, FiMapPin, FiCamera } from "react-icons/fi";
 import ProfileSkeleton from "@/components/loading/ProfileSkeleton";
@@ -410,6 +411,7 @@ const ProfilePage = () => {
 						</button>
 					</div>
 				)}
+				<SsoAccountPanel />
 			</div>
 		</div>
 	);
