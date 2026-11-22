@@ -1,4 +1,4 @@
-import { FolderOpen, LayoutList, ListChecks, Radio } from "lucide-react";
+import { FolderOpen, History, LayoutList, ListChecks, Radio } from "lucide-react";
 
 import * as Icons from "../icons";
 
@@ -44,6 +44,13 @@ export const NAV_DATA = [
 				title: "My Files",
 				url: "/my-files",
 				icon: FolderOpen,
+				items: [],
+			},
+			{
+				// Results of quizzes and quests run in the previous version (read-only).
+				title: "Past results",
+				url: "/past-results",
+				icon: History,
 				items: [],
 			},
 			{

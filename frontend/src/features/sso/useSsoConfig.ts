@@ -14,9 +14,12 @@ function loadConfig(): Promise<SsoConfig | null> {
 	return pending;
 }
 
-/** The backend's SSO settings; null while loading or when it can't be read (then SSO stays hidden). */
-export function useSsoConfig(): SsoConfig | null {
-	const [config, setConfig] = useState<SsoConfig | null>(null);
+/**
+ * The backend's SSO settings: undefined while loading, null when they can't be read
+ * (then SSO stays hidden and the pages behave as without SSO).
+ */
+export function useSsoConfig(): SsoConfig | null | undefined {
+	const [config, setConfig] = useState<SsoConfig | null | undefined>(undefined);
 	useEffect(() => {
 		let active = true;
 		loadConfig().then((next) => active && setConfig(next));

@@ -19,6 +19,7 @@ For the SSO server itself, see `sso/docs/USER_GUIDE.md`.
 | Frontend feature | `frontend/src/features/sso/` | Sign-in button, callback handling, profile panel, logout helper |
 | Frontend page | `frontend/src/app/(auth)/auth/sso/callback/page.tsx` | Where ZITADEL sends the browser back |
 | Tests | `backend/tests/Feature/Sso/SsoTest.php` | 26 tests with a fake ZITADEL and a fake BDREN API |
+| `backend/tests/Feature/Sso/LocalSignupTest.php` | `LOCAL_SIGNUP_ENABLED=false`: form and first-time social logins refused, existing logins kept |
 
 Small hooks into existing files (the only edits outside the two new folders):
 
@@ -31,6 +32,9 @@ Small hooks into existing files (the only edits outside the two new folders):
 | `frontend/src/components/Layouts/header/user-info/index.tsx` | logout also ends the BDREN session when the user signed in with SSO |
 | `docker-compose.yml` | backend gets `host.docker.internal` so it can reach the SSO server on this machine |
 | `backend/.env.prod.example` | the SSO settings, off |
+| `AuthenticationController::register`, `SocialAuthController::processSocialUser` | refuse new accounts while `LOCAL_SIGNUP_ENABLED=false` (§3a) |
+| `frontend/src/features/auth/components/Auth/Signup/index.tsx` | shows `<BdrenSignup>` instead of the form while `LOCAL_SIGNUP_ENABLED=false` |
+| `frontend/src/app/(auth)/auth/{google,microsoft}/callback/page.tsx` | show the backend's reason when a login is refused |
 
 ---
 
@@ -113,6 +117,25 @@ docker compose exec backend php artisan tinker --execute \
  'echo App\Models\User::whereNotIn("id", App\Modules\Sso\Models\SsoIdentity::select("user_id"))->count();'
 ```
 
+### 3a. Every new account from BDREN (`LOCAL_SIGNUP_ENABLED=false`)
+
+Use this from phase 3 on, so nobody gets a Mindspear-only account any more:
+
+- `POST /register` answers 403 `signup_disabled` (with `data.signup_url`), and a first-time Google or
+  Microsoft login no longer creates an account. People who already have an account keep signing in with
+  their password, Google or Microsoft, and can connect BDREN from Profile.
+- The Sign Up page shows **Create a BDREN account**, a link to
+  `{BDREN_PLATFORM_URL}/register?next={SSO_APP_URL}/auth/sign-in?sso=start`. BDREN's sign-up creates the
+  person in ZITADEL **and** in BDREN's own database (so plan checks know them), then the person signs in on
+  bdren.ai once and comes back to `/auth/sign-in?sso=start`, which starts BDREN sign-in by itself. ZITADEL
+  already has their session, so they arrive signed in, and `SSO_AUTO_CREATE_USERS=true` creates their
+  Mindspear account.
+- For the "comes back" part, BDREN must allow Mindspear's origin: `APP_REDIRECT_ORIGINS=https://dev.mindspear.app`
+  in `sso/.env.prod` (it feeds `OIDC_ALLOWED_REDIRECT_ORIGINS`; locally, add `http://localhost:3001` to
+  `OIDC_ALLOWED_REDIRECT_ORIGINS` in `sso/.env`). Without it people land on the bdren.ai home page after
+  signing up. The same setting makes the "Activate it once" link (§4 step 4) return to Mindspear.
+- Leave `SSO_AUTO_CREATE_USERS=true`, or the new BDREN users have no way in.
+
 ---
 
 ## 4. Testing locally
@@ -189,7 +212,7 @@ docker compose exec backend php artisan test tests/Feature/Sso
    with `"dev_mode": false`.
 2. **Settings.** Set the SSO block of `backend/.env.prod` (template in `backend/.env.prod.example`).
    Leave `SSO_CONNECT_URL` empty in production.
-3. **Network.** The backend container must reach `auth.bdren.ai` and `api.bdren.ai` over HTTPS.
+3. **Network.** The backend container must reach `auth.bdren.ai` and `bdren.ai` (the BDREN API is at `https://bdren.ai/api/v1`) over HTTPS.
 4. **Deploy.** Run `docker compose -f docker-compose.prod.yml up -d --build`. The migration runs on start.
 5. **Roll out.** Follow §3.
 
@@ -230,7 +253,7 @@ follow-ups, so limits can be tested first.
 
 | Method | Path | Auth | Returns |
 |---|---|---|---|
-| GET | `config` | public | `{enabled, provider_name, logout_url}` |
+| GET | `config` | public | `{enabled, provider_name, logout_url, local_signup, signup_url}` |
 | POST | `login` | public, 20/min | `{redirect_url, state}` |
 | POST | `callback` | public, 20/min (Bearer only for a link) | login: `{mode:"login", user, token, token_type, provider:"bdren", sso:{linked_via, created}}`; link: `{mode:"link", identity}` |
 | GET | `status` | Bearer | `{enabled, provider_name, linked, identity}` |
@@ -254,6 +277,7 @@ Errors use the usual `{status:false, message, data:{code}}`.
 | `link_user_mismatch` | 403 | A link was finished by a different signed-in user |
 | `quota_exceeded` | 429 | Plan limit reached (middleware or `metered`) |
 | `not_provisioned` | 403 | BDREN doesn't know the person yet; `data.activate_url` fixes it |
+| `signup_disabled` | 403 | From `POST /register` and the Google/Microsoft callbacks: `LOCAL_SIGNUP_ENABLED=false` and no account has this email; `data.signup_url` is BDREN's sign-up |
 
 ---
 
@@ -272,6 +296,7 @@ Errors use the usual `{status:false, message, data:{code}}`.
 | `SSO_CONNECT_URL` | — | Local Docker only: e.g. `http://host.docker.internal:8080` |
 | `SSO_LINK_BY_VERIFIED_EMAIL` | `true` | §2 rule 2 |
 | `SSO_AUTO_CREATE_USERS` | `true` | §2 rule 3 |
+| `LOCAL_SIGNUP_ENABLED` | `true` | `false`: Mindspear stops creating accounts itself; new people sign up on BDREN (§3a) |
 | `SSO_APP_URL` | `http://localhost:3001` | Mindspear's address, for the "activate" return link |
 | `BDREN_API_URL` | `http://api.bdren.localhost:8080/api/v1` | Entitlement API |
 | `BDREN_PLATFORM_URL` | `http://bdren.localhost:8080` | BDREN website, for "activate" |
@@ -299,6 +324,8 @@ Changing an env var needs `docker compose up -d backend` (or a restart in produc
 | "already exists … connect from your profile" | Same email, but BDREN hasn't verified it. Log in with the password, then Profile → Connect. |
 | Plan limits: "Activate it once" | BDREN has never seen this person. Use the link (§4 step 4). |
 | Plan limits: "Not set up on this server" | `BDREN_PRODUCT_API_KEY` is empty |
+| After BDREN sign-up, people land on the bdren.ai home page | Mindspear's origin is missing from BDREN's `APP_REDIRECT_ORIGINS` (§3a) |
+| Google/Microsoft: "No Mindspear account uses this email" | Expected with `LOCAL_SIGNUP_ENABLED=false`: that person signs up through BDREN |
 
 ---
 

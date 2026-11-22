@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Deck\Broadcasts\DeckBroadcaster;
+use App\Deck\Legacy\ConvertLegacyDecks;
 use App\Deck\Broadcasts\DeckChannels;
 use App\Deck\Http\DeckValidation;
 use App\Deck\Http\Middleware\ResolveDeckParticipant;
@@ -62,6 +63,11 @@ class DeckServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(database_path('migrations/Deck'));
+
+        if ($this->app->runningInConsole()) {
+            // One-time copy of legacy v1 quizzes and quests into decks.
+            $this->commands([ConvertLegacyDecks::class]);
+        }
 
         // Private host channel (DeckChannels::hostChannel): the session's host only.
         Broadcast::channel('host.{product}.{sessionId}', function ($user, string $product, int $sessionId): bool {

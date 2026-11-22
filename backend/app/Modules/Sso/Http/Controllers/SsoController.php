@@ -10,6 +10,7 @@ use App\Modules\Sso\Services\EntitlementsClient;
 use App\Modules\Sso\Services\OidcClient;
 use App\Modules\Sso\Services\SsoAccountLinker;
 use App\Modules\Sso\Services\SsoLoginService;
+use App\Modules\Sso\Services\SsoSignup;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,6 +45,9 @@ class SsoController extends Controller
             'enabled' => $enabled,
             'provider_name' => config('sso.provider_name'),
             'logout_url' => $logoutUrl,
+            // false: the sign-up page offers only `signup_url` (BDREN's sign-up), see SsoSignup.
+            'local_signup' => SsoSignup::localAllowed(),
+            'signup_url' => SsoSignup::bdrenSignupUrl(),
         ]);
     }
 

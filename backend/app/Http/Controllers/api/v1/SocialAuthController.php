@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\api\v1;
 
 use App\Models\User;
+use App\Modules\Sso\Services\SsoSignup;
 use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -300,6 +301,13 @@ class SocialAuthController extends ApiBaseController
         $user = User::where('email', $userData['email'])->first();
 
         $profilePictureUrl = $this->resolveProfilePictureUrl($socialUser, $provider);
+
+        if (! $user && ! SsoSignup::localAllowed()) {
+            return $this->forbiddenResponse(
+                SsoSignup::refusal(),
+                __('No Mindspear account uses this email. New accounts are created with a BDREN account: choose Sign Up to create one.'),
+            );
+        }
 
         if (! $user) {
             $user = User::create([

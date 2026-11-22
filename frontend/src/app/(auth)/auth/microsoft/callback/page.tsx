@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { loginWithMicrosoft } from "@/features/auth/store/authSlice";
 import type { AppDispatch, RootState } from "@/stores/store";
+import { toast } from "react-toastify";
 
 export default function MicrosoftCallbackPage() {
 	const router = useRouter();
@@ -31,6 +32,8 @@ export default function MicrosoftCallbackPage() {
 				router.push("/dashboard");
 			} catch (err) {
 				console.error(" Microsoft login failed:", err);
+				// The backend's reason, e.g. that new accounts come from BDREN (LOCAL_SIGNUP_ENABLED=false).
+				toast.error(typeof err === "string" && err ? err : "Microsoft sign-in failed.");
 				router.push("/auth/sign-in?error=microsoft_login_failed");
 			}
 		};

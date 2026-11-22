@@ -44,6 +44,13 @@ return [
     // otherwise create a new Mindspear user (false: refuse, and the person links from their profile).
     'auto_create_users' => (bool) env('SSO_AUTO_CREATE_USERS', true),
 
+    // --- New accounts outside BDREN -------------------------------------------------------
+    // false: Mindspear's own sign-up (POST /register) and first-time Google/Microsoft logins
+    // no longer create accounts; the sign-up page sends people to BDREN's sign-up instead
+    // ({BDREN_PLATFORM_URL}/register, which returns them to SSO_APP_URL). Existing accounts
+    // keep signing in as before. Independent of SSO_ENABLED, but only useful with it on.
+    'local_signup' => (bool) env('LOCAL_SIGNUP_ENABLED', true),
+
     // --- Entitlements (BDREN Django API, server to server) --------------------------------
     'api_url' => rtrim((string) env('BDREN_API_URL', 'http://api.bdren.localhost:8080/api/v1'), '/'),
     'product' => env('BDREN_PRODUCT_SLUG', 'mindspear'),

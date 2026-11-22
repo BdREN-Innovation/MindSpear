@@ -12,6 +12,7 @@ use App\Mail\PasswordResetMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\PasswordResetToken;
 use App\Models\User;
+use App\Modules\Sso\Services\SsoSignup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,10 @@ class AuthenticationController extends ApiBaseController
      */
     public function register(RegisterRequest $request): JsonResponse
     {
+        if (! SsoSignup::localAllowed()) {
+            return $this->forbiddenResponse(SsoSignup::refusal(), __('New Mindspear accounts are created with a BDREN account.'));
+        }
+
         DB::beginTransaction();
 
         try {

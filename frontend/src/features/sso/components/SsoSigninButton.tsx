@@ -1,18 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { toast } from "react-toastify";
 import { ssoErrorMessage } from "../api";
 import { redirectToSso } from "../session";
 import { useSsoConfig } from "../useSsoConfig";
 
+/** `?sso=start` on the page: begin BDREN sign-in right away (BDREN's sign-up page sends people here). */
+function takeAutoStart(): boolean {
+	const url = new URL(window.location.href);
+	if (url.searchParams.get("sso") !== "start") return false;
+	// Drop it first, so coming back with the Back button doesn't start again.
+	url.searchParams.delete("sso");
+	window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+	return true;
+}
+
 /** "Sign in with BDREN SSO". Renders nothing unless the backend has SSO enabled. */
-export default function SsoSigninButton({ text }: { text: string }) {
+export default function SsoSigninButton({ text, autoStart = false }: { text: string; autoStart?: boolean }) {
 	const config = useSsoConfig();
 	const [loading, setLoading] = useState(false);
-
-	if (!config?.enabled) return null;
+	const autoStarted = useRef(false);
 
 	const start = async () => {
 		setLoading(true);
@@ -23,6 +32,14 @@ export default function SsoSigninButton({ text }: { text: string }) {
 			setLoading(false);
 		}
 	};
+
+	useEffect(() => {
+		if (!autoStart || !config?.enabled || autoStarted.current) return;
+		autoStarted.current = true;
+		if (takeAutoStart()) void start();
+	}, [autoStart, config?.enabled]);
+
+	if (!config?.enabled) return null;
 
 	return (
 		<button

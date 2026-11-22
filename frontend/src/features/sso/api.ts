@@ -9,6 +9,10 @@ export interface SsoConfig {
 	provider_name: string;
 	/** ZITADEL's logout page; ends the central SSO session too. */
 	logout_url: string | null;
+	/** false: Mindspear doesn't create accounts itself; new people sign up at `signup_url`. */
+	local_signup: boolean;
+	/** BDREN's sign-up page, which returns to Mindspear's sign-in; null while SSO is off. */
+	signup_url: string | null;
 }
 
 export interface SsoStart {

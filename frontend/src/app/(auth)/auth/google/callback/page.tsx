@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import { loginWithGoogle } from "@/features/auth/store/authSlice";
 import type { AppDispatch, RootState } from "@/stores/store";
+import { toast } from "react-toastify";
 
 export default function GoogleCallbackPage() {
 	const router = useRouter();
@@ -33,6 +34,8 @@ export default function GoogleCallbackPage() {
 				router.push("/dashboard");
 			} catch (err) {
 				console.error("Google login failed:", err);
+				// The backend's reason, e.g. that new accounts come from BDREN (LOCAL_SIGNUP_ENABLED=false).
+				toast.error(typeof err === "string" && err ? err : "Google sign-in failed.");
 				router.push("/auth/sign-in?error=google_login_failed");
 			}
 		};
