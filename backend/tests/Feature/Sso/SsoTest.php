@@ -147,7 +147,18 @@ it('starts a login with code + PKCE S256', function () {
         ])
         ->and(strlen($query['code_challenge']))->toBe(43)
         ->and($query['state'])->not->toBeEmpty()
-        ->and($query['nonce'])->not->toBeEmpty();
+        ->and($query['nonce'])->not->toBeEmpty()
+        ->and($query)->not->toHaveKey('prompt');
+});
+
+it('asks BDREN silently (prompt=none) only when silent is requested', function () {
+    $url = $this->postJson('/api/v1/sso/login', ['silent' => true])->assertOk()->json('data.redirect_url');
+    parse_str(parse_url($url, PHP_URL_QUERY), $query);
+    expect($query['prompt'] ?? null)->toBe('none');
+
+    $url = $this->postJson('/api/v1/sso/login', ['silent' => false])->assertOk()->json('data.redirect_url');
+    parse_str(parse_url($url, PHP_URL_QUERY), $query);
+    expect($query)->not->toHaveKey('prompt');
 });
 
 it('creates a new user on the first login and reuses it after', function () {

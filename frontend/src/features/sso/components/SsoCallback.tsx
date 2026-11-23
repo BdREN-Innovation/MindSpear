@@ -9,7 +9,15 @@ import { toast } from "react-toastify";
 import { setCredentials } from "@/features/auth/store/authSlice";
 import type { AppDispatch } from "@/stores/store";
 import { ssoApi, ssoErrorMessage } from "../api";
-import { markSignedInWithSso, takeSsoState } from "../session";
+import {
+	clearSignInNotes,
+	markSignedInWithSso,
+	noteNotSignedIn,
+	takeFallback,
+	takeNext,
+	takeSilentAttempt,
+	takeSsoState,
+} from "../session";
 
 /**
  * Where ZITADEL sends the browser back (SSO_REDIRECT_URI). Hands code + state to
@@ -31,6 +39,16 @@ export default function SsoCallback() {
 		const code = params.get("code");
 		const state = params.get("state");
 		const providerError = params.get("error_description") || params.get("error");
+
+		// A silent check (prompt=none) that BDREN answered with an error (normally login_required: nobody is
+		// signed in) is not a failure: back to the page that asked, which shows its own sign-in button.
+		if (takeSilentAttempt() && providerError) {
+			takeSsoState(state ?? "");
+			takeNext();
+			noteNotSignedIn();
+			router.replace(takeFallback());
+			return;
+		}
 
 		if (providerError) {
 			setError(`BDREN sign-in was not completed: ${providerError}`);
@@ -62,6 +80,7 @@ export default function SsoCallback() {
 					body: JSON.stringify({ token: result.token }),
 				});
 				markSignedInWithSso();
+				clearSignInNotes();
 				dispatch(
 					setCredentials({
 						token: result.token,
@@ -73,7 +92,7 @@ export default function SsoCallback() {
 						},
 					}),
 				);
-				router.replace("/dashboard");
+				router.replace(takeNext() ?? "/dashboard");
 			} catch (err) {
 				setError(ssoErrorMessage(err, "BDREN sign-in failed. Please try again."));
 			}

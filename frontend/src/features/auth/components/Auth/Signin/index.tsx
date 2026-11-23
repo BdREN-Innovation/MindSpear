@@ -6,12 +6,26 @@ import SigninWithPassword from "../SigninWithPassword";
 import MicrosoftSigninButton from "../MicrosoftSigninButton";
 import SsoSigninButton from "@/features/sso/components/SsoSigninButton";
 import { useSsoConfig } from "@/features/sso/useSsoConfig";
+import { useSilentSignIn } from "@/features/sso/useSilentSignIn";
+import { Loader2 } from "lucide-react";
 
 export default function Signin() {
 	const config = useSsoConfig();
 	// Only logins that can work: a button without server credentials can only fail.
 	const google = config?.social?.google ?? false;
 	const microsoft = config?.social?.microsoft ?? false;
+	// Signed in to BDREN already: straight in. Not with ?sso=start, which asks for the full BDREN page.
+	const explicit = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("sso") === "start";
+	const checking = useSilentSignIn({ active: !explicit, next: "/dashboard", fallback: "/auth/sign-in" });
+
+	if (checking) {
+		return (
+			<p role="status" className="flex items-center justify-center gap-3 py-10 text-[15px] text-dark-4 dark:text-dark-6">
+				<Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+				Checking your BdREN sign-in…
+			</p>
+		);
+	}
 
 	return (
 		<>

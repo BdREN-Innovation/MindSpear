@@ -72,7 +72,8 @@ const data = <T>(response: { data: { data: T } }): T => response.data.data;
 
 export const ssoApi = {
 	config: async () => data<SsoConfig>(await axiosInstance.get("/sso/config")),
-	startLogin: async () => data<SsoStart>(await axiosInstance.post("/sso/login")),
+	/** `silent`: prompt=none, BDREN answers without a page (signed in, or error=login_required). */
+	startLogin: async (silent = false) => data<SsoStart>(await axiosInstance.post("/sso/login", silent ? { silent: true } : {})),
 	startLink: async () => data<SsoStart>(await axiosInstance.post("/sso/link")),
 	callback: async (code: string, state: string) => data<SsoCallbackResult>(await axiosInstance.post("/sso/callback", { code, state })),
 	status: async () => data<SsoStatus>(await axiosInstance.get("/sso/status")),

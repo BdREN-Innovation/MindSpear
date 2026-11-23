@@ -43,7 +43,8 @@ class OidcClient
         return $document;
     }
 
-    public function authorizationUrl(string $state, string $nonce, string $codeChallenge, ?string $loginHint = null): string
+    /** `$prompt` 'none': BDREN answers without any page, signed in or with error=login_required. */
+    public function authorizationUrl(string $state, string $nonce, string $codeChallenge, ?string $loginHint = null, ?string $prompt = null): string
     {
         $params = array_filter([
             'client_id' => config('sso.client_id'),
@@ -55,6 +56,7 @@ class OidcClient
             'code_challenge' => $codeChallenge,
             'code_challenge_method' => 'S256',
             'login_hint' => $loginHint,
+            'prompt' => $prompt,
         ]);
 
         return $this->discovery()['authorization_endpoint'] . '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);

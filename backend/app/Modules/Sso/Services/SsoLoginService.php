@@ -27,7 +27,8 @@ class SsoLoginService
     ) {}
 
     /** @return array{redirect_url: string, state: string} */
-    public function start(string $mode, ?User $user = null): array
+    /** `$silent`: ask BDREN with prompt=none (no page), to sign in whoever is already signed in to BDREN. */
+    public function start(string $mode, ?User $user = null, bool $silent = false): array
     {
         $this->ensureConfigured();
 
@@ -44,7 +45,11 @@ class SsoLoginService
         $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
 
         return [
-            'redirect_url' => $this->oidc->authorizationUrl($state, $nonce, $challenge, $mode === self::MODE_LINK ? $user?->email : null),
+            'redirect_url' => $this->oidc->authorizationUrl(
+                $state, $nonce, $challenge,
+                $mode === self::MODE_LINK ? $user?->email : null,
+                $silent && $mode === self::MODE_LOGIN ? 'none' : null,
+            ),
             'state' => $state,
         ];
     }

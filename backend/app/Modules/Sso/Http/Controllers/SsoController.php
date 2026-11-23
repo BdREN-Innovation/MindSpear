@@ -58,9 +58,12 @@ class SsoController extends Controller
     }
 
     /** Public: starts a login; the browser goes to `redirect_url`. */
-    public function login(): JsonResponse
+    /** Public. `silent: true` = prompt=none: sign in whoever is signed in to BDREN, without any BDREN page. */
+    public function login(Request $request): JsonResponse
     {
-        return $this->okResponse($this->login->start(SsoLoginService::MODE_LOGIN));
+        $silent = $request->boolean('silent');
+
+        return $this->okResponse($this->login->start(SsoLoginService::MODE_LOGIN, null, $silent));
     }
 
     /** Public: the frontend callback page posts ZITADEL's code and state here. */

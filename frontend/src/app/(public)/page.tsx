@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { useRouter } from "next/navigation";
 import type { RootState } from "@/stores/store";
+import { useSilentSignIn } from "@/features/sso/useSilentSignIn";
 import Image from "next/image";
 import HowItWorks from "@/components/Dashboard/HomePages/HowItWorks";
 import HpmePagesFooter from "@/components/Dashboard/HomePages/HpmePagesFooter";
@@ -15,6 +16,9 @@ export default function HomePage() {
 	);
 
 	const router = useRouter();
+	// Like opening a Google app: signed in to BDREN (e.g. via bdren.ai) → straight into Mindspear; otherwise the
+	// landing page simply stays, with its Login button.
+	useSilentSignIn({ active: !isAuthenticated, next: "/dashboard", fallback: "/" });
 
 	useEffect(() => {
 		setHydrated(true);
