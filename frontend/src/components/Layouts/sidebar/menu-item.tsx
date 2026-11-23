@@ -8,7 +8,8 @@ const menuItemBaseStyles = cva(
 	{
 		variants: {
 			isActive: {
-				true: "bg-primary text-white dark:bg-[#FFFFFF1A] dark:text-white",
+				// Neutral, not brand-tinted: brand colour is kept for the page's main action.
+				true: "bg-gray-2 font-semibold text-dark dark:bg-[#FFFFFF1A] dark:text-white",
 				false: "hover:bg-gray-100 hover:text-dark hover:dark:bg-[#FFFFFF1A] hover:dark:text-white ",
 			},
 		},

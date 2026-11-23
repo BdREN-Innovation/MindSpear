@@ -128,10 +128,10 @@ export function SessionSummary({
 						<PencilLine className="h-5 w-5" aria-hidden /> Back to the editor
 					</Link>
 					<Link
-						href={copy.libraryHref}
+						href={state ? copy.sessionResultsHref(deckId, state.session_id) : copy.sessionsHref(deckId)}
 						className="inline-flex min-h-12 items-center rounded-xl border border-[var(--deck-border)] px-5 font-semibold hover:bg-[var(--deck-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus)]"
 					>
-						My Library
+						View results
 					</Link>
 					<button
 						type="button"

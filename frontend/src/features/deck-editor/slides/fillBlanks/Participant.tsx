@@ -27,7 +27,7 @@ import { cleanWord } from "../shared/text";
 // once sent; after the reveal each blank shows right / wrong and the answer.
 
 const FIELD_CLASS =
-	"mx-1 inline-block min-h-11 rounded-lg border-2 px-2 align-middle text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] disabled:opacity-60";
+	"mx-1 inline-block min-h-11 rounded-lg border-2 px-2 align-middle text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] disabled:opacity-60";
 
 export function FillBlanksParticipant({ run, mySubmission, onSubmit, disabled, theme, aggregate, mode, scoring, reveal, standing, quiz }: ParticipantProps<"fill_blanks">) {
 	const answer = useQuizAnswer(run.id, mySubmission, onSubmit);

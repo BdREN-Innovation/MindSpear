@@ -100,30 +100,7 @@ class OidcClient
     /** The ID token's claims after every check; throws SsoException::invalidToken otherwise. */
     public function verifyIdToken(string $jwt, string $nonce): array
     {
-        $segments = explode('.', $jwt);
-        if (count($segments) !== 3) {
-            throw SsoException::invalidToken('malformed id_token');
-        }
-        $header = json_decode(JWT::urlsafeB64Decode($segments[0]), true);
-        if (! is_array($header) || ($header['alg'] ?? null) !== 'RS256') {
-            throw SsoException::invalidToken('id_token must be signed with RS256');
-        }
-
-        // A key ZITADEL rotated in since the last fetch: fetch the key set again once.
-        $keys = $this->signingKeys(false);
-        if (isset($header['kid']) && ! isset($keys[$header['kid']])) {
-            $keys = $this->signingKeys(true);
-        }
-
-        $previousLeeway = JWT::$leeway;
-        JWT::$leeway = config('sso.leeway');
-        try {
-            $claims = json_decode(json_encode(JWT::decode($jwt, $keys)), true);
-        } catch (Throwable $e) {
-            throw SsoException::invalidToken($e->getMessage());
-        } finally {
-            JWT::$leeway = $previousLeeway;
-        }
+        $claims = $this->decodeSigned($jwt, 'id_token');
 
         $clientId = config('sso.client_id');
         $audience = (array) ($claims['aud'] ?? []);
@@ -142,6 +119,61 @@ class OidcClient
         }
 
         return $claims;
+    }
+
+    /**
+     * A back-channel logout_token's claims (OIDC Back-Channel Logout 1.0, 2.6): signed by the issuer, for this
+     * client, with iat, jti, the logout event and sid or sub, and no nonce. Throws SsoException::invalidToken.
+     */
+    public function verifyLogoutToken(string $jwt): array
+    {
+        $claims = $this->decodeSigned($jwt, 'logout_token');
+        $checks = [
+            'iss' => ($claims['iss'] ?? null) === config('sso.issuer'),
+            'aud' => in_array(config('sso.client_id'), (array) ($claims['aud'] ?? []), true),
+            'iat' => isset($claims['iat']),
+            'jti' => is_string($claims['jti'] ?? null) && $claims['jti'] !== '',
+            'events' => is_array($claims['events'] ?? null)
+                && array_key_exists('http://schemas.openid.net/event/backchannel-logout', $claims['events']),
+            'sid or sub' => ! empty($claims['sid']) || ! empty($claims['sub']),
+            'no nonce' => ! array_key_exists('nonce', $claims),
+        ];
+        foreach ($checks as $claim => $ok) {
+            if (! $ok) {
+                throw SsoException::invalidToken("logout_token {$claim} check failed");
+            }
+        }
+
+        return $claims;
+    }
+
+    /** Signature (RS256 against the issuer's keys) and time checks; the claims as an array. */
+    private function decodeSigned(string $jwt, string $what): array
+    {
+        $segments = explode('.', $jwt);
+        if (count($segments) !== 3) {
+            throw SsoException::invalidToken("malformed {$what}");
+        }
+        $header = json_decode(JWT::urlsafeB64Decode($segments[0]), true);
+        if (! is_array($header) || ($header['alg'] ?? null) !== 'RS256') {
+            throw SsoException::invalidToken("{$what} must be signed with RS256");
+        }
+
+        // A key ZITADEL rotated in since the last fetch: fetch the key set again once.
+        $keys = $this->signingKeys(false);
+        if (isset($header['kid']) && ! isset($keys[$header['kid']])) {
+            $keys = $this->signingKeys(true);
+        }
+
+        $previousLeeway = JWT::$leeway;
+        JWT::$leeway = config('sso.leeway');
+        try {
+            return json_decode(json_encode(JWT::decode($jwt, $keys)), true);
+        } catch (Throwable $e) {
+            throw SsoException::invalidToken($e->getMessage());
+        } finally {
+            JWT::$leeway = $previousLeeway;
+        }
     }
 
     public function userinfo(string $accessToken): array

@@ -16,7 +16,7 @@ import { persistor } from "@/stores/store";
 import { useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 import { clearAuth, logoutUser } from "@/features/auth/store/authSlice";
-import { noteSignedOut, ssoLogoutUrl } from "@/features/sso/session";
+import { leaveSignedIn, ssoLogoutUrl } from "@/features/sso/session";
 import { useSelector } from "react-redux";
 import type { RootState } from "@/stores/store";
 import { BadgePercent } from "lucide-react";
@@ -62,20 +62,19 @@ export function UserInfo() {
 	// console.log('Initials and user:', initials, user);
 
 	const handleLogout = async () => {
-		// First: the pages this leaves must not sign the person straight back in (ProtectedRoute, sign-in page).
-		noteSignedOut();
-		// Signed in with BDREN SSO: also end the BDREN session (asked before the token is revoked).
 		const ssoLogout = await ssoLogoutUrl();
-		const loggedOut = dispatch(logoutUser());
-		dispatch(clearAuth());
-		persistor.purge();
-		localStorage.removeItem("persist:root");
 		if (ssoLogout) {
-			// Leaving the app: let the token revocation finish first.
-			await loggedOut;
+			// Signed in with BDREN: leave for BDREN's logout without showing a signed-out state here first
+			// (that would let this page sign straight back in while BDREN is still signed in). BDREN ends its
+			// session, which signs every app out, and brings the browser back to the sign-in page.
+			await leaveSignedIn();
 			window.location.assign(ssoLogout);
 			return;
 		}
+		dispatch(logoutUser());
+		dispatch(clearAuth());
+		persistor.purge();
+		localStorage.removeItem("persist:root");
 		router.push("/");
 	};
 

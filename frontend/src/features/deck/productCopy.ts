@@ -17,7 +17,17 @@ export interface DeckProductCopy {
 	libraryHref: string;
 	editHref(deckId: number | string): string;
 	presentHref(deckId: number | string): string;
+	/** My Library > this deck: details and its past sessions. */
+	sessionsHref(deckId: number | string): string;
+	/** Results of one session of this deck. */
+	sessionResultsHref(deckId: number | string, sessionId: number | string): string;
 }
+
+const sessionsHref = (product: DeckProduct) => (id: number | string) =>
+	`/my-library/${product}/${encodeURIComponent(String(id))}`;
+
+const sessionResultsHref = (product: DeckProduct) => (id: number | string, sessionId: number | string) =>
+	`${sessionsHref(product)(id)}/sessions/${encodeURIComponent(String(sessionId))}`;
 
 const COPY: Record<DeckProduct, DeckProductCopy> = {
 	quest: {
@@ -29,6 +39,8 @@ const COPY: Record<DeckProduct, DeckProductCopy> = {
 		libraryHref: "/my-library/quest-page",
 		editHref: (id) => `/quests/${encodeURIComponent(String(id))}/edit`,
 		presentHref: (id) => `/quests/${encodeURIComponent(String(id))}/present`,
+		sessionsHref: sessionsHref("quest"),
+		sessionResultsHref: sessionResultsHref("quest"),
 	},
 	quiz: {
 		product: "quiz",
@@ -39,6 +51,8 @@ const COPY: Record<DeckProduct, DeckProductCopy> = {
 		libraryHref: "/my-library/quiz-page",
 		editHref: (id) => `/quizzes/${encodeURIComponent(String(id))}/edit`,
 		presentHref: (id) => `/quizzes/${encodeURIComponent(String(id))}/present`,
+		sessionsHref: sessionsHref("quiz"),
+		sessionResultsHref: sessionResultsHref("quiz"),
 	},
 };
 

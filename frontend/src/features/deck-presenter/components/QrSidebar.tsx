@@ -34,7 +34,7 @@ export function QrSidebar({ joinCode, participantCount, participants = [], onClo
 					onClick={onClose}
 					aria-label="Hide the join sidebar (Q)"
 					title="Hide the join sidebar (Q)"
-					className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full text-[var(--deck-text-muted)] transition hover:bg-[var(--deck-surface-muted)] hover:text-[var(--deck-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus,#C46620)]"
+					className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full text-[var(--deck-text-muted)] transition hover:bg-[var(--deck-surface-muted)] hover:text-[var(--deck-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus,var(--color-primary-600))]"
 				>
 					<X className="h-5 w-5" aria-hidden />
 				</button>

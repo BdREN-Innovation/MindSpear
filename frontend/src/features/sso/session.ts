@@ -1,3 +1,5 @@
+import { apiConfig } from "@/config/api";
+import { persistor } from "@/stores/store";
 import { ssoApi } from "./api";
 
 // Browser-side bookkeeping for BDREN sign-in. Nothing secret is kept here:
@@ -11,11 +13,15 @@ const SILENT_KEY = "sso_silent"; // the attempt under way is silent
 const NEXT_KEY = "sso_next"; // where to land once signed in
 const FALLBACK_KEY = "sso_fallback"; // where a silent check that finds nobody signed in goes back to
 const CHECKED_KEY = "sso_silent_checked"; // when a silent check last found nobody signed in
-const SIGNED_OUT_KEY = "sso_signed_out"; // signed out here: no automatic sign-in until asked
 
-// How long "nobody is signed in to BDREN" holds: long enough that one visit never asks twice, short enough
-// that signing in to bdren.ai in another tab is picked up soon.
-const NOT_SIGNED_IN_TTL_MS = 2 * 60 * 1000;
+// How long "nobody is signed in to BDREN" holds: long enough that a page never bounces, short enough that
+// signing in to bdren.ai in another tab is picked up when the person comes back to this one.
+const NOT_SIGNED_IN_TTL_MS = 30 * 1000;
+
+function recent(key: string, ttlMs: number): boolean {
+	const at = Number(read(key));
+	return Boolean(at) && Date.now() - at < ttlMs;
+}
 
 function store(key: string, value: string | null): void {
 	try {
@@ -63,7 +69,6 @@ export async function redirectToSso(
 	store(SILENT_KEY, silent ? "1" : null);
 	store(NEXT_KEY, safeNext(options.next));
 	store(FALLBACK_KEY, silent ? safeNext(options.fallback) : null);
-	if (!silent) store(SIGNED_OUT_KEY, null); // asked to sign in: automatic sign-in may resume afterwards
 	window.location.assign(redirect_url);
 }
 
@@ -82,16 +87,9 @@ export function takeFallback(): string {
 	return safeNext(take(FALLBACK_KEY)) ?? "/auth/sign-in";
 }
 
-/** The person signed out of Mindspear in this tab and hasn't asked to sign in since. */
-export function signedOutHere(): boolean {
-	return read(SIGNED_OUT_KEY) !== null;
-}
-
-/** Automatic (silent) sign-in is allowed: not just signed out, and BDREN wasn't found signed out moments ago. */
+/** Automatic (silent) sign-in is allowed: BDREN wasn't found signed out moments ago. */
 export function silentSignInAllowed(): boolean {
-	if (signedOutHere()) return false;
-	const checkedAt = Number(read(CHECKED_KEY));
-	return !checkedAt || Date.now() - checkedAt > NOT_SIGNED_IN_TTL_MS;
+	return !recent(CHECKED_KEY, NOT_SIGNED_IN_TTL_MS);
 }
 
 /** A silent check found nobody signed in to BDREN: don't ask again right away. */
@@ -99,15 +97,9 @@ export function noteNotSignedIn(): void {
 	store(CHECKED_KEY, String(Date.now()));
 }
 
-/** The person signed out of Mindspear: never sign them back in automatically in this tab. */
-export function noteSignedOut(): void {
-	store(SIGNED_OUT_KEY, "1");
-}
-
-/** A sign-in finished: the "not signed in" and "signed out" notes no longer hold. */
+/** A sign-in finished: the "nobody is signed in" note no longer holds. */
 export function clearSignInNotes(): void {
 	store(CHECKED_KEY, null);
-	store(SIGNED_OUT_KEY, null);
 }
 
 /**
@@ -143,5 +135,27 @@ export async function ssoLogoutUrl(): Promise<string | null> {
 		return (await ssoApi.config()).logout_url;
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * Before leaving for BDREN's logout: revokes this browser's Mindspear token and forgets the saved sign-in,
+ * without touching the page's state (no re-render, so nothing on the page reacts to being signed out).
+ * Plain fetch, not axiosInstance: its 401 handler would navigate away.
+ */
+export async function leaveSignedIn(): Promise<void> {
+	const token = localStorage.getItem("auth_token");
+	persistor.pause();
+	await persistor.purge();
+	localStorage.removeItem("auth_token");
+	localStorage.removeItem("persist:root");
+	if (!token) return;
+	try {
+		await fetch(`${apiConfig.baseURL}/logout`, {
+			method: "POST",
+			headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+		});
+	} catch {
+		// BDREN's logout notice revokes it too (back-channel logout).
 	}
 }

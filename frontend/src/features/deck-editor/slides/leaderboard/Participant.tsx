@@ -32,8 +32,8 @@ export function LeaderboardParticipant({ run, theme, quiz, standing }: Participa
 					role="status"
 					className="flex min-h-12 items-center justify-between gap-3 rounded-xl border-2 px-3 py-2"
 					style={{
-						borderColor: "var(--deck-primary, #F79945)",
-						background: "color-mix(in srgb, var(--deck-primary, #F79945) 18%, var(--deck-surface, #fff))",
+						borderColor: "var(--deck-primary, var(--color-primary))",
+						background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 18%, var(--deck-surface, #fff))",
 						color: "var(--deck-text, #111928)",
 					}}
 				>

@@ -18,7 +18,7 @@ import { describeAxes, MatrixPlane } from "./MatrixPlane";
 // (aggregate passed) show everyone's dots and the average in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 /** "toward Expensive" style wording for one axis value. */
 function towards(value: number, labels: AxisLabels | undefined, lowWord: string, highWord: string): string {
@@ -36,7 +36,7 @@ function Dot({ point, mine = true, faint = false }: { point: Point; mine?: boole
 			style={{
 				left: `${point.x}%`,
 				top: `${100 - point.y}%`,
-				background: mine ? "var(--deck-primary, #F79945)" : "var(--deck-accent, #BC5EB3)",
+				background: mine ? "var(--deck-primary, var(--color-primary))" : "var(--deck-accent, var(--color-secondary))",
 				opacity: faint ? 0.5 : 1,
 			}}
 		/>
@@ -255,7 +255,7 @@ function MatrixResults({
 						<span
 							aria-hidden
 							className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px]"
-							style={{ left: `${centroid.x}%`, top: `${100 - centroid.y}%`, borderColor: "var(--deck-accent, #BC5EB3)" }}
+							style={{ left: `${centroid.x}%`, top: `${100 - centroid.y}%`, borderColor: "var(--deck-accent, var(--color-secondary))" }}
 						/>
 					) : null}
 					{mine ? <Dot point={mine} /> : null}
@@ -263,7 +263,7 @@ function MatrixResults({
 			</div>
 			{centroid ? (
 				<p className="m-0 flex items-center gap-1.5 text-xs" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
-					<span aria-hidden className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "var(--deck-accent, #BC5EB3)" }} />
+					<span aria-hidden className="inline-block h-3 w-3 rounded-full border-2" style={{ borderColor: "var(--deck-accent, var(--color-secondary))" }} />
 					Average position
 				</p>
 			) : null}

@@ -32,7 +32,7 @@ import { AnswerSummary, ParticipantLayout, ParticipantNotice, ResultsSection, co
 // Public results (aggregate passed) show the overall ranking in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 interface Lists {
 	ranked: number[];
@@ -340,7 +340,7 @@ function RankBadge({ position }: { position: number }) {
 			aria-hidden
 			className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold tabular-nums"
 			style={{
-				background: position <= 3 ? "var(--deck-primary, #F79945)" : "var(--deck-surface-muted, #F3F4F6)",
+				background: position <= 3 ? "var(--deck-primary, var(--color-primary))" : "var(--deck-surface-muted, #F3F4F6)",
 				color: position <= 3 ? "var(--deck-on-primary, #111928)" : "var(--deck-text-muted, #4B5563)",
 			}}
 		>
@@ -385,7 +385,7 @@ function SortableItem({
 				transition,
 				position: "relative",
 				zIndex: isDragging ? 10 : undefined,
-				borderColor: isDragging || expanded ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+				borderColor: isDragging || expanded ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 				background: "var(--deck-surface, #fff)",
 				color: "var(--deck-text, #111928)",
 			}}

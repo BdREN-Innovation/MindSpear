@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import NextTopLoader from 'nextjs-toploader';
 import { Providers } from './providers';
+import { theme } from '@/config/theme';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -15,7 +16,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <Providers>
-      <NextTopLoader color="#F79945" showSpinner={false} />
+      <NextTopLoader color={theme.colors.primary.DEFAULT} showSpinner={false} />
       {children}
     </Providers>
   );

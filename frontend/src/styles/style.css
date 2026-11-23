@@ -699,7 +699,7 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 .live_switch .ant-switch.ant-switch-checked {
-  background:  #F79945 !important;
+  background: var(--color-primary) !important;
 }
 
 

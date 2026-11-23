@@ -385,7 +385,7 @@ export function ControlBar(props: ControlBarProps) {
 						title={`${participants} participants · ${conn.label} · show who has joined`}
 						className={cn(
 							COUNTER,
-							"min-h-11 rounded-lg transition hover:bg-[var(--deck-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus,#C46620)]",
+							"min-h-11 rounded-lg transition hover:bg-[var(--deck-surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--deck-focus,var(--color-primary-600))]",
 							peopleOpen && "bg-[var(--deck-surface-muted)]"
 						)}
 					>

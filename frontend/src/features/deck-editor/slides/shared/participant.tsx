@@ -13,7 +13,7 @@ import { haptic } from "./hooks";
 // prefers-reduced-motion and where unsupported).
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 /* ------------------------------------------------------------------ */
 /* SubmitBar                                                           */
@@ -66,7 +66,7 @@ export function SubmitBar({ label, onClick, type = "button", form, loading = fal
 					"flex min-h-12 w-full touch-manipulation items-center justify-center gap-2 rounded-xl px-5 text-base font-semibold transition motion-safe:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
 					FOCUS_RING
 				)}
-				style={{ background: "var(--deck-primary, #F79945)", color: "var(--deck-on-primary, #111928)" }}
+				style={{ background: "var(--deck-primary, var(--color-primary))", color: "var(--deck-on-primary, #111928)" }}
 			>
 				{loading ? (
 					<span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" aria-hidden />
@@ -146,9 +146,9 @@ export function OptionCard({
 				className
 			)}
 			style={{
-				borderColor: selected ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+				borderColor: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 				background: selected
-					? "color-mix(in srgb, var(--deck-primary, #F79945) 14%, var(--deck-surface, #fff))"
+					? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 14%, var(--deck-surface, #fff))"
 					: "var(--deck-surface, #fff)",
 				color: "var(--deck-text, #111928)",
 				WebkitTouchCallout: "none",
@@ -159,7 +159,7 @@ export function OptionCard({
 					aria-hidden
 					className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold"
 					style={{
-						background: selected ? "var(--deck-primary, #F79945)" : "var(--deck-surface-muted, #F3F4F6)",
+						background: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-surface-muted, #F3F4F6)",
 						color: selected ? "var(--deck-on-primary, #111928)" : "var(--deck-text-muted, #4B5563)",
 					}}
 				>
@@ -181,8 +181,8 @@ export function OptionCard({
 				aria-hidden
 				className={cn("flex h-6 w-6 shrink-0 items-center justify-center border-2", mode === "single" ? "rounded-full" : "rounded-md")}
 				style={{
-					borderColor: selected ? "var(--deck-primary, #F79945)" : "var(--deck-border, #D1D5DB)",
-					background: selected ? "var(--deck-primary, #F79945)" : "transparent",
+					borderColor: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #D1D5DB)",
+					background: selected ? "var(--deck-primary, var(--color-primary))" : "transparent",
 					color: "var(--deck-on-primary, #111928)",
 				}}
 			>

@@ -1,6 +1,22 @@
 import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
+import plugin from "tailwindcss/plugin";
 import { theme as appTheme } from "./src/config/theme";
+
+// Expose the brand palettes as CSS custom properties on :root so code outside
+// Tailwind classes (inline styles, CSS files, third-party widgets) can use
+// var(--color-primary), var(--color-secondary-50), … instead of repeating hex
+// values. src/config/theme.ts stays the single source of truth.
+const BRAND_PALETTES = ["primary", "secondary", "accent"] as const;
+
+const brandCssVars = Object.fromEntries(
+	BRAND_PALETTES.flatMap((name) =>
+		Object.entries(appTheme.colors[name]).map(([shade, hex]) => [
+			shade === "DEFAULT" ? `--color-${name}` : `--color-${name}-${shade}`,
+			hex,
+		]),
+	),
+);
 
 const config: Config = {
 	content: ["./src/**/*.{js,ts,jsx,tsx}", "./src/css/style.css"],
@@ -393,6 +409,6 @@ const config: Config = {
 			},
 		},
 	},
-	plugins: [],
+	plugins: [plugin(({ addBase }) => addBase({ ":root": brandCssVars }))],
 };
 export default config;

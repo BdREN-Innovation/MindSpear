@@ -14,6 +14,8 @@ use App\Modules\Sso\Services\SsoSignup;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 use Throwable;
 
 /** /api/v1/sso: BDREN single sign-on and entitlements. See SSO_INTEGRATION.md. */
@@ -64,6 +66,25 @@ class SsoController extends Controller
         $silent = $request->boolean('silent');
 
         return $this->okResponse($this->login->start(SsoLoginService::MODE_LOGIN, null, $silent));
+    }
+
+    /**
+     * Public, server to server: BDREN posts a signed logout_token when a BDREN session ends anywhere
+     * (logging out of bdren.ai, Synapse or here), and the Mindspear sign-ins of that session end too.
+     */
+    public function backchannelLogout(Request $request, OidcClient $oidc): SymfonyResponse
+    {
+        try {
+            $claims = $oidc->verifyLogoutToken((string) $request->input('logout_token', ''));
+        } catch (SsoException $e) {
+            Log::warning('sso.backchannel_logout.rejected', ['reason' => $e->getMessage()]);
+
+            return response()->json(['error' => 'invalid_request'], 400)->header('Cache-Control', 'no-store');
+        }
+        $revoked = $this->login->endSessions($claims);
+        Log::info('sso.backchannel_logout', ['revoked' => $revoked]);
+
+        return response()->noContent(200)->header('Cache-Control', 'no-store');
     }
 
     /** Public: the frontend callback page posts ZITADEL's code and state here. */

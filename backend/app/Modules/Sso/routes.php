@@ -9,6 +9,8 @@ Route::name('sso.')->group(function () {
     Route::get('config', [SsoController::class, 'config'])->name('config');
     Route::post('login', [SsoController::class, 'login'])->middleware('throttle:sso')->name('login');
     Route::post('callback', [SsoController::class, 'callback'])->middleware('throttle:sso')->name('callback');
+    // Not throttled: every notice comes from BDREN's server, and a dropped one would leave a sign-in open.
+    Route::post('backchannel-logout', [SsoController::class, 'backchannelLogout'])->name('backchannel-logout');
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('status', [SsoController::class, 'status'])->name('status');

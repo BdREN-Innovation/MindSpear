@@ -98,7 +98,7 @@ function NavData() {
 													item.items.some(({ url }) =>
 														isPathMatch(url),
 													) &&
-														"font-bold text-orange-500 hover:text-orange-500",
+														"font-semibold text-dark dark:text-white",
 												)}
 											>
 												{item.icon ? (

@@ -70,7 +70,7 @@ export function MatrixPlane({ xAxis, yAxis, size, placeholders = false, children
 			<span
 				aria-hidden
 				className="pointer-events-none absolute right-0 top-0 h-1/2 w-1/2"
-				style={{ background: "color-mix(in srgb, var(--deck-primary, #F79945) 7%, transparent)" }}
+				style={{ background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 7%, transparent)" }}
 			/>
 			<span aria-hidden className="pointer-events-none absolute left-1/2 top-0 h-full w-px -translate-x-1/2" style={{ background: "var(--deck-border, #E5E7EB)" }} />
 			<span aria-hidden className="pointer-events-none absolute left-0 top-1/2 h-px w-full -translate-y-1/2" style={{ background: "var(--deck-border, #E5E7EB)" }} />

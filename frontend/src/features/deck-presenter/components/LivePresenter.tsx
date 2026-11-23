@@ -67,6 +67,8 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 	const api = sessionApiFor(product);
 	const copy = productCopy(product);
 	const editorHref = copy.editHref(deckId);
+	// Where an ended session goes: its results, under this deck's session list.
+	const resultsHref = copy.sessionResultsHref(deckId, sessionId);
 
 	// Latest action response; the channel hook applies each new one as a snapshot.
 	const [seed, setSeed] = useState<HostSessionState>(initialState);
@@ -278,7 +280,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 	};
 
 	const onExit = () => {
-		if (ended) router.push(editorHref);
+		if (ended) router.push(resultsHref);
 		else setConfirm({ kind: "exit" });
 	};
 
@@ -290,10 +292,10 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 		else void advance({ action: "insert_leaderboard" });
 	};
 
-	const endSession = async (thenExit: boolean) => {
+	const endSession = async () => {
 		const ok = await end();
 		setConfirm(null);
-		if (ok && thenExit) router.push(editorHref);
+		if (ok) router.push(resultsHref);
 	};
 
 	const toggleModeration = () => {
@@ -506,7 +508,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 						? "Answering ends (an open question is revealed) and everyone is disconnected. This session can't be reopened."
 						: "Voting closes and everyone is disconnected. This session can't be reopened."
 				}
-				confirm={{ label: "End session", tone: "danger", onSelect: () => void endSession(false) }}
+				confirm={{ label: "End session", tone: "danger", onSelect: () => void endSession() }}
 				onCancel={() => setConfirm(null)}
 				initialFocus="cancel"
 				busy={pending === "end"}
@@ -516,7 +518,7 @@ export function LivePresenter({ deckId, product = "quest", deck, initialState, r
 				title="Leave present mode?"
 				description={`The session stays live: participants keep their place, and presenting this ${copy.noun} again picks it back up.`}
 				confirm={{ label: "Exit, keep it live", onSelect: () => router.push(editorHref) }}
-				secondary={{ label: "End session and exit", tone: "danger", onSelect: () => void endSession(true) }}
+				secondary={{ label: "End session and exit", tone: "danger", onSelect: () => void endSession() }}
 				onCancel={() => setConfirm(null)}
 				busy={pending === "end"}
 			/>

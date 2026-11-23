@@ -45,7 +45,7 @@ function ArcadeBackground() {
 				className="absolute inset-0"
 				style={{
 					background:
-						"linear-gradient(135deg, #FFF5EB 0%, #FFFFFF 42%, #FBF0FA 100%)",
+						"linear-gradient(135deg, var(--color-primary-50) 0%, #FFFFFF 42%, var(--color-secondary-50) 100%)",
 				}}
 			/>
 			<div

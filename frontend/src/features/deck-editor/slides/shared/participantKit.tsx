@@ -185,7 +185,7 @@ export function ResultBar({
 					className="h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500"
 					style={{
 						width: `${width}%`,
-						background: highlight ? "var(--deck-primary, #F79945)" : "var(--deck-text-muted, #9CA3AF)",
+						background: highlight ? "var(--deck-primary, var(--color-primary))" : "var(--deck-text-muted, #9CA3AF)",
 					}}
 				/>
 			</div>

@@ -20,7 +20,7 @@ import { StarInput, StarMeter } from "./StarRow";
 // passed) show everyone's average per item in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Ratings = Record<number, number>;
 
@@ -215,7 +215,7 @@ export function RatingParticipant({ run, mySubmission, onSubmit, disabled, theme
 										style={{
 											width: i === index ? 12 : 8,
 											height: i === index ? 12 : 8,
-											background: ratings[item.id] ? "var(--deck-primary, #F79945)" : "var(--deck-border, #D1D5DB)",
+											background: ratings[item.id] ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #D1D5DB)",
 											outline: i === index ? "2px solid var(--deck-text, #111928)" : undefined,
 											outlineOffset: 2,
 										}}

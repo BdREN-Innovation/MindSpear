@@ -151,7 +151,7 @@ export function PollMultiParticipant({ run, mySubmission, onSubmit, disabled, th
 					type="button"
 					onClick={answer.cancelEdit}
 					disabled={answer.busy}
-					className="min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]"
+					className="min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))]"
 					style={{ color: "var(--deck-text-muted, #4B5563)" }}
 				>
 					Keep my answer

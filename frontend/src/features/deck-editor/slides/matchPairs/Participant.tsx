@@ -33,7 +33,7 @@ import { runSides } from "./pairs";
 // {pairs: [{left_id, right_id}]} with the run's opaque ids. Final once sent.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Cell = RunOption<OpaqueOptionId, { side: "left" | "right" }>;
 type Selection = { side: "left" | "right"; id: OpaqueOptionId } | null;
@@ -282,9 +282,9 @@ function MatchBoard({
 					FOCUS_RING
 				)}
 				style={{
-					borderColor: selected ? "var(--deck-primary, #F79945)" : (color ?? "var(--deck-border, #E5E7EB)"),
+					borderColor: selected ? "var(--deck-primary, var(--color-primary))" : (color ?? "var(--deck-border, #E5E7EB)"),
 					background: selected
-						? "color-mix(in srgb, var(--deck-primary, #F79945) 16%, var(--deck-surface, #fff))"
+						? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 16%, var(--deck-surface, #fff))"
 						: color
 							? `color-mix(in srgb, ${color} 10%, var(--deck-surface, #fff))`
 							: "var(--deck-surface, #fff)",

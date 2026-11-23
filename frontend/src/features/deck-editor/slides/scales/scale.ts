@@ -32,7 +32,7 @@ export function fitLabels(labels: (string | null)[] | null | undefined, points: 
 export function scaleColor(value: number, points: number): string {
 	const t = points <= 1 ? 1 : (value - 1) / (points - 1);
 	const strength = Math.round(18 + t * 82);
-	return `color-mix(in srgb, var(--deck-primary, #F79945) ${strength}%, var(--deck-surface-muted, #F3F4F6))`;
+	return `color-mix(in srgb, var(--deck-primary, var(--color-primary)) ${strength}%, var(--deck-surface-muted, #F3F4F6))`;
 }
 
 /** Text colour that stays readable on scaleColor(value). */

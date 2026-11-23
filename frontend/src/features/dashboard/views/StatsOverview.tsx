@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { FaRegListAlt, FaTasks } from "react-icons/fa";
 import axiosInstance from "@/utils/axiosInstance";
+import { theme } from "@/config/theme";
 import { productCopy } from "@/features/deck/productCopy";
 import type { DeckProduct } from "@/features/deck/types";
 
@@ -27,12 +28,12 @@ interface DashboardStatistics {
 }
 
 const PRODUCTS: { product: DeckProduct; key: "quizzes" | "quests"; accent: string; icon: ReactNode }[] = [
-	{ product: "quiz", key: "quizzes", accent: "#ed3a76", icon: <FaRegListAlt size={32} /> },
-	{ product: "quest", key: "quests", accent: "#BC5EB3", icon: <FaTasks size={32} /> },
+	{ product: "quiz", key: "quizzes", accent: theme.colors.accent.DEFAULT, icon: <FaRegListAlt size={32} /> },
+	{ product: "quest", key: "quests", accent: theme.colors.secondary.DEFAULT, icon: <FaTasks size={32} /> },
 ];
 
 const STATUS_LABELS = ["Live now", "Hosted", "Not hosted yet"];
-const STATUS_COLORS = ["#ed3a76", "#fda148", "#BC5EB3"];
+const STATUS_COLORS = [theme.colors.accent.DEFAULT, "#fda148", theme.colors.secondary.DEFAULT];
 
 const CHART_OPTIONS = {
 	chart: { toolbar: { show: false }, background: "transparent" },
@@ -57,7 +58,7 @@ function Skeleton() {
 			<Heading />
 			<div className="mb-3 grid w-full grid-cols-1 gap-6 sm:grid-cols-2">
 				{PRODUCTS.map(({ product }) => (
-					<div key={product} className={`flex items-center gap-4 rounded-2xl border border-[#ed3a76]/20 p-6 ${panelClass}`}>
+					<div key={product} className={`flex items-center gap-4 rounded-2xl border border-accent/20 p-6 ${panelClass}`}>
 						<div className="h-14 w-14 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />
 						<div>
 							<div className="mb-2 h-6 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
@@ -68,7 +69,7 @@ function Skeleton() {
 			</div>
 			<div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
 				{PRODUCTS.map(({ product }) => (
-					<div key={product} className={`h-80 animate-pulse rounded-2xl border border-[#ed3a76]/10 p-6 ${panelClass}`} />
+					<div key={product} className={`h-80 animate-pulse rounded-2xl border border-accent/10 p-6 ${panelClass}`} />
 				))}
 			</div>
 		</div>

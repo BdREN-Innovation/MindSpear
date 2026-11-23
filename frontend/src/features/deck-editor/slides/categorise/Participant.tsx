@@ -36,7 +36,7 @@ import { categoryName } from "./labels";
 // count as wrong). Final once sent.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Item = RunOption<OpaqueOptionId, Record<never, never>>;
 
@@ -304,7 +304,7 @@ function SortBoard({
 										<span aria-hidden className="h-3 w-3 shrink-0 rounded-full" style={{ background: color }} />
 										<span className="break-words text-base font-bold">{categoryName(category, index)}</span>
 									</span>
-									<span className="shrink-0 text-sm font-semibold" style={{ color: selected !== null && !locked ? "var(--deck-primary, #F79945)" : "var(--deck-text-muted, #4B5563)" }}>
+									<span className="shrink-0 text-sm font-semibold" style={{ color: selected !== null && !locked ? "var(--deck-primary, var(--color-primary))" : "var(--deck-text-muted, #4B5563)" }}>
 										{selected !== null && !locked ? "Place here" : inside.length}
 									</span>
 								</button>
@@ -322,7 +322,7 @@ function SortBoard({
 
 				<DragOverlay>
 					{dragging ? (
-						<span className="inline-flex min-h-12 items-center rounded-xl border-2 px-3 text-sm font-semibold shadow-lg" style={{ borderColor: "var(--deck-primary, #F79945)", background: "var(--deck-surface, #fff)", color: "var(--deck-text, #111928)" }}>
+						<span className="inline-flex min-h-12 items-center rounded-xl border-2 px-3 text-sm font-semibold shadow-lg" style={{ borderColor: "var(--deck-primary, var(--color-primary))", background: "var(--deck-surface, #fff)", color: "var(--deck-text, #111928)" }}>
 							{labelOf.get(dragging)}
 						</span>
 					) : null}
@@ -343,9 +343,9 @@ function DropZone({ id, label, children, className, active, color }: { id: strin
 			aria-label={label}
 			className={cn("transition-colors", className)}
 			style={{
-				borderColor: isOver ? "var(--deck-primary, #F79945)" : (color ?? "var(--deck-border, #E5E7EB)"),
+				borderColor: isOver ? "var(--deck-primary, var(--color-primary))" : (color ?? "var(--deck-border, #E5E7EB)"),
 				background: isOver
-					? "color-mix(in srgb, var(--deck-primary, #F79945) 12%, var(--deck-surface, #fff))"
+					? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 12%, var(--deck-surface, #fff))"
 					: active
 						? "var(--deck-surface-muted, #F3F4F6)"
 						: "var(--deck-surface, #fff)",
@@ -374,8 +374,8 @@ function Chip({ item, label, selected, disabled, onTap, color }: { item: Item; l
 				FOCUS_RING
 			)}
 			style={{
-				borderColor: selected ? "var(--deck-primary, #F79945)" : (color ?? "var(--deck-border, #E5E7EB)"),
-				background: selected ? "color-mix(in srgb, var(--deck-primary, #F79945) 16%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
+				borderColor: selected ? "var(--deck-primary, var(--color-primary))" : (color ?? "var(--deck-border, #E5E7EB)"),
+				background: selected ? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 16%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
 				color: "var(--deck-text, #111928)",
 				WebkitTouchCallout: "none",
 			}}

@@ -31,7 +31,7 @@ import { SentenceText, SentenceWithAnswers } from "../shared/sentence";
 // {answers}: the word in each blank (null = empty). Final once sent.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Word = RunOption<OpaqueOptionId, Record<never, never>>;
 
@@ -232,7 +232,7 @@ function DropBoard({
 					{dragging ? (
 						<span
 							className="inline-flex min-h-11 items-center rounded-xl border-2 px-3 text-base font-semibold shadow-lg"
-							style={{ borderColor: "var(--deck-primary, #F79945)", background: "var(--deck-surface, #fff)", color: "var(--deck-text, #111928)" }}
+							style={{ borderColor: "var(--deck-primary, var(--color-primary))", background: "var(--deck-surface, #fff)", color: "var(--deck-text, #111928)" }}
 						>
 							{labelOf.get(dragging)}
 						</span>
@@ -254,9 +254,9 @@ function Bank({ active, children }: { active: boolean; children: ReactNode }) {
 			aria-label="Word bank"
 			className="rounded-xl border-2 border-dashed p-2 transition-colors"
 			style={{
-				borderColor: isOver ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+				borderColor: isOver ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 				background: isOver
-					? "color-mix(in srgb, var(--deck-primary, #F79945) 12%, var(--deck-surface, #fff))"
+					? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 12%, var(--deck-surface, #fff))"
 					: active
 						? "var(--deck-surface-muted, #F3F4F6)"
 						: "var(--deck-surface, #fff)",
@@ -302,9 +302,9 @@ function Slot({
 					FOCUS_RING
 				)}
 				style={{
-					borderColor: isOver || selected || (armed && !word) ? "var(--deck-primary, #F79945)" : "var(--deck-border, #D1D5DB)",
+					borderColor: isOver || selected || (armed && !word) ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #D1D5DB)",
 					background: isOver
-						? "color-mix(in srgb, var(--deck-primary, #F79945) 14%, var(--deck-surface, #fff))"
+						? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 14%, var(--deck-surface, #fff))"
 						: word
 							? "var(--deck-surface, #fff)"
 							: "var(--deck-surface-muted, #F3F4F6)",
@@ -336,8 +336,8 @@ function WordChip({ id, label, selected, disabled, onTap }: { id: OpaqueOptionId
 				FOCUS_RING
 			)}
 			style={{
-				borderColor: selected ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
-				background: selected ? "color-mix(in srgb, var(--deck-primary, #F79945) 16%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
+				borderColor: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
+				background: selected ? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 16%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
 				color: "var(--deck-text, #111928)",
 				WebkitTouchCallout: "none",
 			}}

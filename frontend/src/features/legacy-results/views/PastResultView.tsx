@@ -22,8 +22,11 @@ function sessionLabel(s: LegacyDetail["sessions"][number]): string {
 	return `${when} · ${s.participants} ${s.participants === 1 ? "participant" : "participants"}`;
 }
 
-/** /past-results/[source]/[id]: one old quiz or quest, session by session. */
-export function PastResultView({ source, id }: { source: LegacySource; id: number }) {
+/**
+ * /past-results/[source]/[id]: one old quiz or quest, session by session.
+ * `initialSessionId` (?session=) opens that session instead of the busiest one.
+ */
+export function PastResultView({ source, id, initialSessionId = null }: { source: LegacySource; id: number; initialSessionId?: string | null }) {
 	const [detail, setDetail] = useState<LegacyDetail | null>(null);
 	const [sessionId, setSessionId] = useState<string | null>(null);
 	const [session, setSession] = useState<LegacySession | null>(null);
@@ -38,12 +41,13 @@ export function PastResultView({ source, id }: { source: LegacySource; id: numbe
 			.show(source, id)
 			.then((d) => {
 				setDetail(d);
-				// The busiest session first: usually the real class, not a test run.
+				const requested = d.sessions.find((s) => s.id === initialSessionId);
+				// Otherwise the busiest session first: usually the real class, not a test run.
 				const busiest = [...d.sessions].sort((a, b) => b.participants - a.participants)[0];
-				setSessionId(busiest?.id ?? null);
+				setSessionId((requested ?? busiest)?.id ?? null);
 			})
 			.catch(() => setError("This quiz or quest could not be found."));
-	}, [source, id]);
+	}, [source, id, initialSessionId]);
 
 	useEffect(() => {
 		if (sessionId === null) return;

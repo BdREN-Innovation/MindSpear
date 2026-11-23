@@ -59,7 +59,7 @@ function DeckCard({
 }) {
 	const copy = productCopy(product);
 	return (
-		<li className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-primary/40 dark:border-stroke-dark dark:bg-gray-dark">
+		<li className="flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-secondary dark:border-stroke-dark dark:hover:border-secondary-300 dark:bg-gray-dark">
 			<button
 				type="button"
 				onClick={() => onPreview(deck)}

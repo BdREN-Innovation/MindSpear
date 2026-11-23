@@ -27,7 +27,7 @@ const SHELL_CSS = `
 }
 /* Containers focused from code (sheet panels, tabindex=-1) get no ring. */
 .ms-play-shell :focus-visible:not([tabindex="-1"]) {
-	outline: 3px solid var(--deck-focus, #C46620);
+	outline: 3px solid var(--deck-focus, var(--color-primary-600));
 	outline-offset: 2px;
 }
 .ms-play-scroll {

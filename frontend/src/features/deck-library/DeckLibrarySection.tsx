@@ -18,8 +18,10 @@ import { NewDeckDialog } from "./NewDeckCard";
 
 const PER_PAGE = 12;
 
+// Plain icon buttons (no tinted chips); each has an aria-label and a title tooltip.
 const actionClass =
-	"inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:opacity-50";
+	"pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary-400 disabled:opacity-50";
+const neutralAction = "text-dark-5 hover:bg-gray-2 hover:text-dark dark:text-dark-6 dark:hover:bg-dark-3 dark:hover:text-white";
 
 function formatUpdated(iso: string | null): string {
 	if (!iso) return "—";
@@ -51,10 +53,10 @@ function DeckCard({
 	onDelete(deck: DeckSummary): void;
 }) {
 	const theme = getDeckTheme(deck.settings?.theme);
-	// The whole card opens the deck: the title link stretches over it (after:inset-0), and the
-	// action row sits above that layer so its buttons keep their own clicks.
+	// The whole card opens the deck's sessions page: the title link stretches over it (after:inset-0), and the
+	// action buttons sit above that layer so they keep their own clicks (gaps between them fall through).
 	return (
-		<li className="relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:border-primary hover:shadow-md dark:border-stroke-dark dark:bg-gray-dark">
+		<li className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:border-secondary hover:shadow-md dark:border-stroke-dark dark:bg-gray-dark dark:hover:border-secondary-300">
 			<div className="p-3">
 				{deck.cover?.url ? (
 					// Covers come from My Files (any host), so a plain img keeps next/image config out of it.
@@ -68,7 +70,7 @@ function DeckCard({
 				<div className="flex items-center gap-2">
 					<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-dark dark:text-white">
 						<Link
-							href={copy.editHref(deck.id)}
+							href={copy.sessionsHref(deck.id)}
 							title={deck.title}
 							className="after:absolute after:inset-0 after:rounded-xl after:content-[''] focus:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary-600"
 						>
@@ -91,50 +93,49 @@ function DeckCard({
 					<Layers className="h-4 w-4" aria-hidden />
 					{slides(deck.slideCount)}
 				</p>
-				<p className="flex items-center gap-1.5 text-sm text-dark-5 dark:text-dark-6">
-					<CalendarClock className="h-4 w-4" aria-hidden />
-					Updated {formatUpdated(deck.updatedAt)}
-				</p>
-			</div>
-			<div className="relative z-10 grid cursor-default grid-cols-2 gap-1 border-t border-stroke bg-white p-2 dark:border-stroke-dark dark:bg-gray-dark">
-				<Link href={copy.editHref(deck.id)} className={`${actionClass} bg-primary font-semibold text-dark hover:bg-primary-dark`}>
-					<Pencil className="h-4 w-4" aria-hidden />
-					Edit
-				</Link>
-				{deck.slideCount > 0 ? (
-					<Link
-						href={copy.presentHref(deck.id)}
-						className={`${actionClass} bg-gray-2 text-dark hover:bg-gray-3 dark:bg-dark-2 dark:text-white dark:hover:bg-dark-3`}
-					>
-						<MonitorPlay className="h-4 w-4" aria-hidden />
-						Present
-					</Link>
-				) : (
-					<button type="button" disabled title="Add a slide first" className={`${actionClass} bg-gray-2 text-dark dark:bg-dark-2 dark:text-white`}>
-						<MonitorPlay className="h-4 w-4" aria-hidden />
-						Present
-					</button>
-				)}
-				<button
-					type="button"
-					disabled={busy}
-					onClick={() => onDuplicate(deck)}
-					className={`${actionClass} text-dark hover:bg-gray-2 dark:text-white dark:hover:bg-dark-3`}
-					aria-label={`Duplicate ${deck.title}`}
-				>
-					<Copy className="h-4 w-4" aria-hidden />
-					Duplicate
-				</button>
-				<button
-					type="button"
-					disabled={busy}
-					onClick={() => onDelete(deck)}
-					className={`${actionClass} text-[#B42318] hover:bg-red-light-5 dark:text-red-light dark:hover:bg-dark-3`}
-					aria-label={`Delete ${deck.title}`}
-				>
-					<Trash2 className="h-4 w-4" aria-hidden />
-					Delete
-				</button>
+				{/* One slot, two faces: "Updated …" at rest, the actions on hover / keyboard focus (they
+				    zoom in over it), so the card never grows or shows an empty strip. Touch screens
+				    can't hover, so they always get the actions. */}
+				<div className="relative mt-1 h-9">
+					<p className="flex h-full items-center gap-1.5 text-sm text-dark-5 transition-opacity duration-150 group-focus-within:opacity-0 group-hover:opacity-0 dark:text-dark-6 [@media(hover:none)]:invisible">
+						<CalendarClock className="h-4 w-4" aria-hidden />
+						Updated {formatUpdated(deck.updatedAt)}
+					</p>
+					<div className="pointer-events-none absolute inset-0 z-10 flex origin-left items-center gap-1 transition duration-150 ease-out group-focus-within:scale-100 group-focus-within:opacity-100 group-hover:scale-100 group-hover:opacity-100 [@media(hover:hover)]:scale-95 [@media(hover:hover)]:opacity-0">
+						<Link href={copy.editHref(deck.id)} aria-label={`Edit ${deck.title}`} title="Edit" className={`${actionClass} ${neutralAction}`}>
+							<Pencil className="h-4 w-4" aria-hidden />
+						</Link>
+						{deck.slideCount > 0 ? (
+							<Link href={copy.presentHref(deck.id)} aria-label={`Present ${deck.title}`} title="Present" className={`${actionClass} ${neutralAction}`}>
+								<MonitorPlay className="h-4 w-4" aria-hidden />
+							</Link>
+						) : (
+							<button type="button" disabled aria-label="Present (add a slide first)" title="Add a slide first" className={`${actionClass} ${neutralAction}`}>
+								<MonitorPlay className="h-4 w-4" aria-hidden />
+							</button>
+						)}
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => onDuplicate(deck)}
+							aria-label={`Duplicate ${deck.title}`}
+							title="Duplicate"
+							className={`${actionClass} ${neutralAction}`}
+						>
+							<Copy className="h-4 w-4" aria-hidden />
+						</button>
+						<button
+							type="button"
+							disabled={busy}
+							onClick={() => onDelete(deck)}
+							aria-label={`Delete ${deck.title}`}
+							title="Delete"
+							className={`${actionClass} ml-auto text-dark-5 hover:bg-red-light-5 hover:text-[#B42318] dark:text-dark-6 dark:hover:bg-dark-3 dark:hover:text-red-light`}
+						>
+							<Trash2 className="h-4 w-4" aria-hidden />
+						</button>
+					</div>
+				</div>
 			</div>
 		</li>
 	);

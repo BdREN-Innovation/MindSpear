@@ -412,3 +412,91 @@ it('sends server calls through SSO_CONNECT_URL with the public Host header', fun
         ->and($otherUrl)->toBe('https://elsewhere.test/path');
     Http::assertSent(fn (HttpRequest $r) => $r->hasHeader('Host', 'auth.bdren.localhost:8080'));
 });
+
+/** Signs in through BDREN with `sid` in the ID token; returns the Mindspear bearer token. */
+function ssoSignedIn($test, string $sid): string
+{
+    $claims = $test->claims;
+    $test->claims = fn (string $nonce) => $claims($nonce) + ['sid' => $sid];
+    $state = ssoStart($test);
+    $token = $test->postJson('/api/v1/sso/callback', ['code' => 'code-1', 'state' => $state])->assertOk()->json('data.token');
+    $test->claims = $claims;
+
+    return $token;
+}
+
+/** A logout_token as BDREN signs it; `$over` replaces claims, null drops one. */
+function ssoLogoutToken($test, array $over = []): string
+{
+    $claims = array_merge([
+        'iss' => SSO_ISSUER,
+        'aud' => SSO_CLIENT,
+        'iat' => time(),
+        'exp' => time() + 120,
+        'jti' => (string) str()->uuid(),
+        'events' => ['http://schemas.openid.net/event/backchannel-logout' => new stdClass()],
+        'sid' => 'sid-1',
+        'sub' => $test->subject,
+    ], $over);
+
+    return ($test->signWith)(array_filter($claims, fn ($value) => $value !== null));
+}
+
+it('remembers the BDREN session a token belongs to', function () {
+    $token = ssoSignedIn($this, 'sid-1');
+    $id = (int) explode('|', $token)[0];
+
+    expect(\Laravel\Sanctum\PersonalAccessToken::find($id)->sso_sid)->toBe('sid-1');
+});
+
+it('revokes only the sign-ins of the BDREN session that ended', function () {
+    $ended = ssoSignedIn($this, 'sid-1');
+    $other = ssoSignedIn($this, 'sid-2');
+
+    $this->post('/api/v1/sso/backchannel-logout', ['logout_token' => ssoLogoutToken($this, ['sid' => 'sid-1'])])
+        ->assertOk()
+        ->assertHeader('Cache-Control', 'no-store, private');
+
+    expect(\Laravel\Sanctum\PersonalAccessToken::findToken($ended))->toBeNull()
+        ->and(\Laravel\Sanctum\PersonalAccessToken::findToken($other))->not->toBeNull();
+});
+
+it('revokes every BDREN sign-in of the user when the notice names only sub', function () {
+    $first = ssoSignedIn($this, 'sid-1');
+    $second = ssoSignedIn($this, 'sid-2');
+
+    $this->post('/api/v1/sso/backchannel-logout', ['logout_token' => ssoLogoutToken($this, ['sid' => null])])->assertOk();
+
+    expect(\Laravel\Sanctum\PersonalAccessToken::findToken($first))->toBeNull()
+        ->and(\Laravel\Sanctum\PersonalAccessToken::findToken($second))->toBeNull();
+});
+
+it('refuses logout tokens that are not genuine BDREN logout notices', function (array $over) {
+    $token = ssoSignedIn($this, 'sid-1');
+
+    $this->post('/api/v1/sso/backchannel-logout', ['logout_token' => ssoLogoutToken($this, $over)])
+        ->assertStatus(400)
+        ->assertJsonPath('error', 'invalid_request');
+    expect(\Laravel\Sanctum\PersonalAccessToken::findToken($token))->not->toBeNull();
+})->with([
+    'no event' => [['events' => null]],
+    'another event' => [['events' => ['other' => new stdClass()]]],
+    'has a nonce' => [['nonce' => 'n']],
+    'neither sid nor sub' => [['sid' => null, 'sub' => null]],
+    'another client' => [['aud' => 'another-client']],
+    'another issuer' => [['iss' => 'https://evil.test']],
+    'no jti' => [['jti' => null]],
+]);
+
+it('refuses a forged or malformed logout token', function () {
+    $token = ssoSignedIn($this, 'sid-1');
+    [$attackerPem] = ssoKeyPair('key-1');
+    $forged = JWT::encode([
+        'iss' => SSO_ISSUER, 'aud' => SSO_CLIENT, 'iat' => time(), 'jti' => 'j', 'sid' => 'sid-1',
+        'events' => ['http://schemas.openid.net/event/backchannel-logout' => new stdClass()],
+    ], $attackerPem, 'RS256', 'key-1');
+
+    $this->post('/api/v1/sso/backchannel-logout', ['logout_token' => $forged])->assertStatus(400);
+    $this->post('/api/v1/sso/backchannel-logout', ['logout_token' => 'not-a-jwt'])->assertStatus(400);
+    expect(\Laravel\Sanctum\PersonalAccessToken::findToken($token))->not->toBeNull();
+});

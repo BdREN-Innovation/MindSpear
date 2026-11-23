@@ -112,8 +112,8 @@ export function LeaderboardBoard({ runId, rows, meId = null, variant, columns = 
 								padding: stage ? (dense ? "0.5cqw 1cqw" : "0.9cqw 1.4cqw") : "0.5rem 0.75rem",
 								borderRadius: stage ? "1cqw" : "0.75rem",
 								minHeight: stage ? undefined : "3.25rem",
-								background: me ? "color-mix(in srgb, var(--deck-primary, #F79945) 18%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
-								border: `2px solid ${me ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)"}`,
+								background: me ? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 18%, var(--deck-surface, #fff))" : "var(--deck-surface, #fff)",
+								border: `2px solid ${me ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)"}`,
 								color: "var(--deck-text, #111928)",
 							}}
 							aria-current={me ? "true" : undefined}
@@ -122,7 +122,7 @@ export function LeaderboardBoard({ runId, rows, meId = null, variant, columns = 
 							<motion.span
 								aria-hidden
 								className="absolute inset-y-0 left-0"
-								style={{ background: "color-mix(in srgb, var(--deck-primary, #F79945) 10%, transparent)", transformOrigin: "left" }}
+								style={{ background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 10%, transparent)", transformOrigin: "left" }}
 								initial={false}
 								animate={{ width: `${(shownTotal / max) * 100}%` }}
 								transition={reduced ? { duration: 0 } : { duration: 0.9, ease: "easeOut" }}

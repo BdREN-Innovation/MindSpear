@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, createElement, useContext, useMemo, type CSSProperties, type ReactNode } from "react";
+import { theme as brand } from "@/config/theme";
 
 // Deck colour palettes (decks.settings.theme). The backend stores any slug
 // ([a-z0-9][a-z0-9_-]*, ≤ 40, default 'default') and leaves the palettes to
@@ -51,7 +52,11 @@ export interface DeckTheme {
 	cssVars: Record<`--deck-${string}`, string>;
 }
 
-const BRAND_CHART = ["#F79945", "#BC5EB3", "#3C50E0", "#22AD5C", "#ED3A76", "#0EA5E9", "#F59E0B", "#64748B"];
+// The "default" and "dark" presets use the MindSpear brand palette from
+// src/config/theme.ts; the other presets are self-contained colour schemes.
+const { primary, secondary, accent } = brand.colors;
+
+const BRAND_CHART = [primary.DEFAULT, secondary.DEFAULT, brand.colors.info, brand.colors.success, accent.DEFAULT, "#0EA5E9", brand.colors.warning, "#64748B"];
 
 const PALETTES: Record<DeckThemeKey, Omit<DeckTheme, "cssVars" | "key">> = {
 	default: {
@@ -65,12 +70,12 @@ const PALETTES: Record<DeckThemeKey, Omit<DeckTheme, "cssVars" | "key">> = {
 			text: "#111928",
 			textMuted: "#4B5563",
 			border: "#E5E7EB",
-			primary: "#F79945",
+			primary: primary.DEFAULT,
 			onPrimary: "#111928",
-			accent: "#BC5EB3",
+			accent: secondary.DEFAULT,
 			success: "#15803D",
 			danger: "#B91C1C",
-			focus: "#C46620",
+			focus: primary[600],
 			chart: BRAND_CHART,
 		},
 	},
@@ -85,13 +90,13 @@ const PALETTES: Record<DeckThemeKey, Omit<DeckTheme, "cssVars" | "key">> = {
 			text: "#F9FAFB",
 			textMuted: "#D1D5DB",
 			border: "#374151",
-			primary: "#F79945",
+			primary: primary.DEFAULT,
 			onPrimary: "#111928",
-			accent: "#D080C8",
+			accent: secondary.light,
 			success: "#4ADE80",
 			danger: "#F87171",
-			focus: "#FFBA75",
-			chart: ["#F9B474", "#D894D2", "#93A5F5", "#4ADE80", "#FA82AA", "#7DD3FC", "#FCD34D", "#CBD5E1"],
+			focus: primary[300],
+			chart: [primary.light, secondary[300], "#93A5F5", "#4ADE80", accent[300], "#7DD3FC", "#FCD34D", "#CBD5E1"],
 		},
 	},
 	ocean: {

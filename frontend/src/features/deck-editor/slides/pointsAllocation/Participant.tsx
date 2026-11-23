@@ -28,7 +28,7 @@ import {
 // passed) show everyone's split in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Allocation = Record<number, number>;
 
@@ -92,7 +92,7 @@ export function PointsAllocationParticipant({ run, mySubmission, onSubmit, disab
 								</span>
 							</div>
 							<span aria-hidden className="h-2 overflow-hidden rounded-full" style={{ background: "var(--deck-surface-muted, #F3F4F6)" }}>
-								<span className="block h-full rounded-full" style={{ width: `${(points / total) * 100}%`, background: "var(--deck-primary, #F79945)" }} />
+								<span className="block h-full rounded-full" style={{ width: `${(points / total) * 100}%`, background: "var(--deck-primary, var(--color-primary))" }} />
 							</span>
 						</li>
 					);
@@ -185,7 +185,7 @@ export function PointsAllocationParticipant({ run, mySubmission, onSubmit, disab
 			>
 				<span
 					className="block h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none"
-					style={{ width: `${Math.min(100, (used / total) * 100)}%`, background: remaining === 0 ? "var(--deck-success, #15803D)" : "var(--deck-primary, #F79945)" }}
+					style={{ width: `${Math.min(100, (used / total) * 100)}%`, background: remaining === 0 ? "var(--deck-success, #15803D)" : "var(--deck-primary, var(--color-primary))" }}
 				/>
 			</div>
 
@@ -200,7 +200,7 @@ export function PointsAllocationParticipant({ run, mySubmission, onSubmit, disab
 							key={option.id}
 							className="flex flex-col gap-2 rounded-xl border-2 p-3"
 							style={{
-								borderColor: value > 0 ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+								borderColor: value > 0 ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 								background: "var(--deck-surface, #fff)",
 							}}
 						>
@@ -249,7 +249,7 @@ export function PointsAllocationParticipant({ run, mySubmission, onSubmit, disab
 									onChange={(event) => setValue(option.id, Number(event.target.value))}
 									onPointerUp={() => setAnnouncement(`${label}: ${values[option.id] ?? 0} points. ${Math.max(0, total - sumOf(values, ids))} left.`)}
 									className={cn("h-11 min-w-0 flex-1 cursor-pointer rounded-full disabled:cursor-not-allowed", FOCUS_RING)}
-									style={{ accentColor: "var(--deck-primary, #F79945)" }}
+									style={{ accentColor: "var(--deck-primary, var(--color-primary))" }}
 								/>
 								<button
 									type="button"

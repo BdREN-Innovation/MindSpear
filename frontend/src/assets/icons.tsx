@@ -4,7 +4,7 @@ export function MultypleQsenIcon(props: IconProps) {
 	return (
 		<svg
 			{...props}
-			className="!text-[#bc5eb3]"
+			className="!text-secondary"
 			xmlns="http://www.w3.org/2000/svg"
 			role="img"
 			width="32"

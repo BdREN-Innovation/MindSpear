@@ -108,11 +108,11 @@ export function OptionsHiddenView({
 				<motion.span
 					aria-hidden
 					className="flex h-20 w-20 items-center justify-center rounded-full"
-					style={{ background: "color-mix(in srgb, var(--deck-primary, #F79945) 14%, var(--deck-surface, #fff))" }}
+					style={{ background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 14%, var(--deck-surface, #fff))" }}
 					animate={reduced ? undefined : { rotate: [0, 0, 180, 180] }}
 					transition={reduced ? undefined : { duration: 2.4, times: [0, 0.45, 0.6, 1], repeat: Infinity, ease: "easeInOut" }}
 				>
-					<Hourglass className="h-10 w-10" style={{ color: "var(--deck-primary, #F79945)" }} />
+					<Hourglass className="h-10 w-10" style={{ color: "var(--deck-primary, var(--color-primary))" }} />
 				</motion.span>
 				<p className="m-0 text-2xl font-bold">{arriving ? "Here it comes…" : "Get ready…"}</p>
 				<p className="m-0 max-w-xs text-base" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
@@ -189,7 +189,7 @@ export function PointsBar({
 		>
 			<div className="flex items-baseline justify-between gap-3">
 				<span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
-					<Zap className="h-4 w-4" aria-hidden style={{ color: "var(--deck-primary, #F79945)" }} />
+					<Zap className="h-4 w-4" aria-hidden style={{ color: "var(--deck-primary, var(--color-primary))" }} />
 					{speed ? "Earnable points" : "Points"}
 				</span>
 				<span className="text-lg font-bold tabular-nums">{formatPoints(points)}</span>
@@ -206,7 +206,7 @@ export function PointsBar({
 			>
 				<div
 					className="h-full rounded-full motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-linear"
-					style={{ width: `${share * 100}%`, background: "var(--deck-primary, #F79945)" }}
+					style={{ width: `${share * 100}%`, background: "var(--deck-primary, var(--color-primary))" }}
 				/>
 			</div>
 			{speed ? (
@@ -234,7 +234,7 @@ export function LockedIn({ children, title = "Answer locked in!" }: { children?:
 				animate={{ scale: 1, opacity: 1 }}
 				transition={reduced ? { duration: 0 } : { type: "spring", stiffness: 380, damping: 18 }}
 			>
-				<CheckCircle2 className="h-16 w-16" style={{ color: "var(--deck-primary, #F79945)" }} aria-hidden />
+				<CheckCircle2 className="h-16 w-16" style={{ color: "var(--deck-primary, var(--color-primary))" }} aria-hidden />
 			</motion.span>
 			<h3 className="m-0 text-2xl font-bold">{title}</h3>
 			<p className="m-0 text-base" style={{ color: "var(--deck-text-muted, #4B5563)" }}>
@@ -286,7 +286,7 @@ export function QuizResultBanner({
 
 	const config = {
 		correct: { Icon: CheckCircle2, title: "Correct!", color: "var(--deck-success, #15803D)" },
-		partial: { Icon: CircleDashed, title: "Partly correct", color: "var(--deck-primary, #F79945)" },
+		partial: { Icon: CircleDashed, title: "Partly correct", color: "var(--deck-primary, var(--color-primary))" },
 		wrong: { Icon: XCircle, title: "Not quite", color: "var(--deck-danger, #B91C1C)" },
 		none: { Icon: Clock, title: "No answer", color: "var(--deck-text-muted, #4B5563)" },
 		pending: { Icon: Clock, title: "Checking your answer…", color: "var(--deck-text-muted, #4B5563)" },

@@ -138,7 +138,7 @@ export function NewDeckDialog({ product, open, onClose }: { product: DeckProduct
 						{tile.promptCard ? (
 							// Not built yet: shown so people know it is coming; a button so keyboard users reach it.
 							<button type="button" aria-disabled="true" className={cardClass}>
-								<div className="relative flex w-full cursor-pointer items-center justify-center rounded-[10px] border border-[#2222] bg-[#BC5EB3] p-12 transition-all duration-500 ease-in-out group-hover:!border-[#222] sm:p-16">
+								<div className="relative flex w-full cursor-pointer items-center justify-center rounded-[10px] border border-[#2222] bg-secondary p-12 transition-all duration-500 ease-in-out group-hover:!border-[#222] sm:p-16">
 									<div className="absolute right-0 top-0 hidden w-[120px] rounded-bl-[100px] rounded-br-[10px] rounded-tl-[100px] rounded-tr-[10px] bg-[#f590eb] py-[85px] sm:w-[150px] lg:block" />
 									<ImFilesEmpty className="relative text-[#743e6e] transition-all duration-500 ease-in-out group-hover:!text-[#222]" size={40} aria-hidden />
 								</div>

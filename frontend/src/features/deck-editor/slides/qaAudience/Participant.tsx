@@ -22,7 +22,7 @@ import { sampleParticipantQuestions } from "./sample";
 // this screen shows its own errors (unlike the answer types).
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 const SORTS: { value: QaFeedSort; label: string }[] = [
 	{ value: "top", label: "Top" },
@@ -48,7 +48,7 @@ function QuestionRow({
 			exit={reduceMotion ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0 }}
 			className="flex items-start gap-3 rounded-xl border p-3"
 			style={{
-				borderColor: question.is_mine ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+				borderColor: question.is_mine ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 				background: "var(--deck-surface, #fff)",
 			}}
 		>
@@ -69,7 +69,7 @@ function QuestionRow({
 				{question.is_mine || question.is_starred || question.is_answered ? (
 					<div className="flex flex-wrap gap-1.5 text-xs font-semibold">
 						{question.is_mine ? (
-							<span className="rounded-full px-2 py-0.5" style={{ background: "color-mix(in srgb, var(--deck-primary, #F79945) 18%, transparent)" }}>
+							<span className="rounded-full px-2 py-0.5" style={{ background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 18%, transparent)" }}>
 								You asked
 							</span>
 						) : null}
@@ -214,7 +214,7 @@ export function QaAudienceParticipant({ run, qa, disabled, mode }: ParticipantPr
 								"flex min-h-12 touch-manipulation items-center gap-2 rounded-xl px-5 text-base font-semibold transition motion-safe:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
 								FOCUS_RING
 							)}
-							style={{ background: "var(--deck-primary, #F79945)", color: "var(--deck-on-primary, #111928)" }}
+							style={{ background: "var(--deck-primary, var(--color-primary))", color: "var(--deck-on-primary, #111928)" }}
 						>
 							{sending ? (
 								<span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" aria-hidden />

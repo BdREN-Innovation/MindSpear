@@ -20,7 +20,7 @@ import { clampPoints, fitLabels, scaleColor } from "./scale";
 // average and spread per statement in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 /** More statements than this get the one-per-page pager. */
 const STACK_LIMIT = 3;
@@ -334,8 +334,8 @@ function StatementPills({
 								FOCUS_RING
 							)}
 							style={{
-								borderColor: selected ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
-								background: selected ? "var(--deck-primary, #F79945)" : "var(--deck-surface, #fff)",
+								borderColor: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
+								background: selected ? "var(--deck-primary, var(--color-primary))" : "var(--deck-surface, #fff)",
 								color: selected ? "var(--deck-on-primary, #111928)" : "var(--deck-text, #111928)",
 							}}
 						>
@@ -391,7 +391,7 @@ function Pager({
 								key={index}
 								className="h-2 w-2 rounded-full"
 								style={{
-									background: index === current ? "var(--deck-text, #111928)" : done ? "var(--deck-primary, #F79945)" : "var(--deck-border, #D1D5DB)",
+									background: index === current ? "var(--deck-text, #111928)" : done ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #D1D5DB)",
 								}}
 							/>
 						))}

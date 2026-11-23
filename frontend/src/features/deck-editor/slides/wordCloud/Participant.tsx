@@ -23,7 +23,7 @@ import { cleanWord } from "../shared/text";
 
 type Stored = StoredAnswerMap["word_cloud"];
 
-const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]";
+const FOCUS_RING = "outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))]";
 
 const cleanEntry = cleanWord;
 
@@ -248,7 +248,7 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 							disabled={locked || full || !cleanEntry(draft)}
 							aria-label="Add word"
 							className={cn("flex min-h-12 min-w-12 items-center justify-center rounded-xl border-2 disabled:opacity-50", FOCUS_RING)}
-							style={{ borderColor: "var(--deck-primary, #F79945)", color: "var(--deck-text, #111928)", background: "var(--deck-surface, #fff)" }}
+							style={{ borderColor: "var(--deck-primary, var(--color-primary))", color: "var(--deck-text, #111928)", background: "var(--deck-surface, #fff)" }}
 						>
 							<Plus className="h-5 w-5" aria-hidden />
 						</button>
@@ -262,8 +262,8 @@ export function WordCloudParticipant({ run, mySubmission, onSubmit, disabled, th
 								key={entryKey(chip)}
 								className="flex min-h-11 items-center gap-1 rounded-full border-2 pl-4 pr-1 text-base font-semibold"
 								style={{
-									borderColor: "var(--deck-primary, #F79945)",
-									background: "color-mix(in srgb, var(--deck-primary, #F79945) 14%, var(--deck-surface, #fff))",
+									borderColor: "var(--deck-primary, var(--color-primary))",
+									background: "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 14%, var(--deck-surface, #fff))",
 								}}
 							>
 								<span className="break-all">{chip}</span>
@@ -322,7 +322,7 @@ function WordResults({ aggregate, mine, title }: { aggregate: WordCloudAggregate
 								className="flex items-center gap-1.5 break-all rounded-full px-3 py-1 text-sm font-semibold"
 								style={{
 									background: yours
-										? "color-mix(in srgb, var(--deck-primary, #F79945) 18%, var(--deck-surface, #fff))"
+										? "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 18%, var(--deck-surface, #fff))"
 										: "var(--deck-surface-muted, #F3F4F6)",
 									color: "var(--deck-text, #111928)",
 								}}
@@ -354,7 +354,7 @@ function ChipList({ entries, muted = false }: { entries: string[]; muted?: boole
 					key={entryKey(entry)}
 					className="break-all rounded-full px-3 py-1 text-sm font-semibold"
 					style={{
-						background: muted ? "var(--deck-surface-muted, #F3F4F6)" : "color-mix(in srgb, var(--deck-primary, #F79945) 18%, var(--deck-surface, #fff))",
+						background: muted ? "var(--deck-surface-muted, #F3F4F6)" : "color-mix(in srgb, var(--deck-primary, var(--color-primary)) 18%, var(--deck-surface, #fff))",
 						color: "var(--deck-text, #111928)",
 					}}
 				>

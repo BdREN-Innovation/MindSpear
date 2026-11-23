@@ -4,9 +4,11 @@ namespace App\Modules\Sso\Services;
 
 use App\Models\User;
 use App\Modules\Sso\Exceptions\SsoException;
+use App\Modules\Sso\Models\SsoIdentity;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * The two browser flows, both ending on the frontend page /auth/sso/callback:
@@ -88,7 +90,10 @@ class SsoLoginService
         }
 
         ['user' => $user, 'linked_via' => $via, 'created' => $created] = $this->linker->resolve($profile);
-        $token = $user->createToken(config('app.name') . '-sso')->plainTextToken;
+        $issued = $user->createToken(config('app.name') . '-sso');
+        // The BDREN session it belongs to, so logging out of BDREN anywhere revokes it (endSessions).
+        $issued->accessToken->forceFill(['sso_sid' => $claims['sid'] ?? null])->save();
+        $token = $issued->plainTextToken;
         Log::info('sso.login', ['user_id' => $user->id, 'linked_via' => $via, 'created' => $created]);
 
         return [
@@ -107,6 +112,26 @@ class SsoLoginService
             'provider' => 'bdren',
             'sso' => ['linked_via' => $via, 'created' => $created],
         ];
+    }
+
+    /**
+     * BDREN ended a session (back-channel logout): revokes the Mindspear tokens of that session (`sid`), or
+     * every BDREN-issued token of the user when the notice names only `sub`. Returns how many were revoked.
+     */
+    public function endSessions(array $claims): int
+    {
+        if (! empty($claims['sid'])) {
+            return PersonalAccessToken::where('sso_sid', $claims['sid'])->delete();
+        }
+        $userId = SsoIdentity::where('issuer', config('sso.issuer'))->where('subject', $claims['sub'])->value('user_id');
+        if (! $userId) {
+            return 0;
+        }
+
+        return PersonalAccessToken::where('tokenable_type', (new User())->getMorphClass())
+            ->where('tokenable_id', $userId)
+            ->whereNotNull('sso_sid')
+            ->delete();
     }
 
     public function ensureConfigured(): void

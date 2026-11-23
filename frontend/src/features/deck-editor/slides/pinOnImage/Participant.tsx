@@ -20,7 +20,7 @@ import { clampPercent, describePoint, isPoint, pointKeys, roundPercent } from ".
 // Public results (aggregate passed) show everyone's pins in every view.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 function storedPins(value: unknown): Point[] {
 	const pins = (value as { pins?: unknown } | null)?.pins;
@@ -113,7 +113,7 @@ function PinBoard({
 					key={`other-${index}`}
 					aria-hidden
 					className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-					style={{ left: `${pin.x}%`, top: `${pin.y}%`, background: "var(--deck-accent, #BC5EB3)", opacity: 0.55 }}
+					style={{ left: `${pin.x}%`, top: `${pin.y}%`, background: "var(--deck-accent, var(--color-secondary))", opacity: 0.55 }}
 				/>
 			))}
 
@@ -134,12 +134,12 @@ function PinBoard({
 						<span
 							aria-hidden
 							className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full opacity-60 motion-safe:animate-ping"
-							style={{ background: "var(--deck-primary, #F79945)" }}
+							style={{ background: "var(--deck-primary, var(--color-primary))" }}
 						/>
 						<span
 							aria-hidden
 							className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-md"
-							style={{ background: "var(--deck-primary, #F79945)" }}
+							style={{ background: "var(--deck-primary, var(--color-primary))" }}
 						/>
 					</>
 				);

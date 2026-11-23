@@ -125,7 +125,7 @@ export function ShortAnswerParticipant({ run, mySubmission, onSubmit, disabled, 
 					enterKeyHint="send"
 					placeholder="Type here…"
 					aria-invalid={tooLong || !!answer.fieldError || undefined}
-					className="min-h-14 w-full rounded-xl border-2 px-4 text-lg outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] disabled:opacity-60"
+					className="min-h-14 w-full rounded-xl border-2 px-4 text-lg outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] disabled:opacity-60"
 					style={{ borderColor: "var(--deck-border, #E5E7EB)", background: "var(--deck-surface, #fff)", color: "var(--deck-text, #111928)" }}
 				/>
 				{tooLong ? (

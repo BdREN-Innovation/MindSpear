@@ -45,7 +45,7 @@ import {
 // run's opaque ids. Final once sent.
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 type Item = RunOption<OpaqueOptionId, Record<never, never>>;
 
@@ -289,7 +289,7 @@ function SortableRow({
 				transition,
 				position: "relative",
 				zIndex: isDragging ? 10 : undefined,
-				borderColor: isDragging || expanded ? "var(--deck-primary, #F79945)" : "var(--deck-border, #E5E7EB)",
+				borderColor: isDragging || expanded ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #E5E7EB)",
 				background: "var(--deck-surface, #fff)",
 				color: "var(--deck-text, #111928)",
 			}}

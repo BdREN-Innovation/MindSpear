@@ -78,7 +78,10 @@ axiosInstance.interceptors.response.use(
 	},
 	(error) => {
 		if (error.response?.status === 401 && typeof window !== "undefined") {
+			// Signed out elsewhere (BDREN logout) or the token expired: forget the saved sign-in too, so the
+			// page that loads next shows the signed-out state instead of the persisted "signed in" one.
 			localStorage.removeItem("auth_token");
+			localStorage.removeItem("persist:root");
 			window.location.href = "/";
 		}
 

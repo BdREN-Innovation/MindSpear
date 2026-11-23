@@ -23,7 +23,7 @@ export function StarMeter({ value, scale, size, className }: { value: number | n
 							className="absolute inset-y-0 left-0 overflow-hidden transition-[width] duration-500 ease-out motion-reduce:transition-none"
 							style={{ width: `${fill * 100}%` }}
 						>
-							<Star style={{ width: size, height: size, color: "var(--deck-primary, #F79945)" }} fill="currentColor" strokeWidth={0} />
+							<Star style={{ width: size, height: size, color: "var(--deck-primary, var(--color-primary))" }} fill="currentColor" strokeWidth={0} />
 						</span>
 					</span>
 				);
@@ -33,7 +33,7 @@ export function StarMeter({ value, scale, size, className }: { value: number | n
 }
 
 const FOCUS_RING =
-	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,#C46620)] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
+	"outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))] focus-visible:ring-offset-[color:var(--deck-bg,#fff)]";
 
 export interface StarInputProps {
 	/** Accessible name, e.g. the item label. */
@@ -97,7 +97,7 @@ export function StarInput({ label, value, scale, onChange, disabled = false }: S
 					>
 						<Star
 							className="h-9 w-9 transition-colors"
-							style={{ color: on ? "var(--deck-primary, #F79945)" : "var(--deck-border, #D1D5DB)" }}
+							style={{ color: on ? "var(--deck-primary, var(--color-primary))" : "var(--deck-border, #D1D5DB)" }}
 							fill="currentColor"
 							strokeWidth={on ? 0 : 1}
 							aria-hidden

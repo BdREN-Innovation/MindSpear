@@ -151,7 +151,7 @@ export function OpenEndedParticipant({ run, mySubmission, onSubmit, disabled, th
 					aria-describedby={counterId}
 					className={cn(
 						"min-h-36 w-full resize-y rounded-xl border-2 px-4 py-3 text-base leading-relaxed outline-none disabled:opacity-60",
-						"focus-visible:border-[color:var(--deck-primary,#F79945)] focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]"
+						"focus-visible:border-[color:var(--deck-primary,var(--color-primary))] focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))]"
 					)}
 					style={{
 						borderColor: "var(--deck-border, #E5E7EB)",
@@ -177,7 +177,7 @@ export function OpenEndedParticipant({ run, mySubmission, onSubmit, disabled, th
 						answer.cancelEdit();
 					}}
 					disabled={busy}
-					className="min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,#C46620)]"
+					className="min-h-11 self-center rounded-lg px-4 text-sm font-semibold underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--deck-focus,var(--color-primary-600))]"
 					style={{ color: "var(--deck-text-muted, #4B5563)" }}
 				>
 					Cancel

@@ -1,4 +1,5 @@
 import Swal from "sweetalert2";
+import { theme } from "@/config/theme";
 
 type ConfirmDialogOptions = {
 	title?: string;
@@ -19,7 +20,7 @@ class ConfirmDialog {
 			icon: "question",
 			showCancelButton: true,
 			confirmButtonColor: options.confirmButtonColor || "#ff0000",
-			cancelButtonColor: "#F79945",
+			cancelButtonColor: theme.colors.primary.DEFAULT,
 			confirmButtonText: options.confirmButtonText || "Confirm",
 			cancelButtonText: options.cancelButtonText || "Cancel",
 			reverseButtons: true,
