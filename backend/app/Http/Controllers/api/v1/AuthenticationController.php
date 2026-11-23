@@ -23,6 +23,9 @@ use Illuminate\Support\Str;
 
 class AuthenticationController extends ApiBaseController
 {
+    /** How long a password reset link stays valid. */
+    public const RESET_TOKEN_MINUTES = 60;
+
     /**
      * Register a new user.
      */
@@ -46,7 +49,7 @@ class AuthenticationController extends ApiBaseController
             $user = User::create([
                 'first_name' => $validatedData['first_name'],
                 'last_name' => $validatedData['last_name'],
-                'email' => $validatedData['email'],
+                'email' => strtolower(trim($validatedData['email'])),
                 'password' => bcrypt($validatedData['password']),
                 'email_verification_token' => $verificationToken,
             ]);
@@ -107,7 +110,7 @@ class AuthenticationController extends ApiBaseController
             $user = User::where('email', $validatedData['email'])->first();
 
             if (! $user) {
-                return $this->notFoundResponse([], __('User not found'));
+                return $this->unauthorizedResponse([], __('Invalid credentials'));
             }
 
             if (! $user->is_verified || ! $user->email_verified_at) {
@@ -141,7 +144,8 @@ class AuthenticationController extends ApiBaseController
         $user = User::where('email', $validated['email'])->first();
 
         if (! $user) {
-            return $this->okResponse([], __('User not found'));
+            // Same answer as for a known address, so the form can't be used to list customers.
+            return $this->okResponse([], __('If that address has an account, a reset link is on its way.'));
         }
 
         $token = Str::random(60);
@@ -149,7 +153,7 @@ class AuthenticationController extends ApiBaseController
         PasswordResetToken::updateOrCreate(
             ['email' => $validated['email']],
             [
-                'token' => $token,
+                'token' => hash('sha256', $token), // the plain token only travels in the email
                 'created_at' => now(),
             ]
         );
@@ -178,7 +182,8 @@ class AuthenticationController extends ApiBaseController
         $user = User::where('email', $validated['email'])->first();
 
         if (! $user) {
-            return $this->okResponse([], __('User not found'));
+            // Same answer as for a known address, so the form can't be used to list customers.
+            return $this->okResponse([], __('If that address has an account, a reset link is on its way.'));
         }
 
         $token = Str::random(60);
@@ -186,7 +191,7 @@ class AuthenticationController extends ApiBaseController
         PasswordResetToken::updateOrCreate(
             ['email' => $validated['email']],
             [
-                'token' => $token,
+                'token' => hash('sha256', $token), // the plain token only travels in the email
                 'created_at' => now(),
             ]
         );
@@ -213,10 +218,17 @@ class AuthenticationController extends ApiBaseController
     {
         try {
             $validatedData = $request->validated();
-            $passwordResetToken = PasswordResetToken::where('email', $validatedData['email'])->where('token', $validatedData['token'])->first();
+            $passwordResetToken = PasswordResetToken::where('email', $validatedData['email'])
+                ->where('token', hash('sha256', (string) $validatedData['token']))
+                ->first();
 
             if (! $passwordResetToken) {
-                return $this->badRequestResponse([], __('Invalid token'));
+                return $this->badRequestResponse([], __('This reset link is not valid. Please request a new one.'));
+            }
+            if ($passwordResetToken->created_at === null || $passwordResetToken->created_at < now()->subMinutes(self::RESET_TOKEN_MINUTES)) {
+                $passwordResetToken->delete();
+
+                return $this->badRequestResponse([], __('This reset link has expired. Please request a new one.'));
             }
 
             $user = User::where('email', $validatedData['email'])->first();
@@ -229,6 +241,8 @@ class AuthenticationController extends ApiBaseController
             $user->save();
             // Delete the password reset token after successful reset
             $passwordResetToken->delete();
+            // Whoever held a session before the reset is signed out everywhere.
+            $user->tokens()->delete();
 
             return $this->okResponse([], __('Password reset successfully'));
         } catch (\Exception $e) {
@@ -247,13 +261,29 @@ class AuthenticationController extends ApiBaseController
     {
         try {
             $validatedData = $request->validated();
-            $user = User::where('email', $validatedData['email'])->first();
+            $email = strtolower(trim((string) $validatedData['email']));
+            $token = (string) $validatedData['token'];
 
-            if (! $user) {
-                return $this->notFoundResponse([], __('User not found'));
+            // A pending address change: the link went to the new address, which proves it.
+            $changing = User::query()->whereRaw('LOWER(pending_email) = ?', [$email])->whereNotNull('pending_email_token')->first();
+            if ($changing && hash_equals($changing->pending_email_token, $token)) {
+                if (User::query()->whereRaw('LOWER(email) = ?', [$email])->where('id', '<>', $changing->id)->exists()) {
+                    return $this->badRequestResponse([], __('That email address is already in use.'));
+                }
+                $changing->email = $email;
+                $changing->pending_email = null;
+                $changing->pending_email_token = null;
+                $changing->pending_email_requested_at = null;
+                $changing->email_verified_at = now();
+                $changing->is_verified = true;
+                $changing->save();
+                $changing->tokens()->delete();
+
+                return $this->okResponse([], __('Your new email address is confirmed. Please sign in again.'));
             }
 
-            if ($user->email_verification_token !== $validatedData['token']) {
+            $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+            if (! $user || $user->email_verification_token === null || ! hash_equals($user->email_verification_token, $token)) {
                 return $this->badRequestResponse([], __('Invalid token'));
             }
 
@@ -261,11 +291,9 @@ class AuthenticationController extends ApiBaseController
             $user->email_verification_token = null;
             $user->is_verified = true;
             $user->save();
-            // Generate a new token for the user
-            $token = $user->createToken(config('app.name'))->plainTextToken;
 
-            // Return a success response
-            return $this->okResponse(['user' => $user, 'token' => $token], __('Email verified successfully'));
+            // The link proves the address, nothing more: sign in with the password as usual.
+            return $this->okResponse([], __('Email verified successfully. You can sign in now.'));
         } catch (\Exception $e) {
             // Log the error message
             Log::error('Email verification error: ' . $e->getMessage());
@@ -286,7 +314,8 @@ class AuthenticationController extends ApiBaseController
             $user = User::where('email', $validatedData['email'])->first();
 
             if (! $user) {
-                return $this->notFoundResponse([], __('User not found'));
+                // Same answer as for a known address, so the form can't be used to list customers.
+                return $this->okResponse([], __('If that address has an unverified account, a new link is on its way.'));
             }
 
             if ($user->email_verified_at) {

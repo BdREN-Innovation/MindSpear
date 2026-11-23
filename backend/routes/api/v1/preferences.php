@@ -3,7 +3,8 @@
 use App\Http\Controllers\api\v1\PreferenceController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware('auth:sanctum')->group(function () {
+// Global site settings: the Super Admin only (the public endpoints below stay for the website).
+Route::middleware(['auth:sanctum', 'super-admin'])->group(function () {
     Route::prefix('preferences')->group(function () {
         Route::get('/', [PreferenceController::class, 'index'])->name('preferences.index');
         Route::get('/grouped/{filter}', [PreferenceController::class, 'grouped'])->name('preferences.grouped');

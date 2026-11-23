@@ -94,7 +94,10 @@ class QuestTaskBankController extends ApiBaseController
 
     public function show(int $id): JsonResponse
     {
-        $task = BankTask::with(['category', 'owner'])->withTrashed()->find($id);
+        // Only the owner's own items and public ones; deleted ones are gone for everyone else.
+        $task = BankTask::with(['category', 'owner:id,first_name,last_name,profile_picture'])
+            ->where(fn ($q) => $q->where('owner_id', auth()->id())->orWhere('visibility', 'public'))
+            ->find($id);
         if (! $task) {
             return $this->notFoundResponse([], __('Bank task not found.'));
         }

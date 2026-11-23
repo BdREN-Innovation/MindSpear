@@ -26,13 +26,21 @@ trait FileUploadTrait
      * @param  string|null  $oldFile  The old file path to delete, if any.
      * @return string The path to the stored file.
      */
+    /** The only file types this trait stores (profile pictures, logos, site images). */
+    public const ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
     public function uploadFile(UploadedFile $file, string $baseDirectory, ?string $oldFile = null): string
     {
         // Get the current date using PHP's built-in functions
         $year = date('Y');
         $month = date('m');
         $day = date('d');
-        $extension = $file->getClientOriginalExtension();
+        // The extension comes from the file's real content, never from the client's file name:
+        // a file named "x.html" served from this site's /storage would otherwise run as a page.
+        $extension = strtolower((string) $file->guessExtension());
+        if (! in_array($extension, self::ALLOWED_IMAGE_EXTENSIONS, true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'Only JPEG, PNG, GIF or WebP images can be uploaded here.']);
+        }
 
         // Build the directory structure: year/month/day/baseDirectory
         $directory = sprintf(

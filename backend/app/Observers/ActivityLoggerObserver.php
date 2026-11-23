@@ -15,9 +15,11 @@ class ActivityLoggerObserver
 
     public function updated(Model $model): void
     {
+        // Never record password hashes or tokens (the model's hidden attributes).
+        $secret = array_merge($model->getHidden(), ['password', 'remember_token', 'email_verification_token', 'pending_email_token']);
         $changes = [
-            'attributes' => $model->getChanges(),
-            'original' => $model->getOriginal(),
+            'attributes' => \Illuminate\Support\Arr::except($model->getChanges(), $secret),
+            'original' => \Illuminate\Support\Arr::except($model->getOriginal(), $secret),
         ];
         $this->log($model, 'updated', $changes);
     }
@@ -32,7 +34,7 @@ class ActivityLoggerObserver
         $this->log($model, 'restored');
     }
 
-    protected function log(Model $model, string $event, array $changes = null): void
+    protected function log(Model $model, string $event, ?array $changes = null): void
     {
         ActivityLog::create([
             'user_id' => optional(auth()->user())->id,
@@ -45,4 +47,3 @@ class ActivityLoggerObserver
         ]);
     }
 }
-

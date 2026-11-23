@@ -34,6 +34,9 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
         'first_name',
         'last_name',
         'email',
+        'pending_email',
+        'pending_email_token',
+        'pending_email_requested_at',
         'phone',
         'email_verified_at',
         'email_verification_token',
@@ -57,6 +60,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar, HasName
      * @var list<string>
      */
     protected $hidden = [
+        'pending_email_token',
         'password',
         'remember_token',
         'email_verification_token',

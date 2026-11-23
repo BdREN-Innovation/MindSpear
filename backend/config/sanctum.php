@@ -47,7 +47,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Minutes a sign-in token stays valid (default 30 days); afterwards the person signs in
+    // again (one click with BDREN SSO). null would keep a stolen token valid forever.
+    'expiration' => env('SANCTUM_TOKEN_EXPIRATION', 43200),
 
     /*
     |--------------------------------------------------------------------------

@@ -51,5 +51,27 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perHour(5)->by('resend-verification:' . $email);
         });
+
+        // Password guessing: a few tries per account and per address, then a pause.
+        RateLimiter::for('login', function (Request $request) {
+            $email = $request->input('email');
+            $email = is_string($email) ? Str::lower(trim($email)) : '';
+
+            return [
+                Limit::perMinute(10)->by('login:email:' . $email),
+                Limit::perMinute(30)->by('login:ip:' . $request->ip()),
+            ];
+        });
+
+        // Reset-token guessing and inbox flooding through forgot / reset / verify.
+        RateLimiter::for('password-reset', function (Request $request) {
+            $email = $request->input('email');
+            $email = is_string($email) ? Str::lower(trim($email)) : '';
+
+            return [
+                Limit::perHour(5)->by('password-reset:email:' . $email),
+                Limit::perMinute(10)->by('password-reset:ip:' . $request->ip()),
+            ];
+        });
     }
 }

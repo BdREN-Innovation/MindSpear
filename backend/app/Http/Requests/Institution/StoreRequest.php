@@ -32,12 +32,8 @@ class StoreRequest extends BaseFormRequest
             'email' => 'nullable|email|max:255',
             'website' => 'nullable|url|max:255',
             'type' => 'required|string|in:public,private,other',
-            'logo' => 'nullable|file|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'logo' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status' => 'required|string|in:active,inactive',
-            'created_by' => 'nullable|integer|exists:users,id',
-            'updated_by' => 'nullable|integer|exists:users,id',
-            'deleted_by' => 'nullable|integer|exists:users,id',
-            'deleted_at' => 'nullable|date',
         ];
     }
 }

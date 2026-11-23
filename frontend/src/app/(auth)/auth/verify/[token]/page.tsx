@@ -56,10 +56,10 @@ export default function VerifyForm() {
           token,
         });
         if (response.status === 200) {
-
           setInitialCheckDone(true);
-          localStorage.setItem("auth_token", response?.data?.data?.token);
-          router.replace('/dashboard');
+          // The link proves the address only; signing in still needs the password or BDREN.
+          toast.success(response?.data?.message || 'Email verified. You can sign in now.');
+          router.replace('/auth/sign-in');
         } else {
           toast.error("Verification failed. Please try again.");
           
@@ -91,7 +91,8 @@ export default function VerifyForm() {
 
       console.log('API success:', response.data);
       reset();
-      router.replace('/login');
+      toast.success('Email verified. You can sign in now.');
+      router.replace('/auth/sign-in');
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setApiError("Verification failed. Please check your email and try again.");

@@ -5,6 +5,10 @@ namespace App\Http\Controllers\api\v1;
 use App\Http\Requests\Profile\ChangePasswordRequest;
 use App\Http\Requests\Profile\UpdateProfilePictureRequest;
 use App\Http\Requests\Profile\UpdateProfileRequest;
+use App\Mail\VerifyEmailMail;
+use App\Models\User;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -44,7 +48,7 @@ class ProfileController extends ApiBaseController
         try {
             $user = $request->user();
 
-            $user->update($request->only([
+            $data = $request->only([
                 'first_name',
                 'last_name',
                 'email',
@@ -53,7 +57,32 @@ class ProfileController extends ApiBaseController
                 'department',
                 'institution_id',
                 'institution_name',
-            ]));
+            ]);
+
+            // A new address is held as pending until the person clicks the link sent to it, so
+            // nobody can park someone else's address on their account (that address is what SSO
+            // and receipts would match on). The current address stays in use meanwhile.
+            $newEmail = isset($data['email']) ? strtolower(trim((string) $data['email'])) : null;
+            unset($data['email']);
+            $emailChanged = $newEmail !== null && $newEmail !== strtolower((string) $user->email);
+            if ($emailChanged) {
+                if (User::query()->whereRaw('LOWER(email) = ?', [$newEmail])->exists()) {
+                    return $this->unprocessableResponse(['validation_errors' => ['email' => ['That email address is already in use.']]], __('Validation Error'));
+                }
+                $data['pending_email'] = $newEmail;
+                $data['pending_email_token'] = Str::random(60);
+                $data['pending_email_requested_at'] = now();
+            }
+
+            $user->update($data);
+
+            if ($emailChanged) {
+                try {
+                    Mail::to($newEmail)->send(new VerifyEmailMail($user->pending_email_token, $newEmail));
+                } catch (\Throwable $e) {
+                    Log::warning('Email-change confirmation mail failed: ' . $e->getMessage());
+                }
+            }
 
             // Respond with the updated user profile
             return $this->okResponse(['profile' => $user], __('Profile updated successfully.'));
@@ -82,6 +111,8 @@ class ProfileController extends ApiBaseController
             }
 
             $user->update(['password' => bcrypt($request->new_password)]);
+            // A changed password signs out every other device; this one keeps working.
+            $user->tokens()->where('id', '<>', optional($user->currentAccessToken())->id)->delete();
 
             // Respond with a success message
             return $this->okResponse([], __('Password changed successfully.'));

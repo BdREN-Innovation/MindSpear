@@ -10,7 +10,16 @@
 # reached through nginx; PostgreSQL and Redis publish none.
 name: mindspear-prod
 
+# Every container's log is capped (5 files of 20 MB), so logs can't fill the disk that
+# PostgreSQL, ZITADEL and the other sites on this server share.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 x-backend: &backend
+  logging: *logging
   image: mindspear-prod-backend
   env_file: backend/.env.prod
   volumes:
@@ -27,6 +36,7 @@ x-after-backend: &after-backend
 
 services:
   postgres:
+    logging: *logging
     image: postgres:16-alpine
     env_file: backend/.env.prod
     volumes:
@@ -40,6 +50,7 @@ services:
       retries: 10
 
   redis:
+    logging: *logging
     image: redis:7-alpine
     env_file: backend/.env.prod
     # appendonly: queued jobs survive a restart.
@@ -77,6 +88,7 @@ services:
 
   # nginx in front of php-fpm: serves public/ and uploaded files.
   backend-web:
+    logging: *logging
     image: mindspear-prod-backend-web
     build:
       context: ./backend
@@ -93,6 +105,7 @@ services:
 
   # Live websockets; nginx forwards wss://dev.mindspear.app/app/... here.
   reverb:
+    logging: *logging
     <<: [*backend, *after-backend]
     command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
     ports:
@@ -103,12 +116,14 @@ services:
   # finished Fun Games (the "fungames" queue), listed second so live updates go first. If scoring
   # is held up, the ticker scores a game itself about 10 s after it ends.
   queue:
+    logging: *logging
     <<: [*backend, *after-backend]
     command: ["php", "artisan", "queue:work", "redis", "--queue=default,fungames", "--sleep=0.2", "--tries=3", "--max-time=3600"]
 
   # Renders PPTX slides for the page picker with LibreOffice (only this image has it). Its own
   # worker because a conversion takes seconds and would hold up live broadcasts on "queue".
   documents-queue:
+    logging: *logging
     <<: [*backend, *after-backend]
     image: mindspear-prod-documents
     build:
@@ -120,10 +135,12 @@ services:
   # Fun Games: locks questions, opens the next one and ends games on the server clock.
   # Exits hourly (--max-runtime) and is restarted fresh.
   fungames-ticker:
+    logging: *logging
     <<: [*backend, *after-backend]
     command: ["php", "artisan", "fun-games:tick", "--loop", "--max-runtime=3600"]
 
   frontend:
+    logging: *logging
     image: mindspear-prod-frontend
     build:
       context: ./frontend
@@ -152,6 +169,7 @@ services:
   # AI question generation. Checks the user's token against Laravel, then calls OpenRouter.
   # Its settings are in ai-server/.env.prod (template: ai-server/.env.prod.example).
   ai-server:
+    logging: *logging
     image: mindspear-prod-ai-server
     build: ./ai-server
     env_file: ai-server/.env.prod

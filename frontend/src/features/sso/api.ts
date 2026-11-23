@@ -13,6 +13,8 @@ export interface SsoConfig {
 	local_signup: boolean;
 	/** BDREN's sign-up page, which returns to Mindspear's sign-in; null while SSO is off. */
 	signup_url: string | null;
+	/** Direct social logins that have credentials on the server; the others stay hidden. */
+	social?: { google: boolean; microsoft: boolean };
 }
 
 export interface SsoStart {

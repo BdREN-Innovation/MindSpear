@@ -26,4 +26,12 @@ class RegisterRequest extends BaseFormRequest
             'password' => 'required|string|min:8|confirmed',
         ];
     }
+
+    /** Emails are stored in lowercase: compare them the same way, however they were typed. */
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('email'))) {
+            $this->merge(['email' => strtolower(trim($this->input('email')))]);
+        }
+    }
 }

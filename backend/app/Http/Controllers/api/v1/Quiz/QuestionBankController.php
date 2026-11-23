@@ -128,7 +128,10 @@ class QuestionBankController extends ApiBaseController
 
     public function show(int $id): JsonResponse
     {
-        $question = BankQuestion::with(['category', 'owner'])->withTrashed()->find($id);
+        // Only the owner's own items and public ones; deleted ones are gone for everyone else.
+        $question = BankQuestion::with(['category', 'owner:id,first_name,last_name,profile_picture'])
+            ->where(fn ($q) => $q->where('owner_id', auth()->id())->orWhere('visibility', 'public'))
+            ->find($id);
         if (! $question) {
             return $this->notFoundResponse([], __('Bank question not found.'));
         }

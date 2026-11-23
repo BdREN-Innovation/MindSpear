@@ -165,8 +165,11 @@ class LibraryController extends ApiBaseController
         }
 
         $downloadName = $owned->name . ($owned->extension && ! str_ends_with(strtolower($owned->name), '.' . $owned->extension) ? '.' . $owned->extension : '');
+        // A .txt is served as plain text whatever the upload's sniffed type (an HTML file renamed
+        // .txt would otherwise run as a page). Other documents keep their stored type.
+        $mime = $owned->extension === 'txt' ? 'text/plain; charset=UTF-8' : ($owned->mime_type ?: 'application/octet-stream');
         $headers = [
-            'Content-Type' => $owned->mime_type ?: 'application/octet-stream',
+            'Content-Type' => $mime,
             'Cache-Control' => 'private, max-age=300',
             'X-Content-Type-Options' => 'nosniff',
         ];

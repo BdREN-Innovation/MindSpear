@@ -32,12 +32,8 @@ class UpdateRequest extends BaseFormRequest
             'email' => 'sometimes|nullable|email|max:255',
             'website' => 'sometimes|nullable|url|max:255',
             'type' => 'sometimes|required|string|in:public,private,other',
-            'logo' => 'sometimes|nullable|file|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'logo' => 'sometimes|nullable|file|mimes:jpeg,png,jpg,gif,webp|max:2048',
             'status' => 'sometimes|required|string|in:active,inactive',
-            'created_by' => 'sometimes|nullable|integer|exists:users,id',
-            'updated_by' => 'sometimes|nullable|integer|exists:users,id',
-            'deleted_by' => 'sometimes|nullable|integer|exists:users,id',
-            'deleted_at' => 'sometimes|nullable|date',
         ];
     }
 }

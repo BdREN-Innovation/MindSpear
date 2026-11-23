@@ -20,8 +20,16 @@ class LoginRequest extends BaseFormRequest
     public function rules(): array
     {
         return [
-            'email' => 'required|string|email|exists:users,email',
+            'email' => 'required|string|email',
             'password' => 'required|string',
         ];
+    }
+
+    /** Emails are stored in lowercase: compare them the same way, however they were typed. */
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('email'))) {
+            $this->merge(['email' => strtolower(trim($this->input('email')))]);
+        }
     }
 }

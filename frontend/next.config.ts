@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+	// No "X-Powered-By: Next.js": it only tells attackers what to target.
+	poweredByHeader: false,
 	reactStrictMode: true,
 	// The production image (Dockerfile, "run" stage) runs the self-contained server Next builds here;
 	// `next dev` / `next start` elsewhere are unaffected.

@@ -29,8 +29,10 @@ class PreferenceController extends ApiBaseController
             $query->where('field', $request->input('field'));
         }
 
-        if ($request->has('sort_by')) {
-            $query->orderBy($request->input('sort_by'), $request->input('sort_order') ?? 'asc');
+        // Column and direction come from a fixed list: a raw column name here was an SQL injection.
+        $sortBy = $request->input('sort_by');
+        if (in_array($sortBy, ['category', 'field', 'created_at', 'updated_at'], true)) {
+            $query->orderBy($sortBy, strtolower((string) $request->input('sort_order')) === 'desc' ? 'desc' : 'asc');
         }
 
         if ($request->has('limit')) {

@@ -22,7 +22,7 @@ class UpdateProfilePictureRequest extends BaseFormRequest
     public function rules(): array
     {
         return [
-            'profile_picture' => 'sometimes|file|mimes:jpeg,png,jpg,gif,svg|max:5192',
+            'profile_picture' => 'sometimes|file|mimes:jpeg,png,jpg,gif,webp|max:5192',
         ];
     }
 }

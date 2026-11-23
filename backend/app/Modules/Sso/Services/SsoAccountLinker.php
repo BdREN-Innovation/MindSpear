@@ -73,7 +73,9 @@ class SsoAccountLinker
         $existing = $profile->email ? $this->userByEmail($profile->email) : null;
 
         if ($existing) {
-            if (! config('sso.link_by_verified_email') || ! $profile->emailVerified) {
+            // Both sides must have proven the address: BDREN, and the Mindspear account itself
+            // (an unverified Mindspear account may belong to someone who only typed that address).
+            if (! config('sso.link_by_verified_email') || ! $profile->emailVerified || $existing->email_verified_at === null) {
                 throw new SsoException(
                     'A Mindspear account with this email already exists. Sign in with your password, then connect BDREN SSO from your profile.',
                     409,

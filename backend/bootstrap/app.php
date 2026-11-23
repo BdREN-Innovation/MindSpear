@@ -50,8 +50,13 @@ return Application::configure(basePath: dirname(__DIR__))
     ])
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->statefulApi();
+        // Only the host nginx (same machine) sits in front: take the visitor's address from its
+        // X-Forwarded-For, so rate limits and logs see people, not the proxy. Nothing further away
+        // is trusted, so a client can't forge the header.
+        $middleware->trustProxies(at: ['127.0.0.1', '::1', '172.16.0.0/12'], headers: \Illuminate\Http\Request::HEADER_X_FORWARDED_FOR | \Illuminate\Http\Request::HEADER_X_FORWARDED_PROTO);
         $middleware->alias([
             'role' => RoleMiddleware::class,
+            'super-admin' => \App\Http\Middleware\RequireSuperAdmin::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
             'auth' => Authenticate::class,

@@ -48,6 +48,12 @@ class SsoController extends Controller
             // false: the sign-up page offers only `signup_url` (BDREN's sign-up), see SsoSignup.
             'local_signup' => SsoSignup::localAllowed(),
             'signup_url' => SsoSignup::bdrenSignupUrl(),
+            // Which direct social logins have credentials; the sign-in page hides the others,
+            // so nobody clicks a button that can only fail.
+            'social' => [
+                'google' => filled(config('services.google.client_id')) && filled(config('services.google.client_secret')),
+                'microsoft' => filled(config('services.microsoft.client_id')),
+            ],
         ]);
     }
 
