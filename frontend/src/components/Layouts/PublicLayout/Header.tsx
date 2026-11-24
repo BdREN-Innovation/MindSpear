@@ -17,7 +17,8 @@ type NavItem = {
 const navItems: NavItem[] = [
 	{ name: "Home", href: "/" },
 	{ name: "Login", href: "/auth/sign-in" },
-	{ name: "Registration", href: "/auth/sign-up" },
+		// { name: "Registration", href: "/auth/sign-up" },
+	// No "Registration": accounts are created on bdren.ai (the sign-in page links there).
 ];
 
 export default function HedaerPublic(): JSX.Element {
@@ -27,7 +28,7 @@ export default function HedaerPublic(): JSX.Element {
 		pathname.includes("quiz-public") ||
 		pathname.includes("attempt") ||
 		pathname.includes("live") ||
-		// Players' results after a live quiz (they had the site's Login / Registration menu).
+		// Players' results after a live quiz (they had the site's Login menu).
 		pathname.includes("quiz-result-view");
 	const [open, setOpen] = useState<boolean>(false);
 	const isAuthenticated = useSelector(

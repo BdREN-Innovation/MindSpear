@@ -36,9 +36,21 @@ def _first_message(exc: RequestValidationError) -> str:
     return f"{where}: {message}" if where else message
 
 
+class _SkipHealthChecks(logging.Filter):
+    """Drops access-log lines for /health: Docker's health check calls it every 30 s."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn's access record args: (client, method, path, http_version, status)
+        args = record.args
+        return not (isinstance(args, tuple) and len(args) >= 3 and args[2] == "/health")
+
+
 def create_app(settings: Settings | None = None, llm: StructuredLLM | None = None) -> FastAPI:
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level.upper())
+    access_log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _SkipHealthChecks) for f in access_log.filters):
+        access_log.addFilter(_SkipHealthChecks())
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

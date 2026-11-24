@@ -19,8 +19,8 @@ export default function SignIn() {
 						/>
 					</Link>
 					<p className="text-lg text-center max-w-md text-[#222]">
-						Please sign in to your account by completing the
-						necessary fields below.
+						Please sign in to your account 
+						{/* by completing the necessary fields below. */}
 					</p>
 				</div>
 				<div className="w-full  px-8 py-4">

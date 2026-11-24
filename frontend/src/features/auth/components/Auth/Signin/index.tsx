@@ -1,5 +1,4 @@
 'use client'
-import Link from "next/link";
 
 import GoogleSigninButton from "../GoogleSigninButton";
 import SigninWithPassword from "../SigninWithPassword";
@@ -31,7 +30,7 @@ export default function Signin() {
 		<>
 			{/* BDREN is the main way in; it renders nothing while SSO is off. */}
 			<SsoSigninButton text="Sign in" autoStart primary />
-			{google && <GoogleSigninButton text="Sign in" />}
+			{/* {google && <GoogleSigninButton text="Sign in" />}
 			{microsoft && <MicrosoftSigninButton text="Sign in" />}
 			<div className="my-6 flex items-center justify-center">
 				<span className="block h-px w-full bg-stroke dark:bg-dark-3"></span>
@@ -39,13 +38,13 @@ export default function Signin() {
 					or sign in with email and password
 				</div>
 				<span className="block h-px w-full bg-stroke dark:bg-dark-3"></span>
-			</div>
+			</div> */}
 
-			<div>
+			{/* <div>
 				<SigninWithPassword />
-			</div>
+			</div> */}
 
-			<div className="mt-6 text-center">
+			{/* <div className="mt-6 text-center">
 				<p>
 					{`Don't have an account?`} &nbsp;
 					<Link
@@ -55,7 +54,18 @@ export default function Signin() {
 						Sign up
 					</Link>
 				</p>
-			</div>
+			</div> */}
+			{/* Accounts are created on bdren.ai only; it brings the person back here signed in. */}
+			{config?.signup_url && (
+				<div className="mt-6 text-center">
+					<p>
+						New to Mindspear?&nbsp;
+						<a href={config.signup_url} className="text-primary hover:underline">
+							Create a BdREN account
+						</a>
+					</p>
+				</div>
+			)}
 		</>
 	);
 }

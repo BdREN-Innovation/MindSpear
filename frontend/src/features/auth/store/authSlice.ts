@@ -270,77 +270,77 @@ export const loginWithMicrosoft = createAsyncThunk<
 	}
 });
 
-// Register user
-interface RegisterPayload {
-	first_name: string;
-	last_name: string;
-	email: string;
-	password: string;
-	password_confirmation: string;
-}
+// // Register user
+// interface RegisterPayload {
+// 	first_name: string;
+// 	last_name: string;
+// 	email: string;
+// 	password: string;
+// 	password_confirmation: string;
+// }
 
-export const registerUser = createAsyncThunk<
-	{ user: AuthState["user"]; emailSent: boolean },
-	RegisterPayload,
-	{ rejectValue: string }
->("auth/registerUser", async (userData, { rejectWithValue }) => {
-	try {
-		const response = await axiosInstance.post("/register", userData);
-		//console.log("register response:", response);
+// export const registerUser = createAsyncThunk<
+// 	{ user: AuthState["user"]; emailSent: boolean },
+// 	RegisterPayload,
+// 	{ rejectValue: string }
+// >("auth/registerUser", async (userData, { rejectWithValue }) => {
+// 	try {
+// 		const response = await axiosInstance.post("/register", userData);
+// 		//console.log("register response:", response);
 
-		const rawUser = response.data?.data?.user;
-		const emailSent = response.data?.data?.email_sent;
+// 		const rawUser = response.data?.data?.user;
+// 		const emailSent = response.data?.data?.email_sent;
 
-		if (rawUser) {
-			const user = {
-				id: rawUser.id,
-				full_name:
-					rawUser.full_name ||
-					`${rawUser.first_name || ""} ${
-						rawUser.last_name || ""
-					}`.trim(),
-				email: rawUser.email,
-			};
+// 		if (rawUser) {
+// 			const user = {
+// 				id: rawUser.id,
+// 				full_name:
+// 					rawUser.full_name ||
+// 					`${rawUser.first_name || ""} ${
+// 						rawUser.last_name || ""
+// 					}`.trim(),
+// 				email: rawUser.email,
+// 			};
 
-			// Cookie set (SSR এর জন্য)
-			// await fetch("/api/auth/set-cookie", {
-			// 	method: "POST",
-			// 	headers: { "Content-Type": "application/json" },
-			// 	body: JSON.stringify({ token }),
-			// });
+// 			// Cookie set (SSR এর জন্য)
+// 			// await fetch("/api/auth/set-cookie", {
+// 			// 	method: "POST",
+// 			// 	headers: { "Content-Type": "application/json" },
+// 			// 	body: JSON.stringify({ token }),
+// 			// });
 
-			return { user, emailSent };
-		} else {
-			return rejectWithValue("Registration failed");
-		}
-	} catch (error) {
-		const axiosError = error as {
-			response?: {
-				data?: {
-					message?: string;
-					data?: {
-						validation_errors?: Record<string, string[]>;
-					};
-				};
-			};
-		};
+// 			return { user, emailSent };
+// 		} else {
+// 			return rejectWithValue("Registration failed");
+// 		}
+// 	} catch (error) {
+// 		const axiosError = error as {
+// 			response?: {
+// 				data?: {
+// 					message?: string;
+// 					data?: {
+// 						validation_errors?: Record<string, string[]>;
+// 					};
+// 				};
+// 			};
+// 		};
 
-		// Check if it's a validation error with detailed structure
-		if (axiosError?.response?.data?.data?.validation_errors) {
-			const validationErrors =
-				axiosError.response.data.data.validation_errors;
-			// Format the validation errors into a single string for display (without field names)
-			const errorMessages = Object.values(validationErrors).flat();
-			const message = errorMessages.join(" ") || "Validation failed";
-			return rejectWithValue(message);
-		}
+// 		// Check if it's a validation error with detailed structure
+// 		if (axiosError?.response?.data?.data?.validation_errors) {
+// 			const validationErrors =
+// 				axiosError.response.data.data.validation_errors;
+// 			// Format the validation errors into a single string for display (without field names)
+// 			const errorMessages = Object.values(validationErrors).flat();
+// 			const message = errorMessages.join(" ") || "Validation failed";
+// 			return rejectWithValue(message);
+// 		}
 
-		// Fallback to original message
-		const message =
-			axiosError?.response?.data?.message || "Registration failed";
-		return rejectWithValue(message);
-	}
-});
+// 		// Fallback to original message
+// 		const message =
+// 			axiosError?.response?.data?.message || "Registration failed";
+// 		return rejectWithValue(message);
+// 	}
+// });
 
 // Update profile picture
 interface UpdateProfilePicturePayload {
@@ -495,22 +495,22 @@ const authSlice = createSlice({
 				state.error = action.payload || "Microsoft login failed";
 				state.isAuthenticated = false;
 			})
-			.addCase(registerUser.pending, (state) => {
-				state.loading = true;
-				state.error = null;
-			})
-			.addCase(registerUser.fulfilled, (state, action) => {
-				state.loading = false;
-				state.token = null;
-				state.user = action.payload.user;
-				state.isAuthenticated = false; // Not authenticated until email verification
-				state.error = null;
-			})
-			.addCase(registerUser.rejected, (state, action) => {
-				state.loading = false;
-				state.error = action.payload || "Registration failed";
-				state.isAuthenticated = false;
-			})
+			// .addCase(registerUser.pending, (state) => {
+			// 	state.loading = true;
+			// 	state.error = null;
+			// })
+			// .addCase(registerUser.fulfilled, (state, action) => {
+			// 	state.loading = false;
+			// 	state.token = null;
+			// 	state.user = action.payload.user;
+			// 	state.isAuthenticated = false; // Not authenticated until email verification
+			// 	state.error = null;
+			// })
+			// .addCase(registerUser.rejected, (state, action) => {
+			// 	state.loading = false;
+			// 	state.error = action.payload || "Registration failed";
+			// 	state.isAuthenticated = false;
+			// })
 			.addCase(updateProfilePicture.pending, (state) => {
 				state.loading = true;
 			})
