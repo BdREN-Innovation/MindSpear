@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "react-toastify";
-import { CalendarClock, Copy, Globe, Layers, Lock, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
-import { Modal } from "@/components/ui";
+import { Copy, Globe, History, Layers, Lock, MonitorPlay, Pencil, PencilLine, Plus, Trash2 } from "lucide-react";
+import { ActionsMenu, Modal } from "@/components/ui";
 import { authoringApiFor } from "@/features/deck/api/authoringApi";
 import { isDeckApiError, toDeckApiError } from "@/features/deck/api/errors";
 import { productCopy, type DeckProductCopy } from "@/features/deck/productCopy";
@@ -12,16 +12,37 @@ import { getDeckTheme } from "@/features/deck/theme";
 import type { DeckListMeta, DeckProduct, DeckSummary } from "@/features/deck/types";
 import { ThemeSwatch } from "@/features/deck-editor/components/inspector/DesignTab";
 import { NewDeckDialog } from "./NewDeckCard";
+import { RenameDeckModal } from "./RenameDeckModal";
 
 // My Library > Quiz / Quest: the user's decks of one product, newest first,
 // with edit, present, duplicate and delete.
 
 const PER_PAGE = 12;
 
-// Plain icon buttons (no tinted chips); each has an aria-label and a title tooltip.
+// Icon-only actions in the logo's two colours (no background chip), shown on hover.
 const actionClass =
-	"pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary-400 disabled:opacity-50";
-const neutralAction = "text-dark-5 hover:bg-gray-2 hover:text-dark dark:text-dark-6 dark:hover:bg-dark-3 dark:hover:text-white";
+	"inline-flex h-9 items-center gap-1.5 rounded-md px-2 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary-400 disabled:cursor-not-allowed disabled:opacity-40";
+const editAction = "text-primary-600 hover:text-primary-800 dark:text-primary-300";
+const presentAction = "text-secondary-500 hover:text-secondary-700 dark:text-secondary-300";
+
+/** An icon with a small tooltip on hover or focus: what Public / Private means, for anyone new. */
+function VisibilityIcon({ visibility }: { visibility: DeckSummary["visibility"] }) {
+	const isPublic = visibility === "public";
+	const Icon = isPublic ? Globe : Lock;
+	const tip = isPublic ? "Public · listed in Discover" : "Private · only you can see it";
+	return (
+		// Above the card link, so hovering the icon shows its tooltip instead of only the link.
+		<span tabIndex={0} aria-label={tip} className="group/tip relative z-10 inline-flex shrink-0 rounded-full p-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-secondary-400">
+			<Icon className="h-4 w-4 text-dark-5 dark:text-dark-6" aria-hidden />
+			<span
+				role="tooltip"
+				className="pointer-events-none absolute right-0 top-full z-20 mt-1 hidden whitespace-nowrap rounded-md bg-dark px-2 py-1 text-xs font-medium text-white shadow-lg group-hover/tip:block group-focus/tip:block dark:bg-dark-3"
+			>
+				{tip}
+			</span>
+		</span>
+	);
+}
 
 function formatUpdated(iso: string | null): string {
 	if (!iso) return "—";
@@ -43,32 +64,35 @@ function DeckCard({
 	deck,
 	copy,
 	busy,
+	onRename,
 	onDuplicate,
 	onDelete,
 }: {
 	deck: DeckSummary;
 	copy: DeckProductCopy;
 	busy: boolean;
+	onRename(deck: DeckSummary): void;
 	onDuplicate(deck: DeckSummary): void;
 	onDelete(deck: DeckSummary): void;
 }) {
 	const theme = getDeckTheme(deck.settings?.theme);
-	// The whole card opens the deck's sessions page: the title link stretches over it (after:inset-0), and the
-	// action buttons sit above that layer so they keep their own clicks (gaps between them fall through).
+	// The whole card opens the deck's sessions page: the title link stretches over it (after:inset-0),
+	// and the buttons, the ⋮ menu and the visibility icon sit above that layer so they keep their own clicks.
 	return (
-		<li className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:border-secondary hover:shadow-md dark:border-stroke-dark dark:bg-gray-dark dark:hover:border-secondary-300">
+		<li className="group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-stroke bg-white transition hover:-translate-y-0.5 hover:border-secondary-300 hover:shadow-md dark:hover:border-secondary-600 motion-reduce:transition-none motion-reduce:hover:translate-y-0 dark:border-stroke-dark dark:bg-gray-dark">
 			<div className="p-3">
 				{deck.cover?.url ? (
 					// Covers come from My Files (any host), so a plain img keeps next/image config out of it.
 					// eslint-disable-next-line @next/next/no-img-element
-					<img src={deck.cover.url} alt="" className="aspect-video w-full rounded-md object-cover" />
+					<img src={deck.cover.url} alt="" className="aspect-video w-full rounded-lg object-cover" />
 				) : (
-					<ThemeSwatch theme={theme} />
+					<ThemeSwatch theme={theme} className="rounded-lg" />
 				)}
 			</div>
-			<div className="flex flex-1 flex-col gap-1 px-4 pb-3">
-				<div className="flex items-center gap-2">
-					<h3 className="min-w-0 flex-1 truncate text-base font-semibold text-dark dark:text-white">
+			<div className="flex flex-1 flex-col gap-1.5 px-4 pb-3 pt-1">
+				<div className="flex items-center gap-1">
+					{/* Normal leading: Bangla vowel signs above and below the line need the room. */}
+					<h3 className="min-w-0 flex-1 truncate text-[1.0625rem] font-semibold leading-normal text-dark dark:text-white">
 						<Link
 							href={copy.sessionsHref(deck.id)}
 							title={deck.title}
@@ -77,63 +101,47 @@ function DeckCard({
 							{deck.title}
 						</Link>
 					</h3>
-					{deck.visibility === "public" ? (
-						<span className="inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium text-green-dark" title="Listed in Discover">
-							<Globe className="h-3.5 w-3.5" aria-hidden />
-							Public
-						</span>
-					) : (
-						<span className="inline-flex shrink-0 items-center text-dark-5 dark:text-dark-6" title="Private: only you can see it">
-							<Lock className="h-3.5 w-3.5" aria-hidden />
-							<span className="sr-only">Private</span>
-						</span>
-					)}
+					<VisibilityIcon visibility={deck.visibility} />
 				</div>
-				<p className="flex items-center gap-1.5 text-sm text-dark-5 dark:text-dark-6">
+				<p className="flex items-center gap-1.5 text-[0.8125rem] text-dark-5 dark:text-dark-6">
 					<Layers className="h-4 w-4" aria-hidden />
 					{slides(deck.slideCount)}
 				</p>
-				{/* One slot, two faces: "Updated …" at rest, the actions on hover / keyboard focus (they
-				    zoom in over it), so the card never grows or shows an empty strip. Touch screens
-				    can't hover, so they always get the actions. */}
-				<div className="relative mt-1 h-9">
-					<p className="flex h-full items-center gap-1.5 text-sm text-dark-5 transition-opacity duration-150 group-focus-within:opacity-0 group-hover:opacity-0 dark:text-dark-6 [@media(hover:none)]:invisible">
-						<CalendarClock className="h-4 w-4" aria-hidden />
+				{/* One slot, two faces: when it was updated at rest, the actions on hover / keyboard focus, so the
+				    card never grows. Touch screens can't hover, so they always get the actions. */}
+				<div className="relative h-9">
+					<p
+						className="flex h-full items-center gap-1.5 text-[0.8125rem] text-dark-5 transition-opacity duration-150 group-focus-within:opacity-0 group-hover:opacity-0 dark:text-dark-6 [@media(hover:none)]:invisible"
+						title={deck.updatedAt ? new Date(deck.updatedAt).toLocaleString() : undefined}
+					>
+						<History className="h-4 w-4" aria-hidden />
 						Updated {formatUpdated(deck.updatedAt)}
 					</p>
-					<div className="pointer-events-none absolute inset-0 z-10 flex origin-left items-center gap-1 transition duration-150 ease-out group-focus-within:scale-100 group-focus-within:opacity-100 group-hover:scale-100 group-hover:opacity-100 [@media(hover:hover)]:scale-95 [@media(hover:hover)]:opacity-0">
-						<Link href={copy.editHref(deck.id)} aria-label={`Edit ${deck.title}`} title="Edit" className={`${actionClass} ${neutralAction}`}>
-							<Pencil className="h-4 w-4" aria-hidden />
+					<div className="pointer-events-none absolute inset-0 z-10 flex items-center gap-1 transition-opacity duration-150 group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 motion-reduce:transition-none [@media(hover:hover)]:opacity-0 [@media(hover:none)]:pointer-events-auto">
+						<Link href={copy.editHref(deck.id)} aria-label={`Edit ${deck.title}`} className={`${actionClass} ${editAction}`}>
+							<Pencil className="h-[1.125rem] w-[1.125rem]" aria-hidden />
+								Edit
 						</Link>
 						{deck.slideCount > 0 ? (
-							<Link href={copy.presentHref(deck.id)} aria-label={`Present ${deck.title}`} title="Present" className={`${actionClass} ${neutralAction}`}>
-								<MonitorPlay className="h-4 w-4" aria-hidden />
+							<Link href={copy.presentHref(deck.id)} aria-label={`Present ${deck.title}`} className={`${actionClass} ${presentAction}`}>
+								<MonitorPlay className="h-[1.125rem] w-[1.125rem]" aria-hidden />
+								Present
 							</Link>
 						) : (
-							<button type="button" disabled aria-label="Present (add a slide first)" title="Add a slide first" className={`${actionClass} ${neutralAction}`}>
-								<MonitorPlay className="h-4 w-4" aria-hidden />
+							<button type="button" disabled aria-label="Present (add a slide first)" title="Add a slide first" className={`${actionClass} ${presentAction}`}>
+								<MonitorPlay className="h-[1.125rem] w-[1.125rem]" aria-hidden />
+								Present
 							</button>
 						)}
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => onDuplicate(deck)}
-							aria-label={`Duplicate ${deck.title}`}
-							title="Duplicate"
-							className={`${actionClass} ${neutralAction}`}
-						>
-							<Copy className="h-4 w-4" aria-hidden />
-						</button>
-						<button
-							type="button"
-							disabled={busy}
-							onClick={() => onDelete(deck)}
-							aria-label={`Delete ${deck.title}`}
-							title="Delete"
-							className={`${actionClass} ml-auto text-dark-5 hover:bg-red-light-5 hover:text-[#B42318] dark:text-dark-6 dark:hover:bg-dark-3 dark:hover:text-red-light`}
-						>
-							<Trash2 className="h-4 w-4" aria-hidden />
-						</button>
+						<ActionsMenu
+							label={`More actions for ${deck.title}`}
+							className="ml-auto"
+							items={[
+								{ label: "Rename", icon: PencilLine, onSelect: () => onRename(deck), disabled: busy },
+								{ label: "Duplicate", icon: Copy, onSelect: () => onDuplicate(deck), disabled: busy },
+								{ label: "Delete", icon: Trash2, onSelect: () => onDelete(deck), danger: true, disabled: busy },
+							]}
+						/>
 					</div>
 				</div>
 			</div>
@@ -152,6 +160,7 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 	const [busyId, setBusyId] = useState<number | null>(null);
 	const [newOpen, setNewOpen] = useState(false);
 	const [toDelete, setToDelete] = useState<DeckSummary | null>(null);
+	const [toRename, setToRename] = useState<DeckSummary | null>(null);
 	const headingRef = useRef<HTMLHeadingElement>(null);
 	const headingId = `${product}-library-heading`;
 
@@ -179,6 +188,13 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 		void load(page, controller.signal);
 		return () => controller.abort();
 	}, [page, load]);
+
+	/** Saves the title and updates the card in place (the list order stays as it was). */
+	const rename = async (deck: DeckSummary, title: string) => {
+		const updated = await api.updateDeck(deck.id, { title });
+		setDecks((list) => list.map((item) => (item.id === deck.id ? { ...item, title: updated.title, updatedAt: updated.updatedAt } : item)));
+		toast.success(`Renamed to “${updated.title}”.`);
+	};
 
 	const duplicate = async (deck: DeckSummary) => {
 		setBusyId(deck.id);
@@ -231,12 +247,13 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 					type="button"
 					onClick={() => setNewOpen(true)}
 					aria-haspopup="dialog"
-					className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-dark transition hover:bg-primary-dark focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-60"
+					className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-primary-300 px-4 text-sm font-semibold text-dark transition hover:bg-primary-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-60 dark:bg-primary-900/40 dark:text-white dark:hover:bg-primary-900/60"
 				>
 					<Plus className="h-4 w-4" aria-hidden />
 					New {copy.noun}
 				</button>
 				<NewDeckDialog product={product} open={newOpen} onClose={() => setNewOpen(false)} />
+				<RenameDeckModal deck={toRename} noun={copy.noun} onClose={() => setToRename(null)} onRename={rename} />
 			</div>
 
 			{error ? (
@@ -259,7 +276,7 @@ export function DeckLibrarySection({ product }: { product: DeckProduct }) {
 			) : (
 				<ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-busy={loading}>
 					{decks.map((deck) => (
-						<DeckCard key={deck.id} deck={deck} copy={copy} busy={busyId === deck.id} onDuplicate={duplicate} onDelete={setToDelete} />
+						<DeckCard key={deck.id} deck={deck} copy={copy} busy={busyId === deck.id} onRename={setToRename} onDuplicate={duplicate} onDelete={setToDelete} />
 					))}
 				</ul>
 			)}

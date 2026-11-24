@@ -119,22 +119,22 @@ function DeckHeader({ deck, copy, onDelete, deleting }: { deck: DeckSummary; cop
 				<div className="mt-auto flex flex-wrap gap-2">
 					<Link
 						href={copy.editHref(deck.id)}
-						className={cn(actionClass, "border border-stroke bg-white text-dark shadow-sm hover:bg-gray-1 dark:border-stroke-dark dark:bg-gray-dark dark:text-white dark:hover:bg-dark-2")}
+						className={cn(actionClass, "border border-stroke bg-white text-dark shadow-sm transition-colors hover:border-primary-300 dark:border-stroke-dark dark:bg-gray-dark dark:text-white dark:hover:border-primary-700")}
 					>
-						<Pencil className="h-4 w-4" aria-hidden />
+						<Pencil className="h-4 w-4 text-primary-600 dark:text-primary-300" aria-hidden />
 						Edit
 					</Link>
 					{deck.slideCount > 0 ? (
 						<Link
 							href={copy.presentHref(deck.id)}
-							className={cn(actionClass, "border border-stroke text-dark hover:bg-gray-1 dark:border-stroke-dark dark:text-white dark:hover:bg-dark-2")}
+							className={cn(actionClass, "border border-stroke text-dark transition-colors hover:border-secondary-300 dark:border-stroke-dark dark:text-white dark:hover:border-secondary-700")}
 						>
-							<MonitorPlay className="h-4 w-4" aria-hidden />
+							<MonitorPlay className="h-4 w-4 text-secondary-500 dark:text-secondary-300" aria-hidden />
 							Present
 						</Link>
 					) : (
 						<button type="button" disabled title="Add a slide first" className={cn(actionClass, "border border-stroke text-dark dark:border-stroke-dark dark:text-white")}>
-							<MonitorPlay className="h-4 w-4" aria-hidden />
+							<MonitorPlay className="h-4 w-4 text-secondary-500 dark:text-secondary-300" aria-hidden />
 							Present
 						</button>
 					)}
@@ -143,7 +143,7 @@ function DeckHeader({ deck, copy, onDelete, deleting }: { deck: DeckSummary; cop
 						onClick={onDelete}
 						disabled={deleting}
 						aria-haspopup="dialog"
-						className={cn(actionClass, "text-[#B42318] hover:bg-red-light-5 dark:text-red-light dark:hover:bg-dark-3")}
+						className={cn(actionClass, "border border-transparent text-[#B42318] transition-colors hover:border-red-light-3 dark:text-red-light dark:hover:border-red/40")}
 					>
 						<Trash2 className="h-4 w-4" aria-hidden />
 						Delete

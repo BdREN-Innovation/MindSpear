@@ -8,8 +8,8 @@ const menuItemBaseStyles = cva(
 	{
 		variants: {
 			isActive: {
-				// Neutral, not brand-tinted: brand colour is kept for the page's main action.
-				true: "bg-gray-2 font-semibold text-dark dark:bg-[#FFFFFF1A] dark:text-white",
+				// The logo's orchid marks where you are; orange stays for the page's main action.
+				true: "bg-secondary-100 font-semibold text-dark dark:bg-secondary-900/40 dark:text-white",
 				false: "hover:bg-gray-100 hover:text-dark hover:dark:bg-[#FFFFFF1A] hover:dark:text-white ",
 			},
 		},

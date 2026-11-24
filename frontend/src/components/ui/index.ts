@@ -1,3 +1,4 @@
+export * from "./ActionsMenu";
 export * from "./Button";
 export * from "./ConfirmDialog";
 export * from "./Dropdown";
